@@ -1,344 +1,329 @@
-# COMPOUND — Game Design Document (v0.1)
+# COMPOUND — Game Design Document (v0.2)
 
-*Working title — a double meaning: the colony **compound** you build, and the **compound growth** curve you're racing.*
+*Working title — the colony **compound** you build, and the **compound growth**
+curve you're racing.*
 
 A turn-based, single-player space-colony optimization puzzle on a tiny hex map.
 Perfect information, fully deterministic, transparent formulas. The game is the
 *search for a better build sequence*, not the management of hidden risk.
 
+> **Changes since v0.1** (from design review): removed all "soft-fail / miss-by-a-bit"
+> language — directives are now cleanly **hard gates** or **optional**. Reframed where
+> the short-vs-long tension comes from (it is opportunity cost, not deadline-chicken).
+> Replaced the flat resource list with a real multi-tier **production graph**; Power is
+> now a non-storable **flow**. Population is a single monotonic **number/gate**, not a
+> per-turn assignment chore. Cut **morale**; replaced "pollution" with hard-sci-fi
+> **heat** and **radiation** adjacency. Directives are now **flexible/multi-objective**
+> with **economic** (not prestige) bonuses for early completion. Debt defined concretely
+> but **deferred**.
+
 ---
 
-## 1. Design pillars & the core tension
+## 1. Design pillars & where the tension actually comes from
 
-The brief's hardest requirement is the **short-term vs. long-term tradeoff**. The
-key realization: that tension **cannot live in the scoring**. If a scenario is
-judged by one final number (a single goal or a single score), the optimal policy
-is always "maximize the long-term curve and back-solve" — the short term
-disappears. The tension has to be structural.
+The hardest requirement is the **short-term vs. long-term tradeoff**. The key
+realization from review: in a deterministic, perfect-information game the tension
+**cannot be risk** — there's no bluffing a deadline, no "cutting it close." If a
+deadline can be safely exceeded, it was never the deadline. So the tension is
+pure **opportunity cost under hard, time-localized constraints**:
 
-So the spine of COMPOUND is:
+> **Directives** are demands with **hard deadlines**, satisfied by emitting refined
+> goods that *leave the economy* — the same goods and tiles you'd otherwise pour into
+> the compounding curve.
 
-> **Directives** — extrinsic demands from Earth with **hard deadlines** — that you
-> satisfy by *spending the exact same economic output you would otherwise
-> reinvest into compound growth.*
+Meeting a gate isn't a gamble; it's a **diversion**. The decision is never "when do
+I dare pay" (you pay as late as allowed — trivial). It's **what production capacity
+to build, and in what order**, so that a lump of output can exit at turn T *while*
+that capacity is exactly what the growth curve wants. The interesting *timing*
+decisions are pushed onto **optional** directives whose early-completion bonus is
+**economic** — delivering early pulls a multiplier forward, a clean exponential-vs-now
+bet (see §4).
 
-Every resource shipped to satisfy a Directive is a resource that did **not**
-compound. Every turn of construction capacity spent meeting a quota is a turn not
-spent building the engine. Because Directives have deadlines and (some) are
-**mandatory**, you can't turtle into a pure growth strategy. Because the late
-game rewards a strong economy, you can't mindlessly over-serve the early
-Directives either. **The skill is sequencing: invest as hard as possible while
-shaving each deadline as close as you dare.**
+Five pillars:
 
-The five pillars:
-
-1. **Guns vs. butter, made literal.** Construction capacity and output are shared
-   between "serve the Directive now" and "grow the engine for later."
-2. **Compound growth you can see.** Tech tiers and multiplier buildings make the
-   economy curve visibly exponential; falling one turn behind the curve costs
-   more every subsequent turn.
-3. **Spatial sequencing.** 54 hexes, heavy adjacency, and a per-turn build limit
-   mean *order and placement* dominate. Demolish-and-rebuild is a real lever.
-4. **Score chase with a speed dimension.** Minor vs. major victory, plus a graded
-   score where a dominant economy can declare victory *early* for a higher grade.
-5. **Total transparency.** All future Directives, all terrain, all formulas are
-   visible from turn 1. No randomness, no hidden state. It's a puzzle.
+1. **Guns vs. butter as opportunity cost.** Every refined good exported to a gate is
+   one not reinvested. Hard gates force diversions at fixed, awkward moments.
+2. **Visible compound growth.** Tech tiers + multiplier buildings (Automation, AI Core,
+   self-replicating Fabricators) make the curve genuinely exponential; being one gate
+   "behind the curve" costs more every subsequent turn.
+3. **Spatial sequencing.** 54 tiles, dense positive/negative adjacency, fixed deposits,
+   and a non-storable power flow make placement *and order* dominate. Demolish-and-rebuild
+   is a real lever.
+4. **Score chase with a speed dimension.** Minor vs. major victory; graded score; a
+   dominant economy can **Declare Complete early** for a higher grade.
+5. **Total transparency.** All future directives, terrain, and formulas visible from
+   turn 1. No randomness, no hidden state. It is a puzzle with a discoverable optimum.
 
 ---
 
 ## 2. The map
 
-- **Grid:** ~9 columns × 6 rows of hexes (≈ 54 tiles). Flat-top hexes, axial
-  coordinates. Some tiles are pre-occupied by **wreckage/obstacles** or are
-  **off-limits** (unbuildable craters) to shape each scenario.
-- **The sunline:** one edge of the map is the **sunward edge**. Solar output
-  falls off with distance (column index) from it. This turns placement into a
-  positional economy: prime solar real estate is scarce and on one side, while
-  the best ice/ore deposits may be on the far side — you can't have everything
-  close.
-- **Space is genuinely scarce.** A maxed late-game colony wants more tiles than
-  exist, so you will demolish early-era buildings to make room for megastructures.
+- **Grid:** ~9 × 6 hexes (≈ 54 tiles), flat-top, axial coords. Some tiles start as
+  **wreckage/obstacles** or **off-limits craters** to shape each scenario.
+- **The sunline:** one edge is **sunward**; solar output falls off with distance
+  (column) from it. Prime solar is on one side, while the best ice/ore may be on the
+  other — you physically can't keep everything close.
+- **Space genuinely runs out.** A maxed endgame wants more tiles than exist, so you
+  will demolish early-era buildings to seat megastructures.
 
-### Terrain types
+### Terrain
 
 | Terrain | Effect |
 |---|---|
-| **Regolith plain** | Default. Buildable, no bonus. |
-| **Ice deposit** | Water Extractors get a large bonus here; Greenhouses adjacent to ice get free Water. |
-| **Ore vein** | Mines get a large bonus here. |
-| **Crater rim / highland** | Solar +bonus; Comms/Sensors get range. |
-| **Lava tube / cavern** | Habitats here are shielded: +population capacity, cheaper, morale bonus. |
-| **Geothermal vent** | Enables Geothermal Plant (steady power, no sunline dependence). |
-| **Boulder field** | Must be **cleared** (costs construction capacity + Materials) before building. |
-| **Off-limits crater / wreckage** | Permanently unbuildable; pure obstacle / pathing of adjacency. |
+| **Regolith plain** | Default, buildable, no bonus. |
+| **Ice deposit** | Ice Extractors get a large bonus here. |
+| **Ore vein** | Ore Mines get a large bonus here. |
+| **Crater rim / highland** | Solar +bonus; sensors/comms get range. |
+| **Lava tube / cavern** | Habitats here gain capacity **and natural radiation shielding** — prime spots to tuck housing near industry. |
+| **Geothermal vent** | Enables a steady Geothermal Plant (sunline-independent power). |
+| **Boulder field** | Must be **cleared** (Metal + a turn) before building. |
+| **Off-limits / wreckage** | Permanently unbuildable; shapes adjacency and pathing. |
 
 ---
 
-## 3. Resources (deep: 6 tracked + 1 score currency)
+## 3. Resources — the production graph
 
-Production chain, escalating from basic life-support to hard sci-fi:
+Deep, multi-tier, with multi-use refined goods and a refined-from-refined step.
+Raws are the only things produced "from nothing"; everything else has inputs.
 
-| Resource | Role | Primary sources | Major sinks |
-|---|---|---|---|
-| **Power** | Universal enabler; almost everything consumes it | Solar → Fission → Fusion → Antimatter | Every active building |
-| **Water** | Life support + feedstock (hydroponics, electrolysis, fusion deuterium) | Ice Extractors | Greenhouses, Habitats, Fusion |
-| **Food** | Feeds population; surplus drives growth | Greenhouses → Hydroponics → Agro-towers | Population upkeep |
-| **Workforce** | Labor; staffs buildings **and** powers construction | Population in Habitats | Building staffing + **construction capacity** |
-| **Materials** | Construction + refined into advanced Alloys | Mines (ore) → Refineries (alloys) | All construction; advanced builds need Alloys |
-| **Research (Data)** | Unlocks tech tiers and multiplier buildings | Labs | Tech unlocks |
+| Tier | Resource | Stored? | Made from | Used for (multi-use) |
+|---|---|---|---|---|
+| Raw | **Ore** | yes | Ore Mine on vein | → Metal |
+| Raw | **Ice** | yes | Ice Extractor on deposit | → Water |
+| **Flow** | **Power** | **NO** (see below) | Solar / Fission / Fusion / Geo / Antimatter | runs *every* active building, every turn |
+| Refined | **Water** | yes | Ice + Power | life-support, Food, Components, fusion fuel |
+| Refined | **Metal** | yes | Ore + Power | construction, Components, exports |
+| Refined | **Food** | yes | Water + Power | population upkeep & growth, exports |
+| Refined² | **Components** | yes | Metal + Water + Power | advanced construction, Research, exports |
+| Refined | **Research** | spent | Components + Power | unlocks tech tiers / multiplier buildings |
 
-**Workforce is the linchpin of guns-vs-butter.** Each turn your population is
-split between **staffing** producing buildings and **construction crews**. You can
-only start `K` construction actions per turn, where `K` scales with idle
-Workforce. Pull workers onto a build and production drops this turn; leave them
-producing and the colony grows slower. This is the literal lever.
+Notes addressing review:
 
-**Storage caps.** Each resource has a cap (raised by Depots/tech). Hoarding is
-punished — overflow is wasted — so you must keep choosing: **spend on a Directive,
-or spend on growth.** You can't just sit on a war chest.
-
-### The score currency: **Prestige**
-
-Separate from the economy. **Prestige is the score.** You earn it by fulfilling
-Directives (especially optional ones) and from final colony valuation. It is
-*not* spendable on the economy (except via debt, see §9), so it can't be
-recycled into the growth loop — it's a pure measure of mission success.
+- **Real chains, multi-use goods.** Ore→Metal→Components→Research is a true chain;
+  Water feeds three branches, Metal feeds two. No useful resource is single-input
+  single-use anymore (Food still mainly feeds pop, but it's now a *refined* good with
+  Water+Power inputs and is also a valid export).
+- **Power is a flow, not a stockpile.** Each turn, generation must cover consumption;
+  shortfall = brownout (lowest-priority buildings idle that turn). The only way to
+  carry power across turns is a **Battery** building — deliberately limited and costly.
+  This makes power a per-turn placement/balancing puzzle and binds it to the sunline.
+- **Population is NOT a resource** (never consumed) — it's a capacity/gate (§4).
+- **Storage caps** on stored resources (raised by Depots/tech). Overflow is wasted, so
+  hoarding is punished: keep choosing *spend on a gate* vs. *spend on growth*.
 
 ---
 
-## 4. Directives — the short-term engine
+## 4. Population, directives & victory
 
-Each scenario ships with a **fully visible schedule** of Directives. A Directive
-is a bundle of output demanded by a **deadline turn**:
+### Population (a single number)
 
-```
-T8  [MANDATORY]  Ship 30 Food                       → +120 Prestige
-T8  [OPTIONAL]   Ship +20 Alloys                    → +90 Prestige, unlock Refinery II
-T14 [MANDATORY]  Deliver 60 Alloys                  → +200 Prestige
-T14 [OPTIONAL]   Reach 50 cumulative Research        → +150 Prestige, unlock Fusion early
-T22 [FINAL]      Population ≥ 50 AND ship 40 Food    → scenario end
-```
+- Population is **one number**. It only ever **increases** (monotonic).
+- **Housing capacity** = Σ Habitat/Arcology capacity. Population grows toward capacity
+  when there's **life-support surplus** (Food + Water + Power headroom for the larger
+  population). No surplus ⇒ growth stalls; it never shrinks.
+- Every building has a fixed **staffing requirement**. Σ staffing ≤ population at all
+  times. **You may not build/operate what you can't staff.**
+- This makes expansion **triple-gated** — by **Metal** (to build), **staffing** (to
+  operate), and **Power** (to run) — so no artificial "N builds per turn" cap is needed.
+  (Such a cap remains a possible tuning knob if playtests want it.)
 
-- **Fulfilling** a Directive consumes the demanded resources from your stockpile
-  the turn you meet it (or accumulates toward a cumulative target). The resources
-  leave your economy.
-- **Mandatory** Directives missed at their deadline → harsh penalty (large
-  Prestige loss + a lasting economic debuff, e.g. a morale/sanctions hit) or, for
-  the worst, scenario failure. The scenario tuning chooses how punishing.
-- **Optional** Directives are the fuel for major victory — extra Prestige and
-  often **tech unlocks pulled forward**, letting a strong economy snowball.
+### Directives — the short-term engine
 
-Directives are deliberately spiky and badly timed relative to your natural growth
-curve — that's the design. They force you to interrupt compounding at the worst
-moments, and finding the build order that absorbs the spikes cheaply is the
-puzzle.
+A scenario ships a **fully visible** schedule. Two kinds:
+
+**Required gates** (the short-term spine):
+- A hard objective due by turn T. **Missed ⇒ run lost.** No partial credit, no penalty
+  tier — clean and consistent.
+- **Flexible / multidimensional fulfillment** (the part that makes them interesting):
+  - *Alternative bundles*: "supply the orbital depot: **40 Food OR 30 Components OR
+    25 Metal**" — pulls on whichever branch you over-built.
+  - *Meet-K-of-N*: "satisfy 2 of {pop ≥ 40, ship 50 Metal, 60 cumulative Research}."
+  - *State vs. flow*: an objective can be a built-up **state** (population, a structure
+    exists) or a **flow** (ship N this turn) — different strategies satisfy each.
+
+**Optional directives** (the timing/curve engine):
+- No failure if skipped. Reward is an **economic/tech bonus, not prestige** — and it's
+  **scaled by how early you deliver**: e.g. deliver by T6 → unlock Fusion now + a Metal
+  grant; by T9 → smaller grant; after T9 → expired. Early delivery costs output *now*
+  to pull a **multiplier forward**, which is a real exponential decision (the only place
+  "when" genuinely matters).
+
+### Prestige & victory (consistent)
+
+- **Prestige is the score**, and *only* the score — it's not spendable on the economy.
+  It comes from **final colony valuation** + flat prestige on some directives + an
+  efficiency/speed bonus.
+- **Defeat:** any required gate unmet at its deadline.
+- **Minor victory:** all required gates met through the final turn (run is *completable*).
+- **Major victory:** Minor **plus** Prestige ≥ the major threshold.
+- **Grade / speed:** once the final required gate is met you may **Declare Complete**;
+  finishing early grants a per-turn time bonus. So a just-strong economy limps to a Minor
+  at the deadline; a strong one clears the major bar at the deadline; a **dominant** one
+  clears it *early* and declares for a faster, higher grade. That's the chase.
 
 ---
 
 ## 5. Buildings & tech eras
 
-Tech tiers unlock via **Research thresholds** and/or by completing Directives.
-Investing in Labs is the purest long-term play: a Lab produces no Power, Food, or
-Materials — it only buys you *future* multipliers. Building one early means
-surviving the next Directive with less. That's the long-term gamble in a single
-building.
+Tech unlocks via **Research** thresholds and/or **optional directives** (pulled forward,
+§4). A **Lab** is the purest long-term gamble: it produces nothing toward the next gate,
+only *future* multipliers — building one early means surviving a gate with less.
 
-### Era 1 — Foothold (butter basics)
-| Building | Produces / does | Key adjacency |
+Each building has: **build cost** (Metal, later +Components), **staffing**, **power draw**,
+and adjacency effects.
+
+### Era 1 — Foothold
+| Building | Does | Notable adjacency |
 |---|---|---|
-| **Habitat** | Houses Workforce | +cap in lava tube; −morale next to industry |
-| **Greenhouse** | Food | +Food per adjacent Water source/ice; +Food per adjacent Power; −Food if adjacent to a polluter |
-| **Solar Array** | Power | Scales with closeness to sunline + crater rim; −if shadowed by adjacent tall structure |
-| **Ice Extractor** | Water | Huge bonus on ice deposit |
-| **Regolith Mine** | Materials (ore) | Huge bonus on ore vein; emits pollution |
-| **Depot** | +Storage cap | — |
+| **Habitat** | +housing capacity; consumes life-support per pop | lava tube: +capacity & shielded; near reactor (unshielded): penalty |
+| **Solar Array** | +Power (flow) | scales with sunline proximity / crater rim; **shadowed** by tall neighbors |
+| **Ore Mine** | Ore (on vein) | — |
+| **Ice Extractor** | Ice (on deposit) | — |
+| **Greenhouse** | Water+Power→Food | +per adjacent Water source/Power; **radiation-sensitive** |
+| **Depot** | +storage caps | — |
 
 ### Era 2 — Industry
-| Building | Produces / does | Key adjacency |
+| Building | Does | Notable adjacency |
 |---|---|---|
-| **Fission Reactor** | Lots of Power, no sunline dependence | needs Water; pollution |
-| **Refinery** | Ore → Alloys | needs Power; heavy pollution |
-| **Hydroponics** | Food (denser than Greenhouse) | needs lots of Power + Water; pollution-immune |
-| **Research Lab** | Research | +cluster bonus per adjacent Lab; +per adjacent Habitat (talent) |
-| **Comms Array** | Prestige trickle + Directive discount | range from highlands |
+| **Fission Reactor** | +much Power (steady) | needs Water (coolant); **emits heat** (wants Radiators) & **radiation** |
+| **Smelter** | Ore+Power→Metal | emits heat |
+| **Water Plant** | Ice+Power→Water | — |
+| **Assembler** | Metal+Water+Power→Components | emits heat |
+| **Research Lab** | Components+Power→Research | **+cluster bonus per adjacent Lab; +per adjacent Habitat** |
+| **Radiator** | dissipates heat for adjacent emitters (lets them run at full) | pure support tile |
+| **Battery** | stores a little Power across turns | — |
 
 ### Era 3 — Maturity (the curve bends up)
-| Building | Produces / does | Key adjacency |
+| Building | Does | Notable adjacency |
 |---|---|---|
-| **Fusion Plant** | Massive Power | needs Water (deuterium); large footprint |
-| **Mass Driver** | Cheap exports — discounts the *cost* of shipping Directives | clear line to sunline edge |
-| **Arcology** | Dense housing + morale | best in lava tube; anchors Lab/Hab clusters |
-| **Automation Hub** | Reduces Workforce needed to staff nearby buildings | radius effect — frees Workforce for construction |
+| **Fusion Plant** | +huge Power | needs Water (deuterium); large footprint; heat |
+| **Automation Hub** | **reduces staffing of buildings in radius** (frees population) | radius effect — central placement |
+| **Arcology** | dense housing | best in lava tube |
+| **Mass Driver** | reduces **export cost** of directives | clear line to the launch/sun edge |
 
 ### Era 4 — Hard sci-fi (compounding endgame)
-| Building | Produces / does | Key adjacency |
+| Building | Does | Notable adjacency |
 |---|---|---|
-| **Self-Replicating Fabricator** | Each turn, reduces construction cost of all builds **and** can spawn another Fabricator — explicit exponential | stacks globally |
-| **AI Core** | Global multiplier (+% to all production per tier) | unique; one per colony |
-| **Antimatter Plant** | Enormous Power; enables top-tier builds | needs Fusion adjacency; large footprint |
-| **Orbital Tether / Space Elevator** | Trivializes Directive shipping cost; large Prestige | edge tile, huge footprint |
-| **Dyson Swarm Node** | Endgame Power + Prestige engine | needs prime sunline tiles |
+| **Self-Replicating Fabricator** | each turn lowers all construction cost **and** can spawn another Fabricator — explicit exponential | stacks globally |
+| **AI Core** | global +% to all production (unique) | one per colony |
+| **Antimatter Plant** | enormous Power | needs Fusion adjacency; strong radiation |
+| **Orbital Tether** | trivializes export cost; large Prestige | edge tile, huge footprint |
+| **Dyson Swarm Node** | endgame Power + Prestige | needs prime sunline tiles |
 
 **Compounding spine:** Labs → unlock Automation/AI/Fabricators → these multiply
-production and *cheapen construction*, which lets you build more multipliers. The
-curve is genuinely exponential, which is exactly why being one Directive-spike
-behind is so costly — and why front-loading via debt can pay off.
+production and *cheapen construction* → which funds more multipliers. The exponential is
+exactly why a missed gate or a slow start compounds against you.
 
 ---
 
 ## 6. Adjacency system
 
-The thing that makes a tiny map deep. Rules of thumb:
+A broad system of positive and negative effects — the thing that makes a tiny map deep.
 
-- **Synergy clusters:** Labs want to touch Labs and Habitats; Greenhouses want
-  Water + Power neighbors. Tight clusters multiply.
-- **Pollution conflicts:** Mines, Refineries, Reactors emit pollution that
-  *reduces* adjacent Food and Habitat morale. You must physically separate the
-  industrial district from the agricultural/residential district — on 54 tiles,
-  with deposits fixed by terrain, that's a real packing problem.
-- **Shadowing:** tall/late structures cast a shadow on adjacent Solar (sunline
-  direction), so placement order and neighbors matter.
-- **Radius effects:** Automation Hub, AI Core, Comms act on a radius, rewarding
-  central placement and re-planning as the colony grows.
+**Positive**
+- **Synergy clusters:** Lab↔Lab and Lab↔Habitat (talent); Greenhouse↔Water/Power.
+- **Radiators** next to heat emitters let them run at full output.
+- **Automation Hub** radius cuts staffing for nearby buildings.
+- **Lava-tube Habitats:** capacity + free radiation shielding — the way to tuck housing
+  next to industry.
+- **Sunline:** Solar near the sunward edge / on crater rims is far stronger.
 
-Because deposits are fixed and clusters fight for the same neighbors, **placement
-is a constraint-satisfaction puzzle layered on top of the timing puzzle.**
+**Negative**
+- **Waste heat:** Reactors/Smelters/Assemblers/Fusion throttle unless adjacent Radiators
+  carry the load — clustering heat sources costs you tiles. (A real vacuum problem.)
+- **Radiation:** Reactors/Antimatter penalize adjacent Habitats/Greenhouses unless
+  shielded — forces an industrial-vs-residential districting puzzle.
+- **Shadowing:** tall/late structures shadow adjacent Solar (sunline direction), so
+  build order and neighbors matter.
+
+Because deposits are fixed and clusters compete for the same neighbors, placement is a
+constraint-satisfaction puzzle layered on top of the timing puzzle.
 
 ---
 
 ## 7. Turn structure (deterministic)
 
-Each turn resolves in fixed phases (order-independent within a phase so results
-are unambiguous):
+Fixed phases, order-independent within a phase so results are unambiguous:
 
-1. **Production** — every staffed, powered building produces. Resources accrue up
-   to storage caps; overflow is lost.
-2. **Upkeep & growth** — Population consumes Food/Water; with surplus + housing it
-   **grows** (compounding!); shortfall shrinks it. Debt interest accrues.
-3. **Construction** — player starts up to `K` builds/demolitions/upgrades
-   (`K` = f(idle Workforce)). Clear boulders. Re-assign Workforce between
-   staffing and construction.
-4. **Directives & finance** — fulfill any matured Directives (spend resources);
-   take or repay loans; deadlines checked, penalties applied.
-5. **End check** — final Directive met? Victory tier evaluated (see §8).
+1. **Power balance** — sum generation vs. consumption (after Batteries). Shortfall idles
+   lowest-priority buildings this turn.
+2. **Production** — every staffed, powered building runs its recipe; stored resources
+   accrue up to caps (overflow lost).
+3. **Population** — life-support consumed; with housing + surplus, population grows
+   (never shrinks).
+4. **Construction** — player builds / demolishes / upgrades (paying Metal/Components,
+   respecting staffing & power), clears boulders.
+5. **Directives & finance** — fulfill matured directives (resources leave the economy);
+   apply early-completion bonuses; (optional) take/repay debt; check required-gate
+   deadlines (unmet ⇒ defeat); evaluate victory / allow Declare Complete.
 
-Everything a player needs to plan all 22-ish turns is on screen from turn 1.
-
----
-
-## 8. Victory, scoring & the speed dimension
-
-A scenario ends when the **Final Directive** is satisfied, or its deadline
-passes, or you choose to **Declare Complete** once eligible.
-
-- **Defeat:** a Mandatory Directive missed badly enough (per scenario tuning), or
-  Final Directive deadline reached unmet.
-- **Minor victory:** all Mandatory Directives met through the Final.
-- **Major victory:** Minor **plus** a Prestige threshold (driven by Optional
-  Directives + colony valuation + efficiency).
-- **Grade / score:** `Prestige_total` adjusted by a **time factor** — finishing
-  before the Final deadline grants a bonus per turn saved. So:
-  - A *just-strong-enough* economy limps to the Final deadline → **Minor**.
-  - A *strong* economy clears the Prestige bar at the deadline → **Major**.
-  - A *dominant* economy clears the bar **early** and Declares Complete → **Major,
-    faster, higher grade.**
-
-This is what gives the score chase its teeth: the same scenario invites
-"can I get the major?" → "can I get the major by turn 18 instead of 22?" → "can I
-beat my best grade?" Perfect information means the ceiling is a real, discoverable
-optimum to chase.
+Everything needed to plan all ~22 turns is on screen from turn 1.
 
 ---
 
-## 9. Compound growth & (optional) debt
+## 8. Compound growth & (optional, deferred) debt
 
-**Compounding** comes from three stacking sources: population growth, production
-multipliers (AI Core, Automation), and construction-cost reduction (Fabricators).
-Reinvested output snowballs; the gap between an on-curve and off-curve player
-widens every turn.
+**Compounding** stacks from three sources: population growth (→ more staffing → more
+buildings), production multipliers (AI Core, Automation), and construction-cost
+reduction (Fabricators). Reinvested output snowballs; the on-curve/off-curve gap widens
+every turn.
 
-**Debt (optional accelerant — included as a high-skill lever, not forced):**
-
-- **Bonds:** borrow Materials/Power *now*, repay principal + **compounding
-  interest** over N turns. Lets you build a Reactor or Lab before your economy
-  could afford it, pulling the whole curve forward.
-- **Prestige advances:** borrow against future Directive rewards.
-- **Why it's interesting under perfect information:** debt is a pure
-  exponential-vs-exponential bet — does the growth you unlock out-compound the
-  interest before the next Directive spike forces you to divert? Skilled players
-  use it to convert a Minor into a fast Major; careless use buries the economy
-  under interest right as a Mandatory deadline hits. Entirely opt-in: scenarios
-  are beatable for Minor without ever borrowing.
+**Debt — defined but deferred.** Concretely: Earth ships a lump of **Metal** now; you
+repay **Metal + flat interest** over N turns. Under determinism it's a clean
+"pull the curve forward vs. a fixed future drain that competes with a later gate" lever.
+It's opt-in (every scenario is beatable for Minor without it). **Recommendation:** build
+and prove the core loop first; add debt only if the curve needs another accelerant.
 
 ---
 
-## 10. Worked example — "Mare Frigoris Charter" (24 turns)
+## 9. Worked example — "Mare Frigoris Charter" (24 turns)
 
-Map: ice deposits clustered on the far (anti-sun) side; ore veins center; one lava
-tube; sunline on the west edge; a boulder field blocking the ice cluster.
+Map: ice cluster on the far (anti-sun) side behind a boulder field; ore veins center; one
+lava tube; sunline on the west edge.
 
-Directive schedule (all visible from T1):
+Schedule (all visible from T1):
 ```
-T6   [MANDATORY] Ship 30 Food                         +120 Prestige
-T6   [OPTIONAL]  Reach 40 cumulative Research          +100 Prestige, unlock Fission early
-T12  [MANDATORY] Deliver 50 Alloys                     +220 Prestige
-T12  [OPTIONAL]  Ship +30 Food                         +110 Prestige
-T18  [MANDATORY] Deliver 90 Alloys + ship 40 Food      +320 Prestige
-T18  [OPTIONAL]  Population ≥ 40                        +160 Prestige
-T24  [FINAL]     Population ≥ 60 AND 60 Alloys stockpiled
+T6   REQUIRED   Supply life-support for 25 colonists       (state objective)
+T6   OPTIONAL   Ship 30 Food            → by T6: unlock Fission + Metal grant; by T9: smaller
+T12  REQUIRED   Deliver 50 Metal  OR  35 Components         (alternative bundle)
+T12  OPTIONAL   60 cumulative Research  → by T12: unlock Fusion early
+T18  REQUIRED   Meet 2 of {pop ≥ 40, ship 90 Metal, ship 40 Food}   (meet-2-of-3)
+T24  FINAL/REQ  pop ≥ 60 AND 60 Metal stockpiled
 Major threshold: 1100 Prestige.
 ```
 
-The tension in play:
-- **The T6 food** forces early Greenhouses on the far side near ice — but the
-  boulder field blocks the best ice tiles, so do you spend scarce early
-  construction clearing it, or settle for weaker Greenhouses and ship a thinner
-  margin?
-- **The T6 optional Research** is pure long-term: a Lab built by T3 produces
-  nothing toward the food deadline, but unlocking Fission early means the T12
-  Alloy spike (refineries are power-hungry) is far cheaper. Skipping it keeps you
-  safe at T6 but makes T12 brutal.
-- **A bond at T3** could fund both Greenhouses *and* an early Lab — front-loading
-  the curve — but interest comes due right around T12.
-- **By T18** the industrial district (mines + refineries) is polluting; if you
-  packed it next to your Greenhouses to save tiles, your Food output craters
-  exactly when T18 also demands Food. Spatial sequencing bites.
-- **Going for the fast Major:** stacking Automation + a Fabricator by ~T15 can let
-  a dominant economy hit 60 pop and 60 alloys before T24 and Declare Complete at
-  T21 for a top grade.
+Tensions in play:
+- **T6 life-support** forces early Habitats + Greenhouses + Water — and the best ice is
+  behind boulders: clear them early (spending scarce Metal) or settle for weaker output?
+- **T6 optional** is the curve decision: shipping 30 Food by T6 *unlocks Fission and grants
+  Metal*, making the T12 Metal/Components gate far cheaper — but it bleeds output during
+  your most fragile turns. Pure exponential-vs-now.
+- **T12 alternative** lets you choose your lever: if you leaned Smelters, pay Metal; if you
+  built Assemblers, pay Components. Whichever you *didn't* over-build is the expensive path.
+- **By T18** your industrial cluster is hot and irradiating; if you packed it next to
+  Greenhouses/Habitats to save tiles, Food and growth suffer right as T18 may want Food and
+  pop. Spatial sequencing bites; lava-tube housing and Radiator placement pay off.
+- **Fast major:** Automation + a Fabricator by ~T15 can drive pop 60 / Metal 60 before T24
+  and **Declare Complete at T21** for a top grade.
 
-Many viable paths; one (discoverable) optimum. That's the chase.
+Many viable paths; one discoverable optimum. That's the chase.
 
 ---
 
-## 11. Why it's fun / where the skill lives
+## 10. Open tuning knobs
 
-- **A deterministic puzzle with a huge branching factor** (placement × order ×
-  timing × debt) but a knowable optimum — perfect for "beat your best."
-- **Every Directive is a fork:** serve it cheaply-but-late, over-serve early for
-  safety, or invest through it and shave the deadline. No dominant answer.
-- **Replayability** comes from new scenarios (terrain, deposits, Directive
-  schedules) varying which strategies are viable, plus the grade chase on each.
-- **Readable mastery:** because it's transparent, players *learn* the system and
-  feel themselves getting better, rather than getting luckier.
-
----
-
-## 12. Open tuning knobs (for next iteration)
-
-- Exact resource counts/formulas and the steepness of the compound curve.
-- How punishing a missed Mandatory is (penalty vs. instant fail) — controls how
-  much the short term dominates.
-- Construction-capacity formula `K` — the master knob for how much guns-vs-butter
-  bites each turn.
-- Number of Directives and how "off-beat" their timing is vs. natural growth.
-- Whether tech unlocks are global (Research thresholds) or per-scenario gated by
-  Directives.
-- Whether to include a light **map-traversal/logistics** layer (distance from a
-  building to the launch edge affecting Directive cost) or keep shipping abstract.
+- Exact recipes/ratios and the steepness of the compound curve.
+- Required-gate density and how off-beat their timing is vs. natural growth.
+- How generous early-completion bonuses are (controls how much "rush the optional"
+  dominates).
+- Power-flow tightness and Battery limits (how punishing brownouts are).
+- Whether tech unlocks are global (Research) or per-scenario (directive-gated).
+- Whether to keep a logistics/distance layer (export cost vs. distance to launch edge)
+  or keep shipping abstract.
+- Whether an explicit per-turn build cap is needed on top of the Metal/staffing/power gates.
 
 ---
 
-*Status: v0.1 draft for discussion. Numbers are illustrative and fully tunable.
-Next step after we converge on the design: a paper/script model of one scenario to
-sanity-check the compound curve and Directive pacing before any real prototype.*
+*Status: v0.2 draft for discussion. Numbers illustrative and fully tunable. Suggested
+next step once the design converges: a script model of the Mare Frigoris scenario to
+sanity-check the compound curve and gate pacing before any real prototype.*
