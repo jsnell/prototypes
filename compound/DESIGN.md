@@ -1,4 +1,4 @@
-# COMPOUND — Game Design Document (v0.2)
+# COMPOUND — Game Design Document (v0.2.1)
 
 *Working title — the colony **compound** you build, and the **compound growth**
 curve you're racing.*
@@ -16,6 +16,11 @@ Perfect information, fully deterministic, transparent formulas. The game is the
 > **heat** and **radiation** adjacency. Directives are now **flexible/multi-objective**
 > with **economic** (not prestige) bonuses for early completion. Debt defined concretely
 > but **deferred**.
+>
+> **v0.2.1:** the production graph was too sparse — expanded to ~20 materials over five
+> tiers with **6 raws**, high fan-out hubs (Water, Rare Earths, Glass), 3–4-input advanced
+> recipes, **co-products** (electrolysis O₂/H₂) and **byproduct heat**. Building tables
+> updated so every good has a producer.
 
 ---
 
@@ -83,33 +88,91 @@ Five pillars:
 
 ## 3. Resources — the production graph
 
-Deep, multi-tier, with multi-use refined goods and a refined-from-refined step.
-Raws are the only things produced "from nothing"; everything else has inputs.
+Design goal: a **dense web, not a few straight pipes** — ~20 tracked materials across
+five tiers. Two properties make it dense rather than merely long:
 
-| Tier | Resource | Stored? | Made from | Used for (multi-use) |
-|---|---|---|---|---|
-| Raw | **Ore** | yes | Ore Mine on vein | → Metal |
-| Raw | **Ice** | yes | Ice Extractor on deposit | → Water |
-| **Flow** | **Power** | **NO** (see below) | Solar / Fission / Fusion / Geo / Antimatter | runs *every* active building, every turn |
-| Refined | **Water** | yes | Ice + Power | life-support, Food, Components, fusion fuel |
-| Refined | **Metal** | yes | Ore + Power | construction, Components, exports |
-| Refined | **Food** | yes | Water + Power | population upkeep & growth, exports |
-| Refined² | **Components** | yes | Metal + Water + Power | advanced construction, Research, exports |
-| Refined | **Research** | spent | Components + Power | unlocks tech tiers / multiplier buildings |
+- **High fan-out:** the core intermediates (Power, Water, Metal, Silicon, Glass,
+  Rare Earths) each feed *many* downstream recipes, so a shortage anywhere ripples
+  through several branches at once.
+- **High fan-in:** every advanced good takes **3–4 inputs from different branches**, so
+  you cannot win by over-building one chain — each tier forces you to balance several.
 
-Notes addressing review:
+Two more couplings tie the graph to space and time: **co-products** (electrolysis yields
+Oxygen *and* Hydrogen — over-make one to get the other) and **byproduct heat** (refining
+emits a heat *flow* that Radiators must carry off, or the emitter throttles — §6).
 
-- **Real chains, multi-use goods.** Ore→Metal→Components→Research is a true chain;
-  Water feeds three branches, Metal feeds two. No useful resource is single-input
-  single-use anymore (Food still mainly feeds pop, but it's now a *refined* good with
-  Water+Power inputs and is also a valid export).
-- **Power is a flow, not a stockpile.** Each turn, generation must cover consumption;
-  shortfall = brownout (lowest-priority buildings idle that turn). The only way to
-  carry power across turns is a **Battery** building — deliberately limited and costly.
-  This makes power a per-turn placement/balancing puzzle and binds it to the sunline.
+### Raw materials — the only "from nothing" nodes (mined from terrain)
+| Raw | Source terrain | Gateway to |
+|---|---|---|
+| **Ore** | ore vein | Metal |
+| **Ice** | ice deposit | Water (and everything downstream of it) |
+| **Silica** | silica / sand flat | Silicon, Glass |
+| **Rare Earths** | rare vein *(scarce!)* | Alloy, Electronics, Circuits — the tech bottleneck |
+| **Volatiles** | gas pocket / cold trap | Polymer, Fertilizer, Propellant |
+| **Regolith** | *any* plain (cheap, ubiquitous) | Concrete (bulk construction) |
+
+### Energy
+- **Power** — non-storable **flow** (Batteries excepted); consumed by nearly every recipe.
+- **Heat** — a byproduct **flow** from refining/reactors; never stored or shipped, but it
+  must be dissipated by Radiators or the emitter throttles. Effectively a spatial cost (§6).
+
+### Refined materials (everything below has inputs; "feeds →" shows the fan-out)
+
+**Tier 1 — basic refining**
+| Good | Recipe | Feeds → |
+|---|---|---|
+| **Metal** | Ore + Power | Alloy, Concrete, Components, exports |
+| **Water** | Ice + Power | O₂/H₂, Food, Fertilizer, Concrete, Propellant, life-support |
+| **Oxygen** | Water + Power *(electrolysis — co-produces Hydrogen)* | life-support, Propellant, Alloy furnace |
+| **Hydrogen** | *co-product of electrolysis* | Polymer, Propellant, fusion fuel |
+| **Silicon** | Silica + Power | Electronics, Circuits, solar cells |
+| **Glass / Ceramics** | Silica + Power *(heat)* | Electronics, Circuits, Modules, Composites |
+| **Gases (N₂ / CO₂)** | Volatiles + Power | Fertilizer (N₂), Greenhouse (CO₂) |
+| **Concrete** | Regolith + Water + Power | bulk construction, Modules |
+
+**Tier 2 — intermediates (multi-input)**
+| Good | Recipe | Feeds → |
+|---|---|---|
+| **Alloy** | Metal + Rare Earths + Oxygen *(heat)* | Components, Composites, megastructure |
+| **Polymer** | Volatiles + Hydrogen + Power | Components, Composites, consumer goods |
+| **Electronics** | Silicon + Rare Earths + Glass + Power | Components, Circuits |
+| **Fertilizer** | N₂ + Water + Power | Food |
+| **Food** | Water + CO₂ + Fertilizer + Power | population growth & upkeep, exports |
+| **Propellant** | Hydrogen + Oxygen + Power | export / launch cost (Mass Driver, Tether) |
+
+**Tier 3 — advanced (refined²)**
+| Good | Recipe | Feeds → |
+|---|---|---|
+| **Components** | Alloy + Polymer + Electronics + Power | construction, Modules, Research, Robotics |
+| **Circuits** | Electronics + Glass + Rare Earths + Power | Research, Robotics, AI Core, megastructure |
+| **Composites** | Alloy + Polymer + Glass + Power | megastructure, Modules, Orbital Tether |
+| **Modules** | Components + Concrete + Glass | high-capacity Habitats / Arcologies |
+
+**Tier 4 — top of the tree**
+| Good | Recipe | Feeds → |
+|---|---|---|
+| **Research / Data** | Components + Circuits + Power (+staffing) | tech-tier unlocks, multipliers |
+| **Robotics** | Components + Circuits + Power | **reduces staffing colony-wide** (Automation) |
+| **Megastructure Parts** | Composites + Circuits + Components | Dyson Node, Orbital Tether, AI Core |
+
+Why this is hard, not just big:
+
+- **Rare Earths** sit upstream of Alloy, Electronics *and* Circuits — one scarce vein gates
+  the whole tech ladder; spending it on near-term Components vs. saving it for Circuits is a
+  recurring squeeze.
+- **Water** is the most-shared node (life-support + Food + fuel + concrete + electrolysis):
+  an ice shortfall starves five branches simultaneously.
+- Every Tier-3/4 good is **3–4-input**, so a directive that asks for Components or Circuits
+  silently demands the *entire sub-tree beneath it* be in balance — that's the real puzzle.
+- **Co-products and heat** couple the graph to layout: over-making a gas to get its partner,
+  and leaving radiator room around every refining cluster.
+
+Always-on rules:
+- **Power is a flow, not a stockpile** — each turn, generation must cover consumption or the
+  lowest-priority buildings brown out. Only a **Battery** carries power across turns (limited).
 - **Population is NOT a resource** (never consumed) — it's a capacity/gate (§4).
-- **Storage caps** on stored resources (raised by Depots/tech). Overflow is wasted, so
-  hoarding is punished: keep choosing *spend on a gate* vs. *spend on growth*.
+- **Storage caps** on stored goods (raised by Depots/tech); overflow is wasted, so hoarding is
+  punished — keep choosing *spend on a gate* vs. *spend on growth*.
 
 ---
 
@@ -172,33 +235,50 @@ only *future* multipliers — building one early means surviving a gate with les
 Each building has: **build cost** (Metal, later +Components), **staffing**, **power draw**,
 and adjacency effects.
 
-### Era 1 — Foothold
+### Era 1 — Foothold (extraction + basic refining)
 | Building | Does | Notable adjacency |
 |---|---|---|
 | **Habitat** | +housing capacity; consumes life-support per pop | lava tube: +capacity & shielded; near reactor (unshielded): penalty |
 | **Solar Array** | +Power (flow) | scales with sunline proximity / crater rim; **shadowed** by tall neighbors |
 | **Ore Mine** | Ore (on vein) | — |
 | **Ice Extractor** | Ice (on deposit) | — |
-| **Greenhouse** | Water+Power→Food | +per adjacent Water source/Power; **radiation-sensitive** |
+| **Silica Quarry** | Silica (on sand flat) | — |
+| **Regolith Scraper** | Regolith (any plain) | — |
+| **Electrolysis Unit** | Water→Oxygen + Hydrogen | — |
+| **Concrete Plant** | Regolith+Water→Concrete | — |
+| **Greenhouse** | Water+CO₂(+Fertilizer)→Food | +per adjacent Water/Power; **radiation-sensitive** |
 | **Depot** | +storage caps | — |
 
-### Era 2 — Industry
+### Era 2 — Industry (the multi-input web fills in)
 | Building | Does | Notable adjacency |
 |---|---|---|
 | **Fission Reactor** | +much Power (steady) | needs Water (coolant); **emits heat** (wants Radiators) & **radiation** |
-| **Smelter** | Ore+Power→Metal | emits heat |
-| **Water Plant** | Ice+Power→Water | — |
-| **Assembler** | Metal+Water+Power→Components | emits heat |
-| **Research Lab** | Components+Power→Research | **+cluster bonus per adjacent Lab; +per adjacent Habitat** |
+| **Smelter** | Ore→Metal | emits heat |
+| **Water Plant** | Ice→Water | — |
+| **Rare Earths Mine** | Rare Earths (on rare vein, scarce) | — |
+| **Volatiles Well** | Volatiles→Gases (N₂/CO₂) | — |
+| **Glass Kiln** | Silica→Glass/Ceramics | emits heat |
+| **Silicon Refinery** | Silica→Silicon | emits heat |
+| **Foundry** | Metal+Rare Earths+Oxygen→Alloy | emits heat |
+| **Polymer Plant** | Volatiles+Hydrogen→Polymer | — |
+| **Chem Plant** | N₂+Water→Fertilizer | — |
+| **Electronics Fab** | Silicon+Rare Earths+Glass→Electronics | — |
+| **Assembler** | Alloy+Polymer+Electronics→Components | emits heat |
+| **Research Lab** | Components+Circuits→Research | **+cluster per adjacent Lab; +per adjacent Habitat** |
 | **Radiator** | dissipates heat for adjacent emitters (lets them run at full) | pure support tile |
 | **Battery** | stores a little Power across turns | — |
 
-### Era 3 — Maturity (the curve bends up)
+### Era 3 — Maturity (refined² + the curve bends up)
 | Building | Does | Notable adjacency |
 |---|---|---|
+| **Circuit Fab** | Electronics+Glass+Rare Earths→Circuits | — |
+| **Composite Plant** | Alloy+Polymer+Glass→Composites | emits heat |
+| **Propellant Plant** | Hydrogen+Oxygen→Propellant | — |
+| **Module Assembly** | Components+Concrete+Glass→Modules | — |
+| **Robotics Plant** | Components+Circuits→Robotics | feeds Automation (staffing relief) |
 | **Fusion Plant** | +huge Power | needs Water (deuterium); large footprint; heat |
 | **Automation Hub** | **reduces staffing of buildings in radius** (frees population) | radius effect — central placement |
-| **Arcology** | dense housing | best in lava tube |
+| **Arcology** | dense housing (consumes Modules to build) | best in lava tube |
 | **Mass Driver** | reduces **export cost** of directives | clear line to the launch/sun edge |
 
 ### Era 4 — Hard sci-fi (compounding endgame)
