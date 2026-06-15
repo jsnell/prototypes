@@ -24,6 +24,12 @@ things away.
 - This repo is therefore expected to churn — directories come and go, and
   abandoned experiments are fine to leave or delete.
 
+## Workflow
+
+- **Push directly to `master`.** No feature branches, no pull requests, no
+  review gates. This repo is low-criticality and optimized for velocity — just
+  commit and push.
+
 ## Guidance for working here
 
 - When starting a new prototype, create a fresh top-level directory for it
