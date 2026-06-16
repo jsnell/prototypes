@@ -1,0 +1,34 @@
+=== COMPOUND — Mare Frigoris playthrough ===
+
+T 1 era2 pop 14/ 18 tiles19/100 pwr 16    | metal:87 components:0 circuits:0 food:27.6 water:27.6 research:0  build[2x oreMine,3x smelter,radiator,geo,rareMine,solar,habitat]
+T 2 era2 pop 16/ 18 tiles23/100 pwr 14    | metal:83 components:0 circuits:0 food:30.8 water:24.8 research:0  build[foundry,radiator,electrolysis,solar]
+T 3 era2 pop 18/ 24 tiles27/100 pwr 16    | metal:79 components:0 circuits:0 food:33.6 water:21.6 research:0  build[polymerPlant,silicaQuarry,solar,habitat]
+T 4 era2 pop 21/ 24 tiles30/100 pwr 17    | metal:85 components:0 circuits:0 food:36 water:18 research:0  build[siliconRefinery,silicaQuarry,solar]
+T 5 era2 pop 24/ 30 tiles36/100 pwr 14    | metal:69 components:0 circuits:0 food:37.8 water:23.8 research:0  build[iceExtractor,waterPlant,glassKiln,radiator,solar,habitat]  <<R1 MET
+T 6 era2 pop 27/ 36 tiles39/100 pwr  4    | metal:84 components:0 circuits:0 food:39 water:29 research:0  build[oreMine,smelter,habitat]
+T 7 era2 pop 31/ 36 tiles41/100 pwr 42    | metal:84 components:0 circuits:0 food:39.6 water:31.6 research:0  build[reactor,electronicsFab]
+T 8 era2 pop 35/ 48 tiles46/100 pwr 30    | metal:79 components:3 circuits:0 food:39.4 water:27.4 research:0  build[electrolysis,assembler,radiator,2x habitat]
+T 9 era2 pop 40/ 48 tiles49/100 pwr 14    | metal:42 components:5 circuits:0 food:38.4 water:32.4 research:5  build[waterPlant,lab,assembler]  <<R2 MET
+T10 era2 pop 45/ 48 tiles52/100 pwr 50    | metal:40 components:9 circuits:0 food:48.4 water:26.4 research:10  build[2x greenhouse,reactor]  <<O1 expired
+T11 era2 pop 48/ 48 tiles57/100 pwr 35    | metal:45 components:13 circuits:0 food:57.4 water:39.4 research:15  build[radiator,2x iceExtractor,2x waterPlant]
+T12 era3 pop 54/ 60 tiles61/100 pwr 23    | metal:46 components:20 circuits:0 food:65.8 water:45.8 research:20  build[electrolysis,2x habitat,assembler]
+T13 era3 pop 61/ 66 tiles66/100 pwr  2    | metal:50 components:23 circuits:0 food:73 water:61 research:30  build[iceExtractor,waterPlant,smelter,lab,habitat]  <<O2 DONE
+T14 era4 pop 69/ 78 tiles70/100 pwr 44    | metal:58.5 components:28.9 circuits:0 food:80.6 water:78.8 research:41  build[reactor,radiator,2x habitat]
+T15 era4 pop 78/ 84 tiles74/100 pwr 31    | metal:58 components:14.1 circuits:0 food:86.6 water:95 research:52  build[habitat,automationHub,electronicsFab,assembler]  <<R3 MET
+T16 era4 pop 84/ 84 tiles77/100 pwr 18    | metal:63.5 components:11.3 circuits:4.4 food:90.8 water:109.4 research:63  build[electronicsFab,circuitFab,automationHub]
+T17 era4 pop 84/ 84 tiles81/100 pwr  1    | metal:57 components:19.1 circuits:8.8 food:93.8 water:122.6 research:74  build[automationHub,2x assembler,electronicsFab]
+T18 era4 pop 84/ 84 tiles85/100 pwr  1    | metal:52.5 components:16.6 circuits:13.2 food:96.8 water:135.8 research:85  build[radiator,fabricator,foundry,polymerPlant]
+T19 era4 pop 84/ 84 tiles89/100 pwr 16 !power | metal:46 components:17.4 circuits:17.6 food:99.8 water:149 research:96  build[fabricator,foundry,radiator,polymerPlant]
+T20 era4 pop 84/ 84 tiles92/100 pwr  5 !power | metal:43.5 components:21.2 circuits:22 food:102.8 water:162.2 research:101.5  build[fabricator,siliconRefinery,foundry]
+T21 era4 pop 84/ 84 tiles95/100 pwr  5 !power | metal:56.1 components:28 circuits:3.5 food:110.7 water:191.9 research:101.5  build[radiator,aiCore,rareMine]  <<R4 MET
+T22 era4 pop 84/ 84 tiles99/100 pwr 11    | metal:63.8 components:42.7 circuits:3.5 food:110.5 water:220.6 research:115.3  build[reactor,regolithScraper,concretePlant,moduleAssembly]
+T23 era4 pop 84/ 84 tiles100/100 pwr 12    | metal:105.4 components:55.5 circuits:3.5 food:110.2 water:249.3 research:129  build[moduleAssembly]
+T24 era4 pop 84/ 84 tiles100/100 pwr 12    | metal:161 components:72.2 circuits:3.5 food:109.9 water:278 research:142.8  <<R5 MET
+
+--- RESULT ---
+Outcome   : MAJOR VICTORY
+Prestige  : 3866  (valuation 3426 + directives 440)   [major >= 1400]
+Reached   : turn 25, pop 84, era 4, tiles 100
+Buildings : 8x solar, 14x habitat, 5x iceExtractor, 6x waterPlant, 1x volatilesWell, 3x greenhouse, 3x oreMine, 5x smelter, 9x radiator, 1x geo, 2x rareMine, 4x foundry, 3x electrolysis, 3x polymerPlant, 2x silicaQuarry, 2x siliconRefinery, 1x glassKiln, 4x reactor, 4x electronicsFab, 6x assembler, 2x lab, 3x automationHub, 1x circuitFab, 3x fabricator, 1x aiCore, 1x regolithScraper, 1x concretePlant, 2x moduleAssembly
+Directives: R1=MET@5  R2=MET@9  O1=EXPIRED  O2=DONE@13  R3=MET@15  R4=MET@21  R5=MET@24
+Stock     : metal:161 components:72.2 circuits:3.5 composites:0 modules:13.8 research:142.8 food:109.9 water:278 robotics:0
