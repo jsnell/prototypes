@@ -1,0 +1,32 @@
+=== COMPOUND v0.3 — flow prototype ===
+
+T 1 br[3/1/0] tiles21/64 P  0 | surplus power:34.4 workers:5 metal:9 components:0 circuits:0 research:0 food:20.4  [D1 14/28]  +radiator,reactor,waterPlant,greenhouse
+T 2 br[3/2/0] tiles22/64 P 40 | surplus power:33.2 workers:11 metal:9 components:0 circuits:0 research:0 food:19.2  [D2 0/54]  +habitat  <<D1(Provision) DONE
+T 3 br[3/2/0] tiles25/64 P 40 | surplus power:24.2 workers:9 metal:18 components:0 circuits:0 research:0 food:19.2  [D2 18/54]  +oreMine,smelter,radiator
+T 4 br[3/2/0] tiles26/64 P 40 | surplus power:18.2 workers:8 metal:27 components:0 circuits:0 research:0 food:19.2  [D2 36/54]  +smelter
+T 5 br[3/2/1] tiles26/64 P100 | surplus power:18.2 workers:8 metal:27 components:0 circuits:0 research:0 food:19.2  [D3 0/24 D4 0/72]  <<D2(Refinery) DONE
+T 6 br[3/2/1] tiles31/64 P100 | surplus power:48 workers:9 metal:27 components:0 circuits:0 research:0 food:18  [D3 0/24 D4 12/72]  +rareMine,iceExtractor,waterPlant,reactor,habitat
+T 7 br[3/2/1] tiles36/64 P100 | surplus power:29 workers:5 metal:22 components:0 circuits:0 research:0 food:18  [D3 0/24 D4 18/72]  +electrolysis,foundry,volatilesWell,silicaQuarry,radiator
+T 8 br[3/2/1] tiles42/64 P100 | surplus power:2.8 workers:4 metal:22 components:3 circuits:0 research:0 food:16.8  [D3 3/24 D4 22.8/72]  +polymerPlant,siliconRefinery,habitat,glassKiln,electronicsFab,assembler
+T 9 br[3/2/1] tiles48/64 P100 | surplus power:33.6 workers:5 metal:22 components:6 circuits:0 research:0 food:15.6  [D3 9/24 D4 24.4/72]  +reactor,habitat,radiator,assembler,iceExtractor,polymerPlant
+T10 br[3/2/1] tiles53/64 P100 | surplus power:10.4 workers:6 metal:17 components:6 circuits:0 research:0 food:14.4  [D3 15/24 D4 28.8/72]  +waterPlant,electrolysis,habitat,foundry,rareMine
+T11 br[3/2/1] tiles58/64 P100 | surplus power:40.4 workers:1 metal:17 components:6 circuits:0 research:0 food:14.4  [D3 21/24 D4 31.2/72]  +silicaQuarry,siliconRefinery,radiator,reactor,electronicsFab
+T12 br[3/2/2] tiles62/64 P190 | surplus power:27.2 workers:3 metal:17 components:9 circuits:0 research:0 food:13.2  [D4 42.4/72 D5 0/36 D6 0/90]  +habitat,assembler,waterPlant,iceExtractor  <<D3(Electronics) DONE
+T13 br[3/2/2] tiles64/64 P190 | surplus power:11 workers:7 metal:8 components:9 circuits:4 research:0 food:12  [D4 52.4/72 D5 4/36 D6 12/90]  +habitat,glassKiln,circuitFab,radiator
+T14 br[3/2/2] tiles64/64 P190 | surplus power:6 workers:6 metal:8 components:6 circuits:8 research:0 food:4  [D4 56.4/72 D5 12/36 D6 16/90]  +silicaQuarry,siliconRefinery,electronicsFab,circuitFab,radiator
+T15 br[3/2/2] tiles64/64 P190 | surplus power:1 workers:5 metal:8 components:6 circuits:8 research:0 food:4  [D5 20/36 D6 20/90]  +glassKiln,2x radiator,2x circuitFab
+T16 br[3/2/2] tiles64/64 P190 | surplus power:7 workers:7 metal:8 components:6 circuits:4 research:0 food:4  [D5 24/36 D6 24/90]  +3x radiator,2x circuitFab
+T17 br[3/2/2] tiles64/64 P190 | surplus power:4 workers:6 metal:8 components:6 circuits:4 research:0 food:12  [D5 28/36 D6 36/90]  +2x circuitFab,2x radiator,greenhouse
+T18 br[3/2/3] tiles64/64 P330 | surplus power:1 workers:5 metal:8 components:6 circuits:8 research:0 food:4  [D6 40/90 D7 0/27]  +waterPlant,2x radiator,2x circuitFab  <<D5(Hi-tech) DONE
+T19 br[3/2/3] tiles64/64 P330 | surplus power:21.8 workers:9 metal:8 components:0 circuits:4 research:9 food:2.8  [D6 42.8/90 D7 9/27]  +2x radiator,3x lab,reactor,habitat
+T20 br[3/2/3] tiles64/64 P330 | surplus power:8 workers:1 metal:8 components:3 circuits:4 research:9 food:4  [D7 18/27]  +radiator,assembler,2x habitat,2x lab
+T21 br[3/2/3] tiles64/64 P550 | surplus power:8 workers:1 metal:8 components:3 circuits:4 research:9 food:4  +3x habitat,3x lab  <<D7(Datacore) DONE
+T22 br[3/2/3] tiles64/64 P550 | surplus power:12.8 workers:9 metal:8 components:5 circuits:4 research:6 food:2.8  +habitat
+T23 br[3/2/3] tiles64/64 P550 | surplus power:12.8 workers:9 metal:8 components:5 circuits:4 research:6 food:2.8
+T24 br[3/2/3] tiles64/64 P550 | surplus power:12.8 workers:9 metal:8 components:5 circuits:4 research:6 food:2.8
+
+--- RESULT ---
+Outcome   : MINOR VICTORY   prestige 550 (major >= 600)
+Reached   : turn 25, tiles 64, build-rate 1/2/3 = 3/2/3
+Directives: D1=MET@2  D2=MET@5  D3=MET@12  D5=MET@18  D7=MET@21  D4=FAIL@15  D6=FAIL@20
+Buildings : 0x solar, 11x habitat, 4x iceExtractor, 5x waterPlant, 3x electrolysis, 2x oreMine, 2x smelter, 2x greenhouse, 2x volatilesWell, 6x radiator, 5x reactor, 2x rareMine, 2x foundry, 3x silicaQuarry, 2x polymerPlant, 3x siliconRefinery, 2x glassKiln, 2x electronicsFab, 3x assembler, 1x circuitFab, 2x lab

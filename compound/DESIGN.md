@@ -46,9 +46,10 @@ The skill is in the **layout and the adjacencies**, not in hoarding resources.
 ## 1. Design pillars
 
 1. **Flow, not stock.** Each turn every building converts input flows to output flows.
-   No buffers, no warehouses (one small exception, §4). If you make more Metal than is
-   used this turn, the surplus is gone. This is what makes every unit of production
-   *cost* something every turn, and it is why no resource is ever "free."
+   No buffers, no warehouses — **not even Power** (the one thing that is genuinely a flow
+   in reality, so it would be perverse to let it stockpile). If you make more Metal — or
+   Power — than is used this turn, the surplus is gone. This is what makes every unit of
+   production *cost* something every turn, and it is why no resource is ever "free."
 2. **Placement is the puzzle.** Buildings are free to receive but you can only place a
    few per turn, and the map is finite. *Where* each one goes — which deposits, which
    neighbours, how heat and radiation district the map — is the game.
@@ -82,15 +83,20 @@ turn*; otherwise it produces proportionally less (throttles) or nothing. Outputs
 consumed, in priority order, by: (1) life-support and other buildings' inputs, (2)
 **active directives** (flow sinks), (3) otherwise **lost**.
 
-- **No stockpiles.** The whole economy balances per turn. A chain that loses an input
-  upstream stalls downstream the same turn — tight coupling is the point.
-- **One small exception — Power buffering.** A **Battery** may carry a little Power
-  across turns, the single concession to smoothing, kept deliberately minor.
+- **No stockpiles, including Power.** The whole economy balances per turn. A chain that
+  loses an input upstream stalls downstream the same turn — tight coupling is the point.
+  Power generation must cover Power demand *this turn* or low-priority buildings brown
+  out; there is no battery.
 
-### Buildings are free but rate-limited
-- You do **not** pay resources to build. Each turn Earth delivers up to **B** new
-  buildings (the **build-rate**); you place that many (or fewer). `B` starts small
-  (≈2–3) and is raised by directives.
+### Buildings are free but rate-limited — *per tier*
+- You do **not** pay resources to build. Each turn Earth delivers new buildings, but at
+  a **separate rate per building tier** (extraction, power/infra, refining, advanced,
+  high-tech, housing). You place up to that tier's rate of *unlocked* buildings.
+- Splitting the rate by tier means "what Earth will send you" is a textured constraint:
+  early you can place plenty of extractors but only a trickle of advanced plants, so the
+  bottleneck migrates up the tiers as you progress. **Directives raise specific tiers'
+  rates** (and unlock the building types), so the directive tree literally shapes what
+  you can build how fast.
 - **Placement costs**: a tile (finite map), a matching **deposit** for extractors, and
   ongoing **flow** to run it (power + staffing + inputs). So every placement is a real,
   *permanent* opportunity cost: the tile, and the worker-flow to operate it forever.
@@ -108,7 +114,7 @@ consumed, in priority order, by: (1) life-support and other buildings' inputs, (
 ### What is scarce now (and can't inflate)
 | Scarce thing | Why it stays scarce |
 |---|---|
-| **Build-rate (B)** | Fixed per turn; only directives raise it. Always want > B. |
+| **Build-rate (per tier)** | Fixed per turn per tier; only directives raise it. Always want > what Earth sends; the binding tier migrates upward over time. |
 | **Tiles / space** | Map is finite; megastructures force demolition. |
 | **Deposits** | Fixed locations and counts (ore, ice, silica, rare, volatiles, vents, sunline). |
 | **Per-turn flow** | Can't be banked; feeding a directive genuinely costs capacity *for its duration*. |
@@ -165,7 +171,8 @@ different branches) mean a layout must balance *several* flows at once. **Co-pro
 
 ### Energy / heat (pure flows)
 - **Power** — consumed by nearly every recipe; Solar (sunline-scaled), Geothermal
-  (vent), Fission/Fusion/Antimatter. Battery = the one minor cross-turn buffer.
+  (vent), Fission/Fusion/Antimatter. Pure flow — generation must meet demand each turn,
+  no battery.
 - **Heat** — byproduct flow of refining/reactors; must be carried off by **Radiators**
   or the emitter throttles. A spatial cost (§7).
 
@@ -201,7 +208,7 @@ Buildings are **unlocked by directives** (§6), not by a fixed era/Research thre
 - **Extraction:** Ore Mine, Ice Extractor, Silica Quarry, Regolith Scraper, Rare-Earth
   Mine, Volatiles Well (each deposit-bound).
 - **Power:** Solar (sunline), Geothermal (vent), Fission (heat+radiation), Fusion,
-  Antimatter; **Battery**, **Radiator**.
+  Antimatter; **Radiator** (cooling). No battery — power is pure flow.
 - **Tier-1 refining:** Smelter, Water Plant, Electrolysis, Glass Kiln, Silicon
   Refinery, Concrete Plant.
 - **Tier-2:** Foundry, Polymer Plant, Chem Plant, Greenhouse.

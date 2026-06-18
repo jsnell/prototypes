@@ -123,6 +123,48 @@ Design takeaways for the doc:
 - Keep alternative payoffs **balanced in prestige/value**, or the "choice" collapses
   to the highest-value branch.
 
+## v0.3 flow prototype (`flow.js`) — results
+
+A second prototype implements the v0.3 pivot: **pure per-turn flow, no stockpiles
+(not even power)**, **free buildings delivered at a limited rate per tier**, **workers
+as a flow**, and **directives as a dynamic tech tree** (rewards = capability: unlock
+buildings, +build-rate, prestige). Space is still abstract (tile budget + deposits) —
+the adjacency layer needs the real grid and is the next prototype. Flows are solved to
+a **fixed point** each turn, which handles the circular deps (reactor↔water, the
+housing→workers→everything loop). Run `node flow.js`.
+
+Outcome: a clean **end-to-end run to a MINOR victory** (550 vs 600 major). The whole
+spine completed (food → metal → components → circuits → research); build-rate climbed
+3/1/0 → 3/2/3 via directive rewards; the AI **demolished** to rework a full map. What
+the model establishes:
+
+1. **The free-resource flaw is gone.** With no stockpiles, a directive that wants
+   N/turn of a good costs that *capacity* for its whole duration — and capacity is a
+   permanent cost (a tile + worker-flow). Nothing is ever "free from the buffer,"
+   because there is no buffer. This was the whole point of the pivot and it holds.
+2. **Per-tier build-rate is strongly binding, and the bottleneck migrates upward** —
+   exactly as intended. Early turns contend for bt1 (power vs housing vs extractors);
+   late game is gated by bt3 (advanced plants), which only directives raise.
+3. **Directives-as-tech-tree produces the compound curve.** Build-rate and unlock
+   rewards let you build faster/deeper, which completes the next directive, which raises
+   build-rate again. The exponential now runs through the directive web, not a resource
+   balance.
+4. **"Space runs out → demolish" is load-bearing and real.** The colony fills the map,
+   then must raze over-provisioned tiles (all solar → denser reactors; greenhouses →
+   circuit industry) to advance. Without demolition the AI hard-stalled; with it, it
+   finished. This validates the pillar as a core mechanic, not flavour.
+5. **Power density is a genuine decision even in abstract space** (reactor 44/tile vs
+   solar 10/tile). With real adjacency it becomes richer (heat, radiators, sunline).
+6. **Guns-vs-butter survives in flow form.** The AI secured the required spine and left
+   the *optional* directives (D4, D6, worth +120 prestige) on the table — which is why
+   it landed Minor not Major. Chasing optionals competes for the same finite per-turn
+   capacity. That's the tension, intact.
+
+Caveats: the AI is again a greedy baseline; the abstract-space model **cannot test
+adjacency**, which is the actual core of v0.3. The fixed-point flow solver works but
+worker-flow + life-support coupling is a strong constraint (the AI must hold a labour
+buffer or it stalls).
+
 ## Suggested next steps
 1. Lock in the **laddered-directive** principle in DESIGN.md (gates climb the tiers;
    gate goods are never the build currency).
