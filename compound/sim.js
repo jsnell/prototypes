@@ -218,20 +218,21 @@ function scenario(){
       stock: { metal:140, food:24, water:24, oxygen:16 },
       buildings: { solar:3, habitat:2, iceExtractor:1, waterPlant:1, volatilesWell:1, greenhouse:1 }
     },
-    /* Directives, all visible from t1. They LADDER UP the tech tree on purpose:
-       metal -> components -> circuits -> modules, so the player is pulled through
-       the production graph and the compounding tiers rather than brute-forcing. */
+    /* Directives, all visible from t1. Now FLEXIBLE-FULFILLMENT (v0.2 design):
+       gates offer alternative ways to satisfy them, so the player CHOOSES which
+       part of the economy to lean on. Clause kinds: {pop:N} | {ship:{good,amt}} |
+       {have:{good,amt}} | {anyOf:[...]}. Modes: all / any / kofn(k). */
     required: [
-      { turn:5,  id:'R1', desc:'life-support for 18 colonists (pop>=18)',
-        check:function(s){ return s.pop>=18; } },
-      { turn:9,  id:'R2', desc:'deliver 40 Metal',
-        ship:function(s){ if(get(s.stock,'metal')>=40){s.stock.metal-=40;return true;} return false; } },
-      { turn:15, id:'R3', desc:'deliver 16 Components',
-        ship:function(s){ if(get(s.stock,'components')>=16){s.stock.components-=16;return true;} return false; } },
-      { turn:21, id:'R4', desc:'deliver 14 Circuits',
-        ship:function(s){ if(get(s.stock,'circuits')>=14){s.stock.circuits-=14;return true;} return false; } },
-      { turn:24, id:'R5', desc:'FINAL: pop>=60 AND 8 Modules in stock',
-        check:function(s){ return s.pop>=60 && get(s.stock,'modules')>=8; } }
+      { turn:5,  id:'R1', mode:'all', desc:'pop>=18',
+        clauses:[ {pop:18} ] },
+      { turn:9,  id:'R2', mode:'any', desc:'ship 40 Metal OR 24 Components',
+        clauses:[ {ship:{good:'metal',amt:40}}, {ship:{good:'components',amt:24}} ] },
+      { turn:14, id:'R3', mode:'kofn', k:2, desc:'meet 2 of: pop>=40 / 28 Components / 70 Food',
+        clauses:[ {pop:40}, {ship:{good:'components',amt:28}}, {ship:{good:'food',amt:70}} ] },
+      { turn:20, id:'R4', mode:'any', desc:'ship 14 Circuits OR 12 Composites',
+        clauses:[ {ship:{good:'circuits',amt:14}}, {ship:{good:'composites',amt:12}} ] },
+      { turn:24, id:'R5', mode:'all', desc:'FINAL: pop>=60 AND (8 Modules OR 24 Circuits in stock)',
+        clauses:[ {pop:60}, {anyOf:[ {have:{good:'modules',amt:8}}, {have:{good:'circuits',amt:24}} ]} ] }
     ],
     optional: [
       { id:'O1', early:6, expire:9, desc:'ship 30 Food -> +60 Metal, +5% production',
@@ -247,19 +248,111 @@ function scenario(){
 /* The heuristic AI player                                                 */
 /* ----------------------------------------------------------------------- */
 
-/* metal/components that must stay banked for an imminent required ship gate */
+/* ----------------------------------------------------------------------- */
+/* Flexible directives: clause evaluation + deadline resolution            */
+/*   clause kinds: {pop:N} | {ship:{good,amt}} | {have:{good,amt}} | {anyOf:[]} */
+/* ----------------------------------------------------------------------- */
+
+var TIERW = { metal:1, food:1, water:1, oxygen:1, components:4, circuits:7, composites:6, modules:9, research:2, robotics:6 };
+var POPW = 1.5;
+
+function clauseSat(S, c){
+  if(c.pop!=null) return S.pop >= c.pop;
+  if(c.ship) return get(S.stock,c.ship.good) >= c.ship.amt;
+  if(c.have) return get(S.stock,c.have.good) >= c.have.amt;
+  if(c.anyOf){ for(var i=0;i<c.anyOf.length;i++) if(clauseSat(S,c.anyOf[i])) return true; return false; }
+  return false;
+}
+/* real cost of satisfying NOW (only ship clauses consume goods) */
+function clauseSpend(S, c){
+  if(c.pop!=null || c.have) return 0;
+  if(c.ship) return c.ship.amt * (TIERW[c.ship.good]||1);
+  if(c.anyOf){ var best=1e9; for(var i=0;i<c.anyOf.length;i++) if(clauseSat(S,c.anyOf[i])){ var x=clauseSpend(S,c.anyOf[i]); if(x<best)best=x; } return best; }
+  return 1e9;
+}
+function clauseLabel(S, c){
+  if(c.pop!=null) return 'pop'+(S&&S.pop!=null?'('+Math.round(S.pop)+')':'')+'>='+c.pop;
+  if(c.ship) return c.ship.amt+' '+c.ship.good;
+  if(c.have) return c.have.amt+' '+c.have.good;
+  if(c.anyOf){ for(var i=0;i<c.anyOf.length;i++) if(S&&clauseSat(S,c.anyOf[i])) return clauseLabel(S,c.anyOf[i]); return 'anyOf'; }
+  return '?';
+}
+function clauseApply(S, c){
+  if(c.pop!=null || c.have) return;
+  if(c.ship){ S.stock[c.ship.good]=get(S.stock,c.ship.good)-c.ship.amt; return; }
+  if(c.anyOf){ var best=null,bc=1e9; for(var i=0;i<c.anyOf.length;i++) if(clauseSat(S,c.anyOf[i])){ var x=clauseSpend(S,c.anyOf[i]); if(x<bc){bc=x;best=c.anyOf[i];} } if(best) clauseApply(S,best); }
+}
+/* resolve a required directive at its deadline; satisfies the cheapest option(s).
+   records which alternative was used in S.choice for diversity reporting. */
+function satisfyRequired(S, d){
+  var cs=d.clauses, i; S.choice = S.choice||{};
+  if(d.mode==='all'){
+    for(i=0;i<cs.length;i++) if(!clauseSat(S,cs[i])) return false;
+    var ls=[]; for(i=0;i<cs.length;i++){ ls.push(clauseLabel(S,cs[i])); clauseApply(S,cs[i]); }
+    S.choice[d.id]=ls.join('+'); return true;
+  }
+  if(d.mode==='any'){
+    var best=null,bc=1e9; for(i=0;i<cs.length;i++) if(clauseSat(S,cs[i])){ var x=clauseSpend(S,cs[i]); if(x<bc){bc=x;best=cs[i];} }
+    if(!best) return false; S.choice[d.id]=clauseLabel(S,best); clauseApply(S,best); return true;
+  }
+  if(d.mode==='kofn'){
+    var sat=[]; for(i=0;i<cs.length;i++) if(clauseSat(S,cs[i])) sat.push(cs[i]);
+    if(sat.length < d.k) return false;
+    sat.sort(function(a,b){ return clauseSpend(S,a)-clauseSpend(S,b); });
+    var lk=[]; for(i=0;i<d.k;i++){ lk.push(clauseLabel(S,sat[i])); clauseApply(S,sat[i]); }
+    S.choice[d.id]=lk.join('+'); return true;
+  }
+  return false;
+}
+
+/* ----------------------------------------------------------------------- */
+/* AI gate planning: choose WHICH alternative to aim for, ahead of time    */
+/* ----------------------------------------------------------------------- */
+
+function stratW(S, key){ return (S.strat && S.strat[key]!=null) ? S.strat[key] : 1; }
+function projGood(S, rep, good, tl){ return get(S.stock,good) + Math.max(0, get(rep.produced,good)-get(rep.consumed,good))*tl; }
+
+/* estimated effort (lower = more attractive) to make a clause true by deadline,
+   biased by the player's strategy weights -> different strategies pick differently */
+function clauseEffort(S, rep, c, tl){
+  if(c.pop!=null){ return Math.max(0, c.pop - S.pop)*POPW*stratW(S,'pop'); }
+  if(c.ship||c.have){ var sp=c.ship||c.have;
+    var def=Math.max(0, sp.amt - projGood(S,rep,sp.good,tl));
+    var base=def*(TIERW[sp.good]||1);
+    if(def>0 && get(S.B, PRODUCER[sp.good]||'_')===0) base += 25; /* cold-start a deep chain */
+    return base*stratW(S,sp.good);
+  }
+  if(c.anyOf){ var best=1e9; for(var i=0;i<c.anyOf.length;i++){ var x=clauseEffort(S,rep,c.anyOf[i],tl); if(x<best)best=x; } return best; }
+  return 1e9;
+}
+/* expand a (chosen) clause into concrete build/bank targets; anyOf -> min-effort sub */
+function clauseTargets(S, rep, c, tl, out){
+  if(c.pop!=null){ out.push({kind:'pop', amt:c.pop, turn:S.turn+tl}); return; }
+  if(c.ship||c.have){ var sp=c.ship||c.have; out.push({kind:'good', good:sp.good, amt:sp.amt, turn:S.turn+tl}); return; }
+  if(c.anyOf){ var best=null,bc=1e9; for(var i=0;i<c.anyOf.length;i++){ var x=clauseEffort(S,rep,c.anyOf[i],tl); if(x<bc){bc=x;best=c.anyOf[i];} } if(best) clauseTargets(S,rep,best,tl,out); }
+}
+function planGate(S, rep, d, out){
+  var tl=d.turn-S.turn, cs=d.clauses, i;
+  if(d.mode==='all'){ for(i=0;i<cs.length;i++) clauseTargets(S,rep,cs[i],tl,out); return; }
+  if(d.mode==='any'){ var best=null,bc=1e9; for(i=0;i<cs.length;i++){ var x=clauseEffort(S,rep,cs[i],tl); if(x<bc){bc=x;best=cs[i];} } if(best) clauseTargets(S,rep,best,tl,out); return; }
+  if(d.mode==='kofn'){ var arr=[]; for(i=0;i<cs.length;i++) arr.push({c:cs[i],e:clauseEffort(S,rep,cs[i],tl)});
+    arr.sort(function(a,b){return a.e-b.e;}); for(i=0;i<d.k && i<arr.length;i++) clauseTargets(S,rep,arr[i].c,tl,out); return; }
+}
+/* the goods/pop the AI is currently committed to banking for, across near gates */
+function computeTargets(S, rep){
+  var out=[]; var HOR=8;
+  for(var i=0;i<S.sc.required.length;i++){ var d=S.sc.required[i]; if(S.done[d.id]) continue;
+    var tl=d.turn-S.turn; if(tl<0||tl>HOR) continue; planGate(S,rep,d,out); }
+  return out;
+}
+
+/* goods that must stay banked for an imminent gate the AI has chosen to satisfy */
 function getReserve(S, g){
   if(S.ignoreReserve) return 0;
   if(g!=='metal' && g!=='components') return 0;
-  var r=0;
-  for(var i=0;i<S.sc.required.length;i++){
-    var d=S.sc.required[i]; if(S.done[d.id]) continue;
-    var tl=d.turn-S.turn; if(tl<0||tl>4) continue;
-    if(d.id==='R2'&&g==='metal') r+=40;
-    if(d.id==='R3'&&g==='components') r+=16;
-    if(d.id==='R4'&&g==='circuits') r+=14;
-    if(d.id==='R5'&&g==='modules') r+=8;
-  }
+  var r=0, ts=S._targets||[];
+  for(var i=0;i<ts.length;i++){ var t=ts[i];
+    if(t.kind==='good' && t.good===g && (t.turn-S.turn)<=4) r+=t.amt; }
   return r;
 }
 
@@ -315,22 +408,15 @@ function chooseGenerator(S){
   return null;
 }
 
-function nextRequiredShip(S){
-  /* the next near required gate that needs goods banked in stock */
-  for(var i=0;i<S.sc.required.length;i++){
-    var d=S.sc.required[i];
-    if(S.done[d.id]) continue;
-    if(d.id==='R2') return {good:'metal',      amt:40, turn:d.turn};
-    if(d.id==='R3') return {good:'components',  amt:16, turn:d.turn};
-    if(d.id==='R4') return {good:'circuits',    amt:14, turn:d.turn};
-    if(d.id==='R5') return {good:'modules',     amt:8,  turn:d.turn};  // (+pop>=60, via housing)
-    return null; // R1 met via pop, not banking
-  }
-  return null;
-}
-
 function chooseBuild(S, rep){
   var idledTotal=0; for(var k in rep.idled) idledTotal+=rep.idled[k];
+
+  /* what the AI is committed to banking/building for the near gates (its chosen
+     alternatives), plus the population level any near gate demands */
+  S._targets = computeTargets(S, rep);
+  var popNeed=0, ti;
+  for(ti=0;ti<S._targets.length;ti++){ var tt=S._targets[ti]; if(tt.kind==='pop' && tt.amt>popNeed) popNeed=tt.amt; }
+  var housingCap = Math.max(POP_CAP, popNeed+6);
 
   /* Only a genuine life-support FAILURE may raid the gate reserve; preemptive
      buffer-building must still respect goods banked for an imminent directive. */
@@ -350,7 +436,7 @@ function chooseBuild(S, rep){
      grow the population -> extend housing so pop keeps climbing. */
   var staffTight = rep.staffLeft < 1.0;
   if(staffTight){
-    if(rep.lsOK && S.pop >= 0.8*rep.housing && rep.housing < POP_CAP){
+    if(rep.lsOK && S.pop >= 0.8*rep.housing && rep.housing < housingCap){
       if(S.pop>=30 && canBuild(S,'arcology')) return 'arcology';
       if(canBuild(S,'habitat')) return 'habitat';
     }
@@ -363,16 +449,15 @@ function chooseBuild(S, rep){
   if(get(rep.produced,'water') < S.pop*WATER_PP*1.3 + get(rep.consumed,'water')+2 && get(S.stock,'water') < S.pop*WATER_PP*5){ var w=ensureChain(S,rep,'water'); if(w) return w; }
   if(get(rep.produced,'oxygen')< S.pop*O2_PP*1.3 + get(rep.consumed,'oxygen')      && get(S.stock,'oxygen')< S.pop*O2_PP*5){ var o=ensureChain(S,rep,'oxygen'); if(o) return o; }
 
-  /* 4. directive capacity: if banking current output won't reach a near ship gate,
-     build more of that chain (ignoring the reserve, since we need the capacity).
-     The reserve itself is protected inside canBuild, so surplus still funds growth. */
-  var nd = nextRequiredShip(S);
-  if(nd && (nd.turn - S.turn) <= 7){
-    var turnsLeft = nd.turn - S.turn;
-    var have = get(S.stock,nd.good);
-    var net = Math.max(0, get(rep.produced,nd.good) - get(rep.consumed,nd.good));
-    if(have + net*turnsLeft < nd.amt){
-      S.ignoreReserve=true; var c=ensureChain(S,rep,nd.good); S.ignoreReserve=false;
+  /* 4. directive capacity: for the goods the AI has chosen to bank (nearest gate
+     first), if banking current output won't reach the target, build more of that
+     chain. Reserve is protected in canBuild, so surplus still funds growth. */
+  var goodTs=[]; for(ti=0;ti<S._targets.length;ti++){ if(S._targets[ti].kind==='good') goodTs.push(S._targets[ti]); }
+  goodTs.sort(function(a,b){ return a.turn-b.turn; });
+  for(ti=0; ti<goodTs.length; ti++){
+    var g=goodTs[ti]; var tl=g.turn-S.turn; if(tl>7) continue;
+    if(projGood(S,rep,g.good,tl) < g.amt){
+      S.ignoreReserve=true; var c=ensureChain(S,rep,g.good); S.ignoreReserve=false;
       if(c) return c;
     }
   }
@@ -391,9 +476,9 @@ function chooseBuild(S, rep){
     var rr=ensureChain(S,rep,'research'); if(rr) return rr;
   }
 
-  /* 7. housing ahead of pop (capped: stop sprawling once we have enough labour,
-     leaving tiles for the late-tier industry rather than filling the map) */
-  if(S.pop >= 0.85*rep.housing && rep.lsOK && rep.housing < POP_CAP){
+  /* 7. housing ahead of pop (capped at the larger of POP_CAP and any near gate's
+     population demand, so we leave tiles for late-tier industry but still hit pop gates) */
+  if(S.pop >= 0.85*rep.housing && rep.lsOK && rep.housing < housingCap){
     if(S.pop>=30 && canBuild(S,'arcology')) return 'arcology';
     if(canBuild(S,'habitat')) return 'habitat';
   }
@@ -411,7 +496,7 @@ function chooseBuild(S, rep){
   /* 6. default growth: expand components throughput */
   var grow = ensureChain(S,rep,'components'); if(grow) return grow;
   /* fallback: more housing only if under the cap */
-  if(rep.housing < POP_CAP && canBuild(S,'habitat')) return 'habitat';
+  if(rep.housing < housingCap && canBuild(S,'habitat')) return 'habitat';
   return null;
 }
 
@@ -419,13 +504,14 @@ function chooseBuild(S, rep){
 /* Game loop                                                               */
 /* ----------------------------------------------------------------------- */
 
-function playGame(verbose){
+function playGame(verbose, strat){
   var sc = scenario();
   var S = {
     sc: sc, turn:0, era:2,
     B:clone(sc.start.buildings||{}), stock:clone(sc.start.stock), pop:sc.start.pop,
     tilesUsed:0, depUsed:{},
-    done:{}, bonusPf:1, era4early:false,
+    done:{}, choice:{}, bonusPf:1, era4early:false,
+    strat: strat||{}, _targets:[],
     defeat:false, log:[]
   };
   S.bonusPf = 1;
@@ -469,13 +555,12 @@ function playGame(verbose){
       }
     }
 
-    /* DIRECTIVES — required (deadline) */
+    /* DIRECTIVES — required (deadline), flexible-fulfillment */
     var reqMsg=[];
     for(var ri=0; ri<sc.required.length; ri++){
       var rd=sc.required[ri]; if(S.done[rd.id]) continue;
       if(S.turn>=rd.turn){
-        var pass = rd.check ? rd.check(S) : rd.ship(S);
-        if(pass){ S.done[rd.id]='MET@'+S.turn; reqMsg.push(rd.id+' MET'); }
+        if(satisfyRequired(S, rd)){ S.done[rd.id]='MET@'+S.turn; reqMsg.push(rd.id+' MET'); }
         else { S.done[rd.id]='FAILED'; S.defeat=true; reqMsg.push(rd.id+' FAILED ('+rd.desc+')'); }
       }
     }
@@ -544,19 +629,31 @@ function finish(S){
   return {
     result: result, prestige: prestige, valuation: valuation, dirPrestige: dirPrestige,
     pop: Math.round(S.pop), era: S.era, turn: S.turn, tiles: S.tilesUsed,
-    buildings: S.B, stock: S.stock, done: S.done, log: S.log,
+    buildings: S.B, stock: S.stock, done: S.done, choice: S.choice, log: S.log,
     threshold: S.sc.majorThreshold
   };
 }
+
+/* strategy presets: weights bias which alternative the AI targets (lower = prefer) */
+var STRATS = {
+  balanced: {},
+  tech:     { components:0.55, circuits:0.5, modules:0.6, research:0.6 },
+  brute:    { metal:0.5, food:0.7, pop:0.7, components:1.6, circuits:1.4 },
+  pop:      { pop:0.4, food:0.5, components:1.4 }
+};
 
 /* ----------------------------------------------------------------------- */
 /* main                                                                    */
 /* ----------------------------------------------------------------------- */
 
-function main(){
-  var quiet = (process.argv[2]==='quiet');
-  var res = playGame(!quiet);
-  if(!quiet){
+function choiceLine(res){
+  var ids=['R2','R3','R4','R5'], out=[];
+  for(var i=0;i<ids.length;i++){ if(res.choice[ids[i]]) out.push(ids[i]+':'+res.choice[ids[i]]); }
+  return out.join('  ');
+}
+
+function printResult(res, verbose){
+  if(verbose){
     console.log('=== COMPOUND — Mare Frigoris playthrough ===\n');
     for(var i=0;i<res.log.length;i++) console.log(res.log[i]);
     console.log('');
@@ -569,9 +666,35 @@ function main(){
   console.log('Buildings : '+bl.join(', '));
   var dl=[]; for(var d in res.done) dl.push(d+'='+res.done[d]);
   console.log('Directives: '+dl.join('  '));
+  console.log('Gate paths: '+choiceLine(res));
   var sk=['metal','components','circuits','composites','modules','research','food','water','robotics'];
   var sv=[]; for(var s=0;s<sk.length;s++) sv.push(sk[s]+':'+fmtNum(get(res.stock,sk[s])));
   console.log('Stock     : '+sv.join(' '));
+}
+
+function main(){
+  var args = process.argv.slice(2);
+  var quiet = args.indexOf('quiet')>=0;
+
+  /* compare mode: run every strategy and show how the chosen gate-paths diverge */
+  if(args.indexOf('compare')>=0){
+    console.log('=== COMPOUND — strategy comparison (flexible directives) ===\n');
+    var names=['balanced','tech','brute','pop'];
+    for(var n=0;n<names.length;n++){
+      var r=playGame(false, STRATS[names[n]]);
+      var key=['R2','R3','R4','R5'].map(function(id){return r.choice[id]||'-';}).join(' | ');
+      console.log(pad(names[n],9)+' '+pad(r.result,13)
+        +' prestige '+pad(r.prestige,5)+'  pop '+pad(r.pop,3)+'  era '+r.era
+        +'\n          gate-paths: '+key+'\n');
+    }
+    return;
+  }
+
+  var stratName = 'balanced';
+  for(var a=0;a<args.length;a++){ if(STRATS[args[a]]) stratName=args[a]; }
+  var res = playGame(!quiet, STRATS[stratName]);
+  console.log('(strategy: '+stratName+')');
+  printResult(res, !quiet);
 }
 
 main();

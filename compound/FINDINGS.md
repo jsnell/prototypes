@@ -80,6 +80,49 @@ not a hex grid — enough to surface the *costs* of space without a placement AI
 - Adjacency clusters, heat/radiation *placement*, and the sunline gradient are
   abstracted, not spatial yet.
 
+## Update: flexible-fulfillment directives + strategic diversity
+
+Implemented the v0.2 planned mechanism: gates are now clause-based with
+`all` / `any` / `kofn(k)` modes and clause kinds `{pop}` / `{ship}` / `{have}` /
+`{anyOf}`. The deadline resolver satisfies the **cheapest** option; the AI has a
+planner that *chooses which alternative to target ahead of time*, biased by a
+tunable **strategy** weight. Run `node sim.js compare` to see four strategies play.
+
+Result — **there is real strategic diversity, but it's narrower than the gate
+count suggests**:
+
+| strategy | outcome | prestige | R4 path | R5 path |
+|---|---|---|---|---|
+| balanced | MAJOR | 3660 | 12 composites | 8 modules |
+| **tech** | MAJOR | **4264** | **14 circuits** | **24 circuits** |
+| brute | MAJOR | 3660 | 12 composites | 8 modules |
+| pop | MAJOR | 3660 | 12 composites | 8 modules |
+
+What this tells us:
+
+1. **The mechanism works and produces a genuinely distinct, independently-viable
+   line.** `tech` builds circuit fabs instead of composite plants — a different
+   factory — and its R5 is **path-dependent**: having built circuits for R4, the
+   "24 circuits in stock" option becomes the natural way to finish. That emergent
+   path-dependency is exactly the good kind of choice.
+2. **A flexible gate is only a real choice between comparably-costly high-tier
+   goods.** R4 (circuits vs composites, both Tier-3) is a true fork. R2 (metal vs
+   components) and R3 (meet-2-of-{pop, components, food}) are *dominated*: metal,
+   pop and food come essentially **free as byproducts of normal growth**, so the
+   cheap option always wins and every strategy picks identically. A `kofn` that
+   includes auto-satisfied clauses isn't a decision.
+3. **`tech` is currently strictly best (4264 vs 3660)** — circuits are over-rewarded
+   relative to composites/modules. A balanced design wants the alternatives within
+   a few % of each other so the choice is a real trade-off, not a dominant line.
+
+Design takeaways for the doc:
+- Flexible-fulfillment gates should pit **two (or more) similarly-priced Tier-3+
+  goods** against each other, not a cheap good vs an expensive one.
+- `meet-k-of-n` only creates a decision if **fewer than k clauses are satisfiable
+  from normal growth** — otherwise it's a free pass.
+- Keep alternative payoffs **balanced in prestige/value**, or the "choice" collapses
+  to the highest-value branch.
+
 ## Suggested next steps
 1. Lock in the **laddered-directive** principle in DESIGN.md (gates climb the tiers;
    gate goods are never the build currency).
