@@ -165,6 +165,73 @@ adjacency**, which is the actual core of v0.3. The fixed-point flow solver works
 worker-flow + life-support coupling is a strong constraint (the AI must hold a labour
 buffer or it stalls).
 
+## v0.3 MAP prototype (`map.js`) — the real spatial layer
+
+The big one: buildings are placed on **specific hex tiles** and their effective output
+is driven by **local adjacency**, on top of the v0.3 flow economy. Run `node map.js`
+(it prints a turn log and an ASCII map of the final colony).
+
+Adjacency implemented:
+- **Heat is local:** a heat-emitter runs only as far as *adjacent* Radiators cool it
+  (shared among the emitters touching each radiator; small passive base so a lone
+  emitter still runs ~50%).
+- **Radiation is local:** Reactors irradiate their 6 neighbours; adjacent Habitats /
+  Greenhouses are crippled unless the tile is a shielded **lava tube**.
+- **Sunline:** Solar scales with how sunward (low-q) the tile is.
+- **Co-location:** +12% per distinct input whose producer is on an adjacent tile — so
+  supply chains want to physically cluster.
+- **Lab clusters:** Labs boost adjacent Labs/Habitats.
+
+Plus a **placement AI** that scores tiles, a fixed-point flow solver run over individual
+building instances, per-tier build-rate, directives-as-tech-tree, and demolition.
+
+### Result: the model works and is the most interesting yet — but it's *hard*
+The baseline AI clears **5 of 7 directives (DEFEAT, missing the circuits gate)**, vs the
+abstract-space `flow.js` which reached a Minor victory with the same directive tree.
+Adding the real spatial layer materially raised the difficulty — which is the point —
+and surfaced several **emergent tensions**, all visible in the final ASCII map:
+
+1. **Supply chains visibly cluster** (co-location bonus) — refiners pack next to their
+   input producers, exactly the layout behaviour we wanted.
+2. **Heat forces districting**: emitters pair with radiators; you can't pack heat
+   sources without paying neighbour tiles for cooling.
+3. **Reactor radiation vs. housing** is a real separation constraint (housing drifts
+   away from reactors / into lava tubes).
+4. **Deposits must be reserved** — an early AI bug placed an Assembler *on* a rare vein,
+   wasting it; the fix (don't build non-extractors on deposits) was necessary and is a
+   genuine player consideration.
+5. **Rare-earth contention is the emergent crux.** Foundries (alloy→components) and
+   Electronics and Circuit Fabs all compete for the scarce rare veins. The greedy AI
+   could **hard-block its own circuits** by spending all rare on foundries — and it
+   can't make the skilled move (raze a foundry to *reallocate* rare to circuits). This
+   is the most interesting decision the map creates; it's a feature, and it's beyond a
+   greedy baseline.
+6. **Labour bootstrap is a cycle** (housing needs water; water needs workers; workers
+   need housing). The break is that Habitats need **zero staff**, so "build a Habitat"
+   is always the labour-relief move — the AI needed that special case to start at all.
+7. **Tiles saturate → demolition is mandatory**, and *safe* demolition (never raze the
+   last producer of a good; prefer radiators cooling nothing) matters a lot.
+
+### Why the AI falls short (and what a stronger one needs)
+The late required gate (circuits) is gated by three simultaneous constraints — **bt3
+build-rate** (shared by assemblers/circuit-fabs/labs), a **full map** (needs demolition
+to make room), and **rare contention** (needs reallocation). The greedy, one-step AI
+handles any one but not their conjunction. A competent player (or a lookahead AI) would:
+reserve bt3 for circuits once D3 is done, pre-clear tiles, and demolish a foundry to
+move rare onto circuits. That this is a *recognisable, describable* strategy is a good
+sign — the depth is real, not noise.
+
+### Design takeaways
+- The **adjacency layer carries the game** as intended: layout is the puzzle, and the
+  positive/negative effects (co-location vs heat/radiation/space) genuinely trade off.
+- **Per-tier build-rate is the right pacing dial**, and *which tier* binds shifts over
+  the run (bt1 contention early; bt3 the late wall).
+- **Scarce shared inputs (rare earths)** create the strongest decisions — but tune them
+  as a *squeeze, not a wall* (foundry rare draw had to come down so the bottleneck was
+  navigable rather than fatal).
+- A real game needs an **undo/reallocation** affordance (demolish-to-reallocate) to be
+  front-and-centre, since the best plays are spatial reworks.
+
 ## Suggested next steps
 1. Lock in the **laddered-directive** principle in DESIGN.md (gates climb the tiers;
    gate goods are never the build currency).

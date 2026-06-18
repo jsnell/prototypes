@@ -1,0 +1,37 @@
+=== COMPOUND v0.3 — MAP prototype ===
+
+T 1 br[4/1/0] tiles14/52 P  0 | power:5.8 workers:0.9 metal:5 components:0 circuits:0 research:0 food:7.8  [D1 7.8/28]  +2x solar,iceExtractor,waterPlant
+T 2 br[4/1/0] tiles19/52 P  0 | power:47.9 workers:7.8 metal:10.1 components:0 circuits:0 research:0 food:15.5  [D1 21.8/28]  +habitat,reactor,greenhouse,2x radiator
+T 3 br[4/2/0] tiles22/52 P 40 | power:39.7 workers:12.5 metal:10.1 components:0 circuits:0 research:0 food:22.3  [D2 0/54]  +habitat,waterPlant,greenhouse  <<D1(Provision) DONE
+T 4 br[4/2/0] tiles25/52 P 40 | power:24.7 workers:9.5 metal:28.1 components:0 circuits:0 research:0 food:22.3  [D2 18/54]  +oreMine,2x smelter
+T 5 br[4/2/0] tiles25/52 P 40 | power:24.7 workers:9.5 metal:28.1 components:0 circuits:0 research:0 food:22.3  [D2 36/54]
+T 6 br[4/2/1] tiles25/52 P100 | power:24.7 workers:9.5 metal:28.1 components:0 circuits:0 research:0 food:22.3  [D3 0/24 D4 0/72]  <<D2(Refinery) DONE
+T 7 br[4/2/1] tiles31/52 P100 | power:14.7 workers:5.7 metal:26.4 components:0 circuits:0 research:0 food:22.3  [D3 0/24 D4 2.8/72]  +rareMine,foundry,electrolysis,silicaQuarry,siliconRefinery,solar
+T 8 br[4/2/1] tiles37/52 P100 | power:12 workers:9.4 metal:24.7 components:0 circuits:0 research:0 food:21.1  [D3 0/24 D4 4.4/72]  +foundry,volatilesWell,siliconRefinery,habitat,solar,glassKiln
+T 9 br[4/2/1] tiles44/52 P100 | power:12.3 workers:10.8 metal:24.7 components:3 circuits:0 research:0 food:19.9  [D3 3/24 D4 4.8/72]  +polymerPlant,electronicsFab,2x solar,assembler,iceExtractor,habitat
+T10 br[4/2/1] tiles51/52 P100 | power:3.3 workers:6.9 metal:21.4 components:4.9 circuits:0 research:0 food:19.9  [D3 7.9/24 D4 27.6/72]  +2x foundry,assembler,solar,2x waterPlant,iceExtractor
+T11 br[4/2/1] tiles52/52 P100 | power:19.5 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:10.7  [D3 12.7/24 D4 51.6/72]  +reactor,polymerPlant,2x waterPlant,habitat
+T12 br[6/2/1] tiles52/52 P150 | power:19.5 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:10.7  [D3 17.6/24]  <<D4(Waterworks) DONE
+T13 br[6/2/1] tiles52/52 P150 | power:19.5 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:10.7  [D3 22.4/24]
+T14 br[6/2/2] tiles52/52 P240 | power:19.5 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:10.7  [D5 0/36 D6 0/90]  <<D3(Electronics) DONE
+T15 br[6/2/2] tiles52/52 P240 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  [D5 0/36 D6 22.9/90]  +6x greenhouse
+T16 br[6/2/2] tiles52/52 P240 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  [D5 0/36 D6 45.8/90]  +6x greenhouse
+T17 br[6/2/2] tiles52/52 P240 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  [D5 0/36 D6 68.6/90]  +6x greenhouse
+T18 br[6/4/2] tiles52/52 P310 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  [D5 0/36]  +6x greenhouse  <<D6(Foodbelt) DONE
+T19 br[6/4/2] tiles52/52 P310 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  [D5 0/36]
+T20 br[6/4/2] tiles52/52 P310 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  [D5 0/36]
+T21 br[6/4/2] tiles52/52 P310 | power:16.2 workers:12.5 metal:11.3 components:4.9 circuits:0 research:0 food:22.9  <<D5 FAILED (required)
+
+--- RESULT ---
+Outcome   : DEFEAT   prestige 310 (major >= 600)
+Reached   : turn 21, tiles 52/52, build-rate 1/2/3 = 6/4/2
+Directives: D1=MET@3  D2=MET@6  D4=MET@12  D3=MET@14  D6=MET@18  D5=FAIL@21
+
+Final map (So=solar Rx=reactor Ra=radiator Hb=habitat Or/Ic/Si/Vo/Re=mines  Sm/Wa/El/Gl/Sl/Gh/Fo/Po/En=refiners As/Ci/Lb=hi-tech; ~~=lava ##=wreck X.=deposit):
+
+So El Vo Wa Or Wa Re Hb Ic 
+So Hb Gh Or Po Gh Si Ic Gh 
+ So Hb Hb Gh ## As Ra Rx Ic 
+  So So El ## As Sm Sm Fo Hb 
+   So Hb So En Fo Fo Fo Sl Wa 
+    So So Sl Gl Po Vo Wa Ic Rx 
