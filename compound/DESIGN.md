@@ -1,4 +1,4 @@
-# COMPOUND — Game Design Document (v0.3)
+# COMPOUND — Game Design Document (v0.3.1)
 
 *Working title — the colony **compound** you build, and the compounding capability
 you unlock.*
@@ -40,6 +40,28 @@ The skill is in the **layout and the adjacencies**, not in hoarding resources.
 >
 > What carries over from v0.2: the **dense production graph** (§4), the **map/terrain**
 > (§3), and the **adjacency system** (§7) — now promoted from garnish to main course.
+>
+> ### v0.3.1 — concrete findings from the flow + map prototypes
+> Two prototypes (`flow.js` abstract-space, `map.js` real hex grid; see `FINDINGS.md`)
+> validated the model end-to-end and pinned down several rules now folded in below:
+> - **Housing must require zero staffing**, or labour can never bootstrap (housing needs
+>   water, water needs workers, workers need housing — a deadlock unless building housing
+>   itself costs no labour). §2.
+> - **Adjacency efficiency is a throttle, not all-or-nothing.** An uncooled heat-emitter
+>   should run *partially* (small passive base cooling) with an adjacent Radiator as a
+>   big boost — a hard "no radiator = dead" rule just produces radiator sprawl. §7.
+> - **Co-location is a concrete bonus** (≈+10–15% output per adjacent input-producer),
+>   which is what makes laying chains out spatially the puzzle. §7.
+> - **Deposits are precious — don't waste them.** Placing a non-extractor on a deposit
+>   tile squanders it; deposit tiles want reserving. §2.
+> - **Scarce shared inputs (Rare Earths) must be a *squeeze, not a wall*.** Tuned too
+>   tight, one consumer (foundries) starves another (circuits) into an unrecoverable
+>   block; the bottleneck should force *reallocation*, not a dead end. §4.
+> - **Demolish-to-reallocate is a core verb**, not a cleanup afterthought: the best plays
+>   are spatial reworks (raze a foundry to move Rare onto circuits; raze solar for dense
+>   reactors). §2.
+> - **The binding build-tier migrates upward** (bt1 contention early — power vs housing
+>   vs extractors; the late wall is bt3, shared by assemblers/circuit-fabs/labs). §2.
 
 ---
 
@@ -100,12 +122,24 @@ consumed, in priority order, by: (1) life-support and other buildings' inputs, (
 - **Placement costs**: a tile (finite map), a matching **deposit** for extractors, and
   ongoing **flow** to run it (power + staffing + inputs). So every placement is a real,
   *permanent* opportunity cost: the tile, and the worker-flow to operate it forever.
-- **Demolish** is free and frees the tile (but wastes the build-rate that placed it) —
-  the lever for reworking layout as the map fills.
+- **Deposit tiles are precious.** Only the matching extractor uses a deposit, and
+  carelessly seating some other building on a Rare/Ore/Ice tile squanders it — placement
+  should account for reserving deposit tiles for their extractors.
+- **Demolish** is free and frees the tile (but wastes the build-rate that placed it).
+  This is a **core verb, not a cleanup option**: because the map fills and inputs are
+  contested, the strongest plays are *spatial reworks* — raze a Foundry to reallocate a
+  scarce Rare-Earth feed onto Circuits; raze a field of Solar for a couple of dense
+  Reactors; clear a district to seat a megastructure. The UI should make
+  demolish-to-reallocate a first-class, low-friction action.
 
 ### Workers as a flow
 - **Housing** emits **worker-capacity/turn**. Every building consumes some as
   **staffing**. Σ staffing ≤ Σ worker-capacity, or low-priority buildings idle.
+- **Housing itself requires zero staffing.** This is a hard rule, not a detail: it's the
+  only thing that lets labour bootstrap. Housing needs water; water needs workers;
+  workers need housing — a deadlock the moment you're fully staffed, *unless* adding
+  housing costs no labour. So "place a Habitat" is always the available labour-relief
+  move. (Prototype confirmed: without this, the AI couldn't start at all.)
 - No population *stock* — you can't "grow pop for free" and cash it later. Want more
   labour? Place housing (costs a tile + build-rate + its own life-support flow).
 - Housing still needs **life-support flow** (Food + Water + O₂ + Power per worker), so
@@ -193,6 +227,14 @@ Circuits from one scarce vein; **Water** is shared by five branches; every Tier-
 is 3–4-input so a directive for it silently demands its whole sub-tree be *flowing in
 balance, simultaneously* — which on a finite grid is a placement puzzle.
 
+> **Balance rule from the map prototype — squeeze, not wall.** Rare Earths are the
+> strongest source of decisions precisely because Alloy/Electronics/Circuits compete for
+> them. But tuned *too* tight, one consumer (Foundries making Alloy→Components) eats all
+> the Rare and the player can never start Circuits — a dead end, not a decision. The
+> contention should force **reallocation** (raze a Foundry, move the Rare onto a Circuit
+> Fab), so calibrate scarce shared inputs so the squeeze is navigable by reworking the
+> layout, never an unrecoverable block.
+
 > **Design note from the prototype:** real flexible-fulfillment *choices* only exist
 > between **comparably-costly Tier-3+ goods** (e.g. Circuits vs Composites). Offering a
 > cheap option (Metal/Food/worker-flow) beside an expensive one is a non-choice — the
@@ -269,19 +311,27 @@ With the economy on flow and buildings free, depth lives here. A tile has 6 neig
 clusters compete for them; deposits are fixed.
 
 **Positive**
-- **Synergy clusters:** Lab↔Lab and Lab↔Habitat; Greenhouse↔Water source; refinery
-  chains placed adjacent reduce routing loss (a co-located chain runs more efficiently).
-- **Radiator** next to a heat emitter lets it run at full.
+- **Co-location bonus (the central one):** a building gets **≈+10–15% output per distinct
+  input whose producer sits on an adjacent tile** (short pipes / no routing loss), capped
+  at a few. This is what makes laying supply chains out spatially the puzzle — a tight
+  Silicon→Glass→Electronics cluster is far more tile-efficient than a sprawled one. It
+  fights heat, radiation, and space, which is the tension.
+- **Synergy clusters:** Lab↔Lab and Lab↔Habitat boost Lab output.
 - **Automation Hub** radius cuts staffing for neighbours (frees worker-flow).
 - **Lava-tube housing:** +capacity + radiation shielding — how to tuck housing beside
   industry.
 - **Sunline / crater rim:** Solar far stronger near the sunward edge.
 
 **Negative**
-- **Waste heat:** reactors/smelters/foundries/etc. throttle without adjacent Radiators —
-  clustering heat sources costs neighbour tiles.
+- **Waste heat (a throttle, not a kill-switch):** reactors/smelters/foundries/etc. emit
+  heat. A little dissipates passively (so a lone emitter still runs at reduced output,
+  ~50%); an **adjacent Radiator is a big boost** back toward full, with a radiator's
+  cooling *shared* among the emitters touching it. Modelling it as "no radiator ⇒ zero
+  output" was tried and just produces radiator sprawl — the partial-throttle version
+  keeps the decision (cluster heat sources and pay neighbour tiles for Radiators) without
+  being punishing.
 - **Radiation:** reactors/antimatter penalise adjacent housing/greenhouses unless
-  shielded — forces industrial-vs-residential **districting**.
+  shielded (lava tube) — forces industrial-vs-residential **districting**.
 - **Shadowing:** tall/late structures shadow adjacent Solar along the sunline.
 
 Because flows don't buffer, **co-location matters**: a balanced cluster (e.g. Silicon +
