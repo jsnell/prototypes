@@ -265,6 +265,39 @@ What this tells us:
   build-rate budget across the next several turns toward the upcoming gate — which is the
   natural next AI step if we want to clear the scenario outright and probe the skill ceiling.
 
+## Lookahead AI + winnability — MINOR VICTORY on the map
+
+Two further AI capabilities + one scenario rebalance, and the spatial scenario is now
+**cleared (5/5 required, MINOR victory, prestige 550)**:
+
+1. **Full-tree visibility (lookahead).** The whole directive tree is now visible for
+   *planning* from turn 1 (delivery still gated by prerequisites). This lets the AI
+   pre-build a deep late chain's capacity before the gate activates, instead of being
+   surprised by a gate revealed too late to build for.
+2. **Capacity-gating + future-gate protection.** The AI builds a gate's producers only up
+   to the *needed rate* (no more throttled-producer spiral), and **never razes a good a
+   current-or-future required gate depends on** (so optimising Circuits no longer
+   cannibalises the Components that the later Research gate needs).
+3. **The real wall was build-tier rate, not material scarcity.** With reallocation +
+   lookahead the AI still landed 6/7 — diagnosis: Circuit Fabs, Assemblers and Labs all
+   share the **bt3** delivery rate, and at 2/turn you can build the circuit industry *or*
+   the research industry, not both before their deadlines. Notably, adding **more rare
+   earths made it *worse*** (the heuristic is sensitive near its ceiling) — confirming
+   the bottleneck was the shared *build-tier*, not the raw input. Opening bt3 to ~3/turn
+   when the advanced tier unlocks (a "squeeze-not-wall" rebalance, now in DESIGN §2) made
+   both late industries buildable in parallel → **win**.
+
+Trajectory of the winning run: bt3 opens at T11; the AI builds Circuit Fabs and Labs
+*concurrently*, completing Circuits (D5 @T18) and Research (D7 @T22). Optionals (D4, D6)
+were correctly sacrificed — they compete for the same finite capacity, which is exactly
+the intended guns-vs-butter tension, and it's what keeps the result a Minor rather than a
+Major.
+
+Net: the v0.3 spatial model is **validated end-to-end and winnable with competent play**.
+The AI ladder — greedy (5/7, stuck) → reallocation (6/7) → lookahead + capacity-gating +
+balance (5/5, Minor) — also shows the *skill gradient* is real: each capability a smarter
+player would have translates directly into clearing more of the scenario.
+
 ## Suggested next steps
 1. Lock in the **laddered-directive** principle in DESIGN.md (gates climb the tiers;
    gate goods are never the build currency).

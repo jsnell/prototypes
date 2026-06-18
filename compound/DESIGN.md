@@ -119,6 +119,12 @@ consumed, in priority order, by: (1) life-support and other buildings' inputs, (
   bottleneck migrates up the tiers as you progress. **Directives raise specific tiers'
   rates** (and unlock the building types), so the directive tree literally shapes what
   you can build how fast.
+- **Squeeze-not-wall applies to build-tiers, too** (map-prototype finding). When several
+  late gates share one build-tier — e.g. Circuit Fabs, Assemblers and Labs all draw on
+  the bt3 rate — that rate must open up enough (via directive rewards) to build their
+  industries *concurrently*. Tuned too low it's a wall: you can build the circuit
+  industry **or** the research industry but not both in time. The AI cleared the scenario
+  only once the advanced tier's rate opened to ~3/turn when it unlocked.
 - **Placement costs**: a tile (finite map), a matching **deposit** for extractors, and
   ongoing **flow** to run it (power + staffing + inputs). So every placement is a real,
   *permanent* opportunity cost: the tile, and the worker-flow to operate it forever.

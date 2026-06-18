@@ -217,7 +217,7 @@ function scenario(){
       { id:'D2',name:'Refinery',   good:'metal',     rate:18,dur:3,deadline:10,req:['D1'],must:true,
         reward:{unlock:['assembler'],buildRate:{3:1},prestige:60},reveal:['D3','D4'] },
       { id:'D3',name:'Electronics',good:'components', rate:8, dur:3,deadline:15,req:['D2'],must:true,
-        reward:{unlock:['circuitFab','lab'],buildRate:{3:1},prestige:90},reveal:['D5','D6'] },
+        reward:{unlock:['circuitFab','lab'],buildRate:{3:2},prestige:90},reveal:['D5','D6'] },
       { id:'D4',name:'Waterworks', good:'water',      rate:24,dur:3,deadline:15,req:['D2'],must:false,
         reward:{buildRate:{1:2},prestige:50},reveal:[] },
       { id:'D5',name:'Hi-tech',    good:'circuits',   rate:9, dur:4,deadline:21,req:['D3'],must:true,
@@ -326,9 +326,17 @@ function radiatorWouldHelp(S){
     var nb=S.map.tiles[b.tile].nb; for(var j=0;j<nb.length;j++) if(tileFree(S,nb[j])) return true; }
   return false;
 }
-function activeDirectives(S){ var out=[];
+function prereqsDone(S,d){ for(var i=0;i<d.req.length;i++) if(!S.done[d.req[i]]) return false; return true; }
+/* what can actually be DELIVERED to now (prereqs complete) */
+function deliverableDirectives(S){ var out=[];
   for(var i=0;i<S.sc.directives.length;i++){ var d=S.sc.directives[i];
-    if(S.done[d.id]||S.failed[d.id]||!S.revealed[d.id]||S.turn>d.deadline) continue; out.push(d); }
+    if(S.done[d.id]||S.failed[d.id]||S.turn>d.deadline||!prereqsDone(S,d)) continue; out.push(d); }
+  return out; }
+/* the whole tree is visible for PLANNING: the AI may pre-build a gate's chain ahead of
+   its prereqs (lookahead), so deep late chains are ready when the gate activates. */
+function plannedDirectives(S){ var out=[];
+  for(var i=0;i<S.sc.directives.length;i++){ var d=S.sc.directives[i];
+    if(S.done[d.id]||S.failed[d.id]||S.turn>d.deadline) continue; out.push(d); }
   return out; }
 
 /* ---- smarter planning: unblock a scarce, contended input by reallocation ---- */
@@ -354,9 +362,18 @@ function blockingScarce(S, sol, good, seen){
     } }
   return null;
 }
-/* raze a NON-critical consumer of `raw` (most output slack) to free it for `criticalGood` */
+/* unthrottled production capacity of a good (to avoid building past the needed rate) */
+function capacityOf(S, good){ var cap=0;
+  for(var i=0;i<S.buildings.length;i++){ var b=S.buildings[i]; if(!b) continue; var T=TYPES[b.type];
+    if(T.out && T.out[good]!=null) cap += T.out[good]*adjMult(S,b.type,b.tile)*heatRatio(S,b.type,b.tile); }
+  return cap; }
+
+/* raze a consumer of `raw` whose output NO required gate needs (so we never cannibalize a
+   good a current/future required directive depends on, e.g. components for research) */
 function razeCompetitor(S, sol, raw, criticalGood){
-  var crit=chainGoods(criticalGood), best=-1, bestSlack=-1e9;
+  var crit=chainGoods(criticalGood);
+  var pl=plannedDirectives(S); for(var p=0;p<pl.length;p++) if(pl[p].must) chainGoods(pl[p].good, crit);
+  var best=-1, bestSlack=-1e9;
   for(var i=0;i<S.buildings.length;i++){ var b=S.buildings[i]; if(!b) continue; var T=TYPES[b.type];
     if(!T.in || T.in[raw]==null) continue;            /* must consume the scarce raw */
     if(b.type===PRODUCER[raw]) continue;              /* never the extractor itself */
@@ -378,12 +395,23 @@ function reallocateFor(S, sol, good, seen){
     } }
   return null;
 }
+/* fix a throttled (capacity exists but input-starved) gate by growing/reallocating its
+   binding INPUT — never by adding more of the gate's own producer. */
+function ensureInputs(S, sol, good){
+  var t=PRODUCER[good]; if(!t) return null;
+  for(var g in (TYPES[t].in||{})){ if(g==='power'||g==='workers') continue;
+    if(get(sol.surplus,g) < TYPES[t].in[g]){
+      var c=ensureType(S,sol,g); if(c) return c;
+      if(razeCompetitor(S,sol,g,good)) return ensureType(S,sol,g);
+    } }
+  return null;
+}
 
 function chooseType(S, sol){
   if(get(sol.surplus,'workers')<4){ var w=ensureType(S,sol,'workers'); if(w) return w; }
   if(get(sol.surplus,'power')<6){ var pr=ensureType(S,sol,'power'); if(pr){ if(canSoft(S,'reactor')&&pr==='solar'){ var rr=ensureReactor(S,sol); if(rr) return rr; } return pr; } }
 
-  var act=activeDirectives(S), reqs=[], opts=[], i;
+  var act=plannedDirectives(S), reqs=[], opts=[], i;
   for(i=0;i<act.length;i++){ (act[i].must?reqs:opts).push(act[i]); }
   reqs.sort(function(a,b){return a.deadline-b.deadline;});
   opts.sort(function(a,b){return a.deadline-b.deadline;});
@@ -391,10 +419,13 @@ function chooseType(S, sol){
   /* REQUIRED first; if a required good is blocked, try to reallocate a scarce input to it */
   var behind=false;
   for(i=0;i<reqs.length;i++){ var d=reqs[i];
-    if(get(sol.surplus,d.good) < d.rate*1.1){
+    if(capacityOf(S,d.good) < d.rate*1.1){            /* not enough producers yet */
       var c=ensureType(S,sol,d.good); if(c) return c;
       var ra=reallocateFor(S,sol,d.good); if(ra) return ra;
-      behind=true;                                    /* blocked & can't unblock yet */
+      behind=true;
+    } else if(get(sol.surplus,d.good) < d.rate){      /* capacity exists but input-starved */
+      var fx=ensureInputs(S,sol,d.good); if(fx) return fx;
+      behind=true;
     } }
 
   /* cooling maintenance */
@@ -427,7 +458,6 @@ function playGame(verbose){
   for(var i=0;i<sc.start.length;i++){ var spec=sc.start[i], type=spec[0];
     var id=bestTile(S,type); if(id>=0) placeAt(S,type,id); }
   S.placed={};
-  for(i=0;i<sc.directives.length;i++) if(sc.directives[i].req.length===0) S.revealed[sc.directives[i].id]=1;
   var totalTiles=0; for(i=0;i<S.map.tiles.length;i++) if(!S.map.tiles[i].wreck) totalTiles++;
   S.tilesMax=totalTiles;
 
@@ -447,13 +477,13 @@ function playGame(verbose){
     }
     var R=solveFlows(S);
     var avail=clone(R.surplus), msg=[];
-    var act=activeDirectives(S).slice().sort(function(a,b){ if(a.must!==b.must)return a.must?-1:1; return a.deadline-b.deadline; });
+    var act=deliverableDirectives(S).slice().sort(function(a,b){ if(a.must!==b.must)return a.must?-1:1; return a.deadline-b.deadline; });
     for(i=0;i<act.length;i++){ var d=act[i];
       var give=Math.min(d.rate, Math.max(0,get(avail,d.good))); avail[d.good]=get(avail,d.good)-give;
       S.progress[d.id]=get(S.progress,d.id)+give;
       if(S.progress[d.id]>=d.rate*d.dur-1e-6){ S.done[d.id]='MET@'+S.turn; msg.push(d.id+'('+d.name+') DONE'); applyReward(S,d); } }
     for(i=0;i<sc.directives.length;i++){ var dd=sc.directives[i];
-      if(S.done[dd.id]||S.failed[dd.id]||!S.revealed[dd.id]) continue;
+      if(S.done[dd.id]||S.failed[dd.id]) continue;
       if(S.turn>=dd.deadline && get(S.progress,dd.id)<dd.rate*dd.dur-1e-6){ S.failed[dd.id]='FAIL@'+S.turn; if(dd.must) msg.push(dd.id+' FAILED (required)'); } }
     if(verbose) S.log.push(fmtTurn(S,R,built,msg));
     var dead=false; for(i=0;i<sc.directives.length;i++){ if(sc.directives[i].must && S.failed[sc.directives[i].id]) dead=true; }
@@ -478,7 +508,7 @@ function fmtTurn(S,R,built,msg){
   var br='br['+S.buildRate[1]+'/'+S.buildRate[2]+'/'+S.buildRate[3]+']';
   var bag=['power','workers','metal','components','circuits','research','food'];
   var fl=[]; for(var i=0;i<bag.length;i++) fl.push(bag[i]+':'+n1(get(R.surplus,bag[i])));
-  var prog=[],act=activeDirectives(S); for(i=0;i<act.length;i++) prog.push(act[i].id+' '+n1(get(S.progress,act[i].id))+'/'+(act[i].rate*act[i].dur));
+  var prog=[],act=deliverableDirectives(S); for(i=0;i<act.length;i++) prog.push(act[i].id+' '+n1(get(S.progress,act[i].id))+'/'+(act[i].rate*act[i].dur));
   var bc={}; for(i=0;i<built.length;i++) bc[built[i]]=(bc[built[i]]||0)+1; var bl=[]; for(var t in bc) bl.push((bc[t]>1?bc[t]+'x ':'')+t);
   return 'T'+pad(S.turn,2)+' '+br+' tiles'+pad(S.tilesUsed,2)+'/'+S.tilesMax+' P'+pad(S.prestige,3)
     +' | '+fl.join(' ')+(prog.length?'  ['+prog.join(' ')+']':'')+(bl.length?'  +'+bl.join(','):'')+(msg.length?'  <<'+msg.join('; '):'');

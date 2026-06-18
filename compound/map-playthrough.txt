@@ -1,40 +1,40 @@
 === COMPOUND v0.3 — MAP prototype ===
 
 T 1 br[4/1/0] tiles14/52 P  0 | power:5.8 workers:0.9 metal:5 components:0 circuits:0 research:0 food:7.8  [D1 7.8/28]  +2x solar,iceExtractor,waterPlant
-T 2 br[4/1/0] tiles19/52 P  0 | power:47.9 workers:7.8 metal:10.1 components:0 circuits:0 research:0 food:15.5  [D1 21.8/28]  +habitat,reactor,greenhouse,2x radiator
-T 3 br[4/2/0] tiles22/52 P 40 | power:39.7 workers:12.5 metal:10.1 components:0 circuits:0 research:0 food:22.3  [D2 0/54]  +habitat,waterPlant,greenhouse  <<D1(Provision) DONE
-T 4 br[4/2/0] tiles25/52 P 40 | power:24.7 workers:9.5 metal:28.1 components:0 circuits:0 research:0 food:22.3  [D2 18/54]  +oreMine,2x smelter
-T 5 br[4/2/0] tiles25/52 P 40 | power:24.7 workers:9.5 metal:28.1 components:0 circuits:0 research:0 food:22.3  [D2 36/54]
-T 6 br[4/2/1] tiles25/52 P100 | power:24.7 workers:9.5 metal:28.1 components:0 circuits:0 research:0 food:22.3  [D3 0/24 D4 0/72]  <<D2(Refinery) DONE
-T 7 br[4/2/1] tiles30/52 P100 | power:17.7 workers:6.7 metal:26.4 components:0 circuits:0 research:0 food:13.4  [D3 0/24 D4 6.8/72]  +rareMine,foundry,electrolysis,silicaQuarry,siliconRefinery,solar
-T 8 br[4/2/1] tiles36/52 P100 | power:9.2 workers:3.2 metal:21.4 components:0 circuits:0 research:0 food:13.4  [D3 0/24 D4 13.6/72]  +foundry,polymerPlant,siliconRefinery,glassKiln,radiator,solar
-T 9 br[4/2/1] tiles43/52 P100 | power:39.7 workers:10.5 metal:18.1 components:3.4 circuits:0 research:0 food:11  [D3 3.4/24 D4 16/72]  +2x habitat,electronicsFab,reactor,assembler,2x radiator
-T10 br[4/2/1] tiles47/52 P100 | power:25.5 workers:13.3 metal:18.1 components:6.7 circuits:0 research:0 food:9.8  [D3 10.1/24 D4 17.2/72]  +assembler,volatilesWell,polymerPlant,habitat
-T11 br[4/2/1] tiles50/52 P100 | power:15.5 workers:9.3 metal:18.1 components:10.1 circuits:0 research:0 food:9.8  [D3 18.1/24 D4 18.4/72]  +electronicsFab,assembler,radiator
-T12 br[4/2/2] tiles50/52 P190 | power:15.5 workers:9.3 metal:18.1 components:10.1 circuits:0 research:0 food:9.8  [D4 19.6/72 D5 0/36 D6 0/90]  <<D3(Electronics) DONE
-T13 br[4/2/2] tiles51/52 P190 | power:15.4 workers:8.7 metal:13 components:6.7 circuits:4 research:0 food:9.8  [D4 20.8/72 D5 4/36 D6 9.8/90]  +silicaQuarry,glassKiln,circuitFab,radiator
-T14 br[4/2/2] tiles51/52 P190 | power:24.2 workers:17.7 metal:18 components:0 circuits:8.5 research:0 food:8.6  [D4 20.8/72 D5 12.5/36 D6 18.3/90]  +circuitFab,habitat
-T15 br[4/2/2] tiles52/52 P190 | power:18.2 workers:15.7 metal:18 components:0 circuits:12.5 research:0 food:8.6  [D5 21.5/36 D6 26.9/90]  +circuitFab
-T16 br[4/2/2] tiles52/52 P190 | power:18.2 workers:15.7 metal:18 components:0 circuits:12.5 research:0 food:8.6  [D5 30.5/36 D6 35.4/90]
-T17 br[4/2/3] tiles52/52 P330 | power:18.2 workers:15.7 metal:18 components:0 circuits:12.5 research:0 food:8.6  [D6 44/90 D7 0/27]  <<D5(Hi-tech) DONE
-T18 br[4/2/3] tiles51/52 P330 | power:24.2 workers:17.7 metal:18 components:0 circuits:8.5 research:0 food:8.6  [D6 52.6/90 D7 0/27]
-T19 br[4/2/3] tiles52/52 P330 | power:11.9 workers:-0.1 metal:13 components:3 circuits:4 research:3.3 food:9.7  [D6 62.3/90 D7 3.3/27]  +foundry,lab,habitat,assembler
-T20 br[4/2/3] tiles52/52 P330 | power:11.9 workers:-0.1 metal:13 components:3 circuits:4 research:3.3 food:9.7  [D7 6.6/27]
-T21 br[4/2/3] tiles52/52 P330 | power:11.9 workers:-0.1 metal:13 components:3 circuits:4 research:3.3 food:9.7  [D7 9.9/27]
-T22 br[4/2/3] tiles52/52 P330 | power:11.9 workers:-0.1 metal:13 components:3 circuits:4 research:3.3 food:9.7  [D7 13.2/27]
-T23 br[4/2/3] tiles52/52 P330 | power:11.9 workers:-0.1 metal:13 components:3 circuits:4 research:3.3 food:9.7  [D7 16.5/27]
-T24 br[4/2/3] tiles52/52 P330 | power:11.9 workers:-0.1 metal:13 components:3 circuits:4 research:3.3 food:9.7  <<D7 FAILED (required)
+T 2 br[4/1/0] tiles19/52 P  0 | power:12 workers:7.5 metal:9.5 components:0 circuits:0 research:0 food:15.5  [D1 21.8/28]  +habitat,reactor,greenhouse,smelter,oreMine
+T 3 br[4/2/0] tiles24/52 P 40 | power:13.3 workers:4.9 metal:31.7 components:0 circuits:0 research:0 food:15.5  [D2 0/54]  +3x smelter,reactor,radiator  <<D1(Provision) DONE
+T 4 br[4/2/0] tiles28/52 P 40 | power:41.1 workers:10.3 metal:37.4 components:0 circuits:0 research:0 food:14.3  [D2 18/54]  +3x radiator,habitat
+T 5 br[4/2/0] tiles29/52 P 40 | power:70.4 workers:9.7 metal:37.4 components:0 circuits:0 research:0 food:14.3  [D2 36/54]  +radiator
+T 6 br[4/2/1] tiles29/52 P100 | power:70.4 workers:9.7 metal:37.4 components:0 circuits:0 research:0 food:14.3  [D3 0/24 D4 0/72]  <<D2(Refinery) DONE
+T 7 br[4/2/1] tiles35/52 P100 | power:40.4 workers:3.7 metal:32.4 components:0 circuits:0 research:0 food:14.3  [D3 0/24 D4 10.8/72]  +rareMine,foundry,silicaQuarry,siliconRefinery,glassKiln,waterPlant
+T 8 br[4/2/1] tiles41/52 P100 | power:18 workers:11.4 metal:32.4 components:3.4 circuits:0 research:0 food:11.9  [D3 3.4/24 D4 13.2/72]  +electrolysis,2x habitat,polymerPlant,electronicsFab,assembler
+T 9 br[4/2/1] tiles48/52 P100 | power:12.5 workers:5.4 metal:27.4 components:6.7 circuits:0 research:0 food:11.9  [D3 10.1/24 D4 15.6/72]  +assembler,foundry,volatilesWell,2x solar,silicaQuarry,siliconRefinery
+T10 br[4/2/1] tiles52/52 P100 | power:17.6 workers:14.3 metal:10.2 components:10.1 circuits:0 research:0 food:9.5  [D3 18.1/24 D4 15.6/72]  +polymerPlant,electronicsFab,2x habitat,2x solar,assembler
+T11 br[4/2/3] tiles52/52 P190 | power:17.6 workers:14.3 metal:10.2 components:10.1 circuits:0 research:0 food:9.5  [D4 15.6/72 D5 0/36 D6 0/90]  <<D3(Electronics) DONE
+T12 br[4/2/3] tiles52/52 P190 | power:12.9 workers:1.3 metal:15.2 components:4 circuits:4 research:3 food:9.5  [D4 15.6/72 D5 4/36 D6 9.5/90]  +glassKiln,2x habitat,circuitFab,solar,lab,assembler
+T13 br[4/2/3] tiles52/52 P190 | power:16.5 workers:7.6 metal:5.1 components:4 circuits:4 research:3 food:8.2  [D4 15.6/72 D5 8/36 D6 17.7/90]  +habitat,3x circuitFab,3x solar
+T14 br[4/2/3] tiles52/52 P190 | power:7.2 workers:5.6 metal:5.1 components:4 circuits:8 research:3 food:8.2  [D4 15.6/72 D5 16/36 D6 25.9/90]  +3x circuitFab,2x solar
+T15 br[4/2/3] tiles52/52 P190 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:6.6 food:8.2  [D5 20/36 D6 34/90]  +2x lab,circuitFab
+T16 br[4/2/3] tiles52/52 P190 | power:7.2 workers:5.6 metal:5.1 components:4 circuits:8 research:3 food:8.2  [D5 28/36 D6 42.2/90]  +2x circuitFab,lab
+T17 br[4/2/3] tiles52/52 P190 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:6.6 food:8.2  [D5 32/36 D6 50.4/90]  +2x lab,circuitFab
+T18 br[4/2/4] tiles52/52 P330 | power:7.2 workers:5.6 metal:5.1 components:4 circuits:8 research:3 food:8.2  [D6 58.5/90 D7 0/27]  +2x circuitFab,lab  <<D5(Hi-tech) DONE
+T19 br[4/2/4] tiles52/52 P330 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:7.8 food:8.2  [D6 66.7/90 D7 7.8/27]  +4x lab
+T20 br[4/2/4] tiles52/52 P330 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:7.8 food:8.2  [D7 15.6/27]  +4x lab
+T21 br[4/2/4] tiles52/52 P330 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:7.8 food:8.2  [D7 23.4/27]  +4x lab
+T22 br[4/2/4] tiles52/52 P550 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:7.8 food:8.2  +4x lab  <<D7(Datacore) DONE
+T23 br[4/2/4] tiles52/52 P550 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:7.8 food:8.2
+T24 br[4/2/4] tiles52/52 P550 | power:7.2 workers:5.6 metal:5.1 components:2 circuits:4 research:7.8 food:8.2
 
 --- RESULT ---
-Outcome   : DEFEAT   prestige 330 (major >= 600)
-Reached   : turn 24, tiles 52/52, build-rate 1/2/3 = 4/2/3
-Directives: D1=MET@3  D2=MET@6  D3=MET@12  D5=MET@17  D4=FAIL@15  D6=FAIL@20  D7=FAIL@24
+Outcome   : MINOR VICTORY   prestige 550 (major >= 600)
+Reached   : turn 25, tiles 52/52, build-rate 1/2/3 = 4/2/4
+Directives: D1=MET@3  D2=MET@6  D3=MET@11  D5=MET@18  D7=MET@22  D4=FAIL@15  D6=FAIL@20
 
 Final map (So=solar Rx=reactor Ra=radiator Hb=habitat Or/Ic/Si/Vo/Re=mines  Sm/Wa/El/Gl/Sl/Gh/Fo/Po/En=refiners As/Ci/Lb=hi-tech; ~~=lava ##=wreck X.=deposit):
 
-So El Vo Po Or Ra Re Wa Ic 
-So Lb Gh Or Fo Wa Si Ic Wa 
- So Hb Hb Gh ## Rx Ra Rx Ra 
-  So Po El ## Gl Sm Sm En Gl 
-   So As Hb Ra Hb Ci Ra Sl En 
-    So Si Sl Ra Hb Hb Vo As Ra 
+So El Vo Gh Or Hb Re Wa Ic 
+So Gl Gh Or As Ra Si Ic Wa 
+ So Hb Hb Sm ## Gl Ra Rx Sl 
+  So So Ra ## En So As So Ra 
+   Wa Lb Si En Rx Ra Hb Hb Fo 
+    El Lb Hb Hb Sl Vo Po Hb Ci 
