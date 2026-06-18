@@ -331,15 +331,79 @@ function activeDirectives(S){ var out=[];
     if(S.done[d.id]||S.failed[d.id]||!S.revealed[d.id]||S.turn>d.deadline) continue; out.push(d); }
   return out; }
 
+/* ---- smarter planning: unblock a scarce, contended input by reallocation ---- */
+
+/* are all tiles of the deposit feeding `raw` occupied? (can't build another extractor) */
+function depositMaxed(S, raw){
+  var pt=PRODUCER[raw], dep=pt?TYPES[pt].deposit:null; if(!dep) return false;
+  for(var id=0;id<S.map.tiles.length;id++){ var t=S.map.tiles[id]; if(t.dep===dep && tileFree(S,id)) return false; }
+  return true;
+}
+/* the set of goods on the production chain of `good` (so we never raze them) */
+function chainGoods(good, set){ set=set||{}; if(set[good]) return set; set[good]=1;
+  var t=PRODUCER[good]; if(!t) return set; for(var g in (TYPES[t].in||{})){ if(g==='power'||g==='workers') continue; chainGoods(g,set); } return set; }
+/* walk the chain of `good`; return a scarce deposit-raw that is maxed AND contended */
+function blockingScarce(S, sol, good, seen){
+  seen=seen||{}; if(seen[good]) return null; seen[good]=1;
+  var t=PRODUCER[good]; if(!t||!unlocked(S,t)) return null;
+  for(var g in (TYPES[t].in||{})){ if(g==='power'||g==='workers') continue;
+    if(get(sol.surplus,g) < TYPES[t].in[g]){
+      var pg=PRODUCER[g];
+      if(pg && TYPES[pg].deposit && depositMaxed(S,g)) return g;
+      var deeper=blockingScarce(S,sol,g,seen); if(deeper) return deeper;
+    } }
+  return null;
+}
+/* raze a NON-critical consumer of `raw` (most output slack) to free it for `criticalGood` */
+function razeCompetitor(S, sol, raw, criticalGood){
+  var crit=chainGoods(criticalGood), best=-1, bestSlack=-1e9;
+  for(var i=0;i<S.buildings.length;i++){ var b=S.buildings[i]; if(!b) continue; var T=TYPES[b.type];
+    if(!T.in || T.in[raw]==null) continue;            /* must consume the scarce raw */
+    if(b.type===PRODUCER[raw]) continue;              /* never the extractor itself */
+    var g0=null; for(var k in (T.out||{})){ g0=k; break; } if(!g0||crit[g0]) continue; /* not on the critical chain */
+    var slack=get(sol.surplus,g0);
+    if(slack>bestSlack){ bestSlack=slack; best=i; }
+  }
+  if(best<0) return false; raze(S,best); return true;
+}
+/* reached when ensureType(good) is blocked: walk the chain and free a contended input
+   (raw OR intermediate) by razing a non-critical consumer of it, then retry. */
+function reallocateFor(S, sol, good, seen){
+  seen=seen||{}; if(seen[good]) return null; seen[good]=1;
+  var t=PRODUCER[good]; if(!t||!unlocked(S,t)) return null;
+  for(var g in (TYPES[t].in||{})){ if(g==='power'||g==='workers') continue;
+    if(get(sol.surplus,g) < TYPES[t].in[g]){
+      if(razeCompetitor(S,sol,g,good)) return ensureType(S,sol,good);  /* freed g -> retry */
+      var deeper=reallocateFor(S,sol,g,seen); if(deeper) return deeper;
+    } }
+  return null;
+}
+
 function chooseType(S, sol){
   if(get(sol.surplus,'workers')<4){ var w=ensureType(S,sol,'workers'); if(w) return w; }
   if(get(sol.surplus,'power')<6){ var pr=ensureType(S,sol,'power'); if(pr){ if(canSoft(S,'reactor')&&pr==='solar'){ var rr=ensureReactor(S,sol); if(rr) return rr; } return pr; } }
-  /* directive goods (required first) — this builds the chains, emitters included */
-  var act=activeDirectives(S).slice().sort(function(a,b){ if(a.must!==b.must)return a.must?-1:1; return a.deadline-b.deadline; });
-  for(var i=0;i<act.length;i++){ var d=act[i];
-    if(get(sol.surplus,d.good)<d.rate*1.1){ var c=ensureType(S,sol,d.good); if(c) return c; } }
-  /* cooling: only when it would actually help an under-cooled emitter (not spam) */
+
+  var act=activeDirectives(S), reqs=[], opts=[], i;
+  for(i=0;i<act.length;i++){ (act[i].must?reqs:opts).push(act[i]); }
+  reqs.sort(function(a,b){return a.deadline-b.deadline;});
+  opts.sort(function(a,b){return a.deadline-b.deadline;});
+
+  /* REQUIRED first; if a required good is blocked, try to reallocate a scarce input to it */
+  var behind=false;
+  for(i=0;i<reqs.length;i++){ var d=reqs[i];
+    if(get(sol.surplus,d.good) < d.rate*1.1){
+      var c=ensureType(S,sol,d.good); if(c) return c;
+      var ra=reallocateFor(S,sol,d.good); if(ra) return ra;
+      behind=true;                                    /* blocked & can't unblock yet */
+    } }
+
+  /* cooling maintenance */
   if(radiatorWouldHelp(S) && canSoft(S,'radiator')) return 'radiator';
+
+  /* only chase OPTIONAL directives when the required spine is on track */
+  if(!behind){ for(i=0;i<opts.length;i++){ var o=opts[i];
+    if(get(sol.surplus,o.good) < o.rate*1.1){ var oc=ensureType(S,sol,o.good); if(oc) return oc; } } }
+
   if(get(sol.surplus,'workers')<8){ var h=ensureType(S,sol,'workers'); if(h) return h; }
   return null;
 }

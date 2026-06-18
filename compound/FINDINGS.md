@@ -232,6 +232,39 @@ sign — the depth is real, not noise.
 - A real game needs an **undo/reallocation** affordance (demolish-to-reallocate) to be
   front-and-centre, since the best plays are spatial reworks.
 
+## Smarter placement AI (`map.js`, updated) — reallocation
+
+Upgraded the map AI from pure greedy to a small **goal-directed planner** with two
+capabilities the baseline lacked:
+
+1. **Required-first focus.** It pursues the required spine and only spends build-rate on
+   *optional* directives when every required one is on track — no more letting an easy
+   optional (food) starve a hard required gate (circuits).
+2. **Reallocation (the key one).** When a required good is blocked because an input is
+   contended, it **razes a non-critical consumer of that input to free it**, then
+   retries — generalised to both scarce raws *and* contended intermediates. Concretely:
+   circuits were blocked because assemblers ate all the electronics; the AI now razes an
+   assembler to redirect electronics into a Circuit Fab. (It also razes the Circuit Fab
+   for electronics once the circuits gate is done, repurposing it toward research.)
+
+Result: **5/7 → 6/7 directives.** The baseline hard-stalled at the circuits gate
+(D5, 0/36); the smarter AI **completes circuits (D5 @T17)** via reallocation and reaches
+the final research gate (D7) at 16.5/27, missing only on timing.
+
+What this tells us:
+- **Reallocation is the defining skill of the spatial game**, and it's now demonstrably
+  AI-expressible: "raze a competing consumer to redirect a scarce flow" is exactly the
+  human move the design wants front-and-centre (and it confirms the DESIGN v0.3.1 note
+  that demolish-to-reallocate must be a first-class verb).
+- The remaining gap is **multi-turn timing**, not a missing mechanic: after winning the
+  circuits gate the colony's labour collapses (workers dip negative) and research can't
+  ramp fast enough before T24. A one-step planner can react but can't *pre-invest* in
+  housing + labs early enough.
+- Naive fixes don't help: simply holding a bigger labour buffer made it lose D5 again
+  (budget pulled off the circuit chain). The real need is **lookahead** — plan the
+  build-rate budget across the next several turns toward the upcoming gate — which is the
+  natural next AI step if we want to clear the scenario outright and probe the skill ceiling.
+
 ## Suggested next steps
 1. Lock in the **laddered-directive** principle in DESIGN.md (gates climb the tiers;
    gate goods are never the build currency).
