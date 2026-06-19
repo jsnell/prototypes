@@ -1,0 +1,375 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+<meta name="theme-color" content="#0b0e14">
+<title>COMPOUND</title>
+<style>
+  :root{ --bg:#0b0e14; --panel:#141a26; --panel2:#1c2433; --ink:#e6edf6; --dim:#8aa0bd; --line:#2a3548;
+         --good:#5ad17a; --bad:#ff6b6b; --warn:#ffd166; --accent:#5aa9ff; }
+  *{ box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+  html,body{ margin:0; background:var(--bg); color:var(--ink);
+    font:14px/1.35 -apple-system,BlinkMacSystemFont,"Segoe UI",Roboto,sans-serif; }
+  body{ padding:8px 8px 90px; max-width:520px; margin:0 auto; }
+  h1{ font-size:15px; margin:0; letter-spacing:2px; }
+  .row{ display:flex; gap:8px; align-items:center; }
+  .sp{ flex:1; }
+  header{ display:flex; align-items:center; gap:10px; margin-bottom:6px; }
+  header .stat{ font-size:12px; color:var(--dim); }
+  header .stat b{ color:var(--ink); }
+  #banner{ display:none; padding:8px 10px; border-radius:8px; font-weight:600; margin:6px 0; text-align:center; }
+  #map{ width:100%; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px; }
+  svg{ width:100%; height:auto; display:block; }
+  .hx{ cursor:pointer; }
+  .hx polygon{ stroke:#0b0e14; stroke-width:1; }
+  .hx text{ fill:#0b0e14; font-size:9px; font-weight:700; text-anchor:middle; dominant-baseline:middle; pointer-events:none; }
+  .hx .lab2{ fill:#fff; }
+  .legalGlow polygon{ stroke:var(--good); stroke-width:2.5; }
+  .selGlow polygon{ stroke:#fff; stroke-width:3; }
+  .panel{ background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:8px; margin-top:8px; }
+  .ttl{ font-size:11px; text-transform:uppercase; letter-spacing:1px; color:var(--dim); margin:0 0 6px; }
+  .chips{ display:flex; flex-wrap:wrap; gap:5px; }
+  .chip{ background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:3px 7px; font-size:12px; }
+  .chip b{ font-variant-numeric:tabular-nums; }
+  .pos{ color:var(--good); } .neg{ color:var(--bad); } .zero{ color:var(--dim); }
+  .pal{ display:grid; grid-template-columns:repeat(auto-fill,minmax(86px,1fr)); gap:6px; }
+  .pbtn{ background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:6px; text-align:left;
+    color:var(--ink); font-size:12px; position:relative; }
+  .pbtn:disabled{ opacity:.38; }
+  .pbtn.sel{ outline:2px solid var(--accent); }
+  .pbtn .nm{ font-weight:600; display:block; }
+  .pbtn .mt{ color:var(--dim); font-size:10.5px; }
+  .pbtn .badge{ position:absolute; top:5px; right:6px; font-size:10px; color:var(--warn); font-variant-numeric:tabular-nums; }
+  .dir{ border:1px solid var(--line); border-radius:8px; padding:7px; margin-bottom:6px; background:var(--panel2); }
+  .dir.done{ opacity:.55; } .dir.failed{ border-color:var(--bad); }
+  .dir .top{ display:flex; gap:6px; align-items:baseline; }
+  .dir .nm{ font-weight:600; } .dir .dl{ color:var(--dim); font-size:11px; margin-left:auto; }
+  .dir .req{ font-size:12px; color:var(--dim); margin:2px 0; }
+  .bar{ height:6px; background:#0b0e14; border-radius:4px; overflow:hidden; margin-top:4px; }
+  .bar i{ display:block; height:100%; background:var(--accent); }
+  .tag{ font-size:10px; padding:1px 5px; border-radius:4px; background:#26324a; color:var(--dim); }
+  .tag.req{ background:#3a2a14; color:var(--warn); }
+  .tag.lk{ background:#2a1c2c; color:#c98fd6; }
+  #bigbtn{ position:fixed; left:0; right:0; bottom:0; max-width:520px; margin:0 auto; padding:10px;
+    background:linear-gradient(#0b0e1400,#0b0e14 30%); }
+  #endturn{ width:100%; padding:14px; font-size:16px; font-weight:700; border:0; border-radius:12px;
+    background:var(--accent); color:#04101f; }
+  #endturn:disabled{ background:#3a4a63; opacity:.6; }
+  #demo{ display:none; padding:8px 10px; border-radius:8px; border:1px solid var(--bad); background:#2a1414; color:var(--ink); }
+  .help{ font-size:12px; color:var(--dim); }
+  .help b{ color:var(--ink); }
+  details summary{ cursor:pointer; color:var(--accent); font-size:12px; }
+  .small{ font-size:11px; color:var(--dim); }
+  button{ font-family:inherit; }
+</style>
+</head>
+<body>
+<header>
+  <h1>COMPOUND</h1>
+  <div class="sp"></div>
+  <div class="stat">Turn <b id="hTurn">1</b>/<b id="hTurns">24</b></div>
+  <div class="stat">Prestige <b id="hPres">0</b></div>
+</header>
+
+<div id="banner"></div>
+
+<div id="map"></div>
+
+<div class="panel">
+  <div class="row" style="margin-bottom:6px">
+    <div class="ttl" style="margin:0">Earth delivery this turn</div>
+    <div class="sp"></div>
+    <div id="rates" class="small"></div>
+  </div>
+  <div id="selinfo" class="help">Tap a building below, then tap a tile to place it.</div>
+  <button id="demo" onclick="doDemolish()">Demolish selected</button>
+</div>
+
+<div class="panel">
+  <div class="ttl">Flows (per turn surplus — fed to directives or lost)</div>
+  <div id="flows" class="chips"></div>
+</div>
+
+<div class="panel">
+  <div class="ttl">Build (free — limited per tier)</div>
+  <div id="palette" class="pal"></div>
+</div>
+
+<div class="panel">
+  <div class="ttl">Directives — the tech tree</div>
+  <div id="dirs"></div>
+</div>
+
+<details class="panel">
+  <summary>How to play</summary>
+  <div class="help" style="margin-top:6px">
+   <b>Goal:</b> complete every ★ required directive by its deadline. Reach the prestige
+   threshold for a MAJOR win.<br><br>
+   <b>Buildings are free</b> but Earth only delivers a few per tier each turn (the counts
+   in “Earth delivery”). <b>Nothing is stockpiled</b> — each turn every building turns input
+   flows into output flows; spare output feeds your active directives or is lost.<br><br>
+   <b>Placement matters.</b> Mines need their deposit tile. <b>Solar</b> is stronger toward
+   the sunward (left) edge. <b>Heat</b> plants (Smelter/Foundry/Reactor/…) run better next to a
+   <b>Radiator</b>. <b>Reactors irradiate neighbours</b> — keep Habitats away (or in a lava tube ~).
+   A building gets a bonus per adjacent <b>input producer</b>, so cluster your supply chains.<br><br>
+   <b>Workers</b> come from Habitats (which need food/water/O₂/power). Every other building needs
+   staffing. <b>Demolish</b> to rework a full map (free this turn; refunds the slot if placed this turn).<br><br>
+   Directive rewards <b>raise build-rate / unlock buildings</b> — that’s how you grow.
+  </div>
+</details>
+
+<div id="bigbtn"><button id="endturn" onclick="endTurn()">End Turn ▶</button></div>
+
+<script>
+"use strict";
+/* ===================== ENGINE (ported from the v0.3 map prototype) ===================== */
+var W=9,H=6, DIRS=[[1,0],[-1,0],[0,1],[0,-1],[1,-1],[-1,1]];
+function buildMap(){
+  var tiles=[],idOf={},q,r;
+  for(r=0;r<H;r++)for(q=0;q<W;q++){var id=tiles.length;tiles.push({id:id,q:q,r:r,dep:null,lava:false,wreck:false});idOf[q+","+r]=id;}
+  function set(q,r,f){var id=idOf[q+","+r];if(id!=null)f(tiles[id]);}
+  function dep(L,k){for(var i=0;i<L.length;i++)set(L[i][0],L[i][1],function(t){t.dep=k;});}
+  dep([[3,1],[4,3],[3,4],[5,2],[4,0]],"ore");
+  dep([[8,0],[8,2],[8,4],[7,5],[7,1],[8,5],[7,3]],"ice");
+  dep([[2,2],[2,4],[6,1],[6,4],[1,5]],"silica");
+  dep([[6,0],[1,3]],"rare");
+  dep([[5,5],[2,0],[6,5]],"volatiles");
+  set(1,1,function(t){t.lava=true;});set(1,4,function(t){t.lava=true;});
+  set(4,2,function(t){t.wreck=true;});set(3,3,function(t){t.wreck=true;});
+  for(var i=0;i<tiles.length;i++){var t=tiles[i];t.nb=[];for(var d=0;d<DIRS.length;d++){var n=idOf[(t.q+DIRS[d][0])+","+(t.r+DIRS[d][1])];if(n!=null)t.nb.push(n);}}
+  return {tiles:tiles,idOf:idOf};
+}
+function sunFactor(q){return 1-0.6*q/(W-1);}
+var TYPES={
+  solar:{bt:1,out:{power:10},solarScaled:true,cat:"pow"},
+  reactor:{bt:2,in:{water:2,workers:1},out:{power:44},heat:3,radiation:true,cat:"pow"},
+  radiator:{bt:1,coolOut:12,cat:"rad"},
+  habitat:{bt:1,in:{food:1.2,water:1.2,oxygen:0.6,power:1.2},out:{workers:6},radSensitive:true,lavaBonus:true,cat:"hab"},
+  oreMine:{bt:1,in:{power:3,workers:1},out:{ore:12},deposit:"ore",cat:"ext"},
+  iceExtractor:{bt:1,in:{power:3,workers:1},out:{ice:12},deposit:"ice",cat:"ext"},
+  silicaQuarry:{bt:1,in:{power:3,workers:1},out:{silica:12},deposit:"silica",cat:"ext"},
+  volatilesWell:{bt:2,in:{power:4,workers:1},out:{volatiles:10},deposit:"volatiles",cat:"ext"},
+  rareMine:{bt:2,in:{power:6,workers:2},out:{rare:5},deposit:"rare",cat:"ext"},
+  smelter:{bt:1,in:{ore:8,power:6,workers:1},out:{metal:9},heat:2,cat:"ref"},
+  waterPlant:{bt:1,in:{ice:8,power:4,workers:1},out:{water:10},cat:"ref"},
+  electrolysis:{bt:1,in:{water:6,power:6,workers:1},out:{oxygen:4,hydrogen:2},cat:"ref"},
+  glassKiln:{bt:1,in:{silica:6,power:5,workers:1},out:{glass:5},heat:2,cat:"ref"},
+  siliconRefinery:{bt:1,in:{silica:6,power:6,workers:1},out:{silicon:4},heat:2,cat:"ref"},
+  greenhouse:{bt:1,in:{water:4,volatiles:2,power:3,workers:1},out:{food:8},radSensitive:true,cat:"ref"},
+  foundry:{bt:2,in:{metal:5,rare:1,oxygen:2,power:6,workers:1},out:{alloy:4},heat:3,cat:"ref"},
+  polymerPlant:{bt:2,in:{volatiles:5,hydrogen:2,power:4,workers:1},out:{polymer:4},cat:"ref"},
+  electronicsFab:{bt:2,in:{silicon:3,rare:1,glass:2,power:5,workers:2},out:{electronics:4},cat:"ref"},
+  assembler:{bt:3,in:{alloy:2,polymer:2,electronics:2,power:5,workers:2},out:{components:3},heat:2,locked:true,cat:"adv"},
+  circuitFab:{bt:3,in:{electronics:2,glass:2,rare:1,power:6,workers:2},out:{circuits:4},locked:true,cat:"adv"},
+  lab:{bt:3,in:{components:2,power:6,workers:2},out:{research:3},locked:true,labSyn:true,cat:"adv"}
+};
+var PRODUCER={power:"solar",workers:"habitat",ore:"oreMine",ice:"iceExtractor",silica:"silicaQuarry",
+  volatiles:"volatilesWell",rare:"rareMine",metal:"smelter",water:"waterPlant",oxygen:"electrolysis",
+  hydrogen:"electrolysis",glass:"glassKiln",silicon:"siliconRefinery",alloy:"foundry",polymer:"polymerPlant",
+  electronics:"electronicsFab",food:"greenhouse",components:"assembler",circuits:"circuitFab",research:"lab"};
+var NAME={solar:"Solar",reactor:"Reactor",radiator:"Radiator",habitat:"Habitat",oreMine:"Ore Mine",
+  iceExtractor:"Ice Extractor",silicaQuarry:"Silica Quarry",volatilesWell:"Volatiles Well",rareMine:"Rare Mine",
+  smelter:"Smelter",waterPlant:"Water Plant",electrolysis:"Electrolysis",glassKiln:"Glass Kiln",
+  siliconRefinery:"Silicon Ref.",greenhouse:"Greenhouse",foundry:"Foundry",polymerPlant:"Polymer Plant",
+  electronicsFab:"Electronics",assembler:"Assembler",circuitFab:"Circuit Fab",lab:"Lab"};
+var ABBR={solar:"So",reactor:"Rx",radiator:"Ra",habitat:"Hb",oreMine:"Or",iceExtractor:"Ic",silicaQuarry:"Si",
+  volatilesWell:"Vo",rareMine:"Re",smelter:"Sm",waterPlant:"Wa",electrolysis:"El",glassKiln:"Gl",
+  siliconRefinery:"Sl",greenhouse:"Gh",foundry:"Fo",polymerPlant:"Po",electronicsFab:"En",assembler:"As",
+  circuitFab:"Ci",lab:"Lb"};
+var CATCOL={pow:"#e8c14a",rad:"#7f8da3",hab:"#5ad17a",ext:"#c08552",ref:"#5aa9ff",adv:"#b07ad6"};
+var ORDER=["solar","reactor","radiator","habitat","oreMine","iceExtractor","silicaQuarry","volatilesWell",
+  "rareMine","smelter","waterPlant","electrolysis","glassKiln","siliconRefinery","greenhouse","foundry",
+  "polymerPlant","electronicsFab","assembler","circuitFab","lab"];
+var GOODS=(function(){var s={};for(var t in TYPES){var T=TYPES[t];for(var g in (T.in||{}))s[g]=1;for(var g2 in (T.out||{}))s[g2]=1;}var a=[];for(var k in s)a.push(k);return a;})();
+var COLO=0.12;
+function get(o,k){return o[k]||0;}
+
+function neighborsProduce(S,id){var t=S.map.tiles[id],set={};for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;var T=TYPES[S.buildings[bi].type];for(var g in (T.out||{}))set[g]=1;}return set;}
+function neighborHasRadiation(S,id){var t=S.map.tiles[id];for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;if(TYPES[S.buildings[bi].type].radiation)return true;}return false;}
+function countAdj(S,id,pred){var t=S.map.tiles[id],n=0;for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;if(pred(S.buildings[bi].type))n++;}return n;}
+function adjMult(S,type,id){var T=TYPES[type],tile=S.map.tiles[id],m=1;
+  if(T.in){var np=neighborsProduce(S,id),mt=0;for(var g in T.in){if(g==="power"||g==="workers")continue;if(np[g])mt++;}if(mt>3)mt=3;m*=(1+COLO*mt);}
+  if(T.labSyn)m*=1+0.25*countAdj(S,id,function(t){return t==="lab";})+0.10*countAdj(S,id,function(t){return t==="habitat";});
+  if(T.solarScaled)m*=sunFactor(tile.q);
+  if(T.lavaBonus&&tile.lava)m*=1.4;
+  if(T.radSensitive&&!tile.lava&&neighborHasRadiation(S,id))m*=0.4;
+  return m;}
+function heatRatio(S,type,id){var T=TYPES[type];if(!T.heat)return 1;var tile=S.map.tiles[id],avail=0;
+  for(var i=0;i<tile.nb.length;i++){var bi=S.occ[tile.nb[i]];if(bi==null||bi<0)continue;var rt=TYPES[S.buildings[bi].type];if(!rt.coolOut)continue;
+    var em=countAdj(S,tile.nb[i],function(t){return TYPES[t].heat>0;});if(em<1)em=1;avail+=rt.coolOut/em;}
+  return Math.min(1,(1+avail)/T.heat);}
+function effRates(S){var arr=[];for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b)continue;var T=TYPES[b.type];
+  var hr=heatRatio(S,b.type,b.tile),m=adjMult(S,b.type,b.tile)*hr,oin={},oout={};
+  for(var g in (T.in||{}))oin[g]=T.in[g]*hr;for(var g2 in (T.out||{}))oout[g2]=T.out[g2]*m;arr.push({in:oin,out:oout});}return arr;}
+function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=1;var prod,cons;
+  for(var it=0;it<60;it++){prod={};cons={};
+    for(i=0;i<n;i++){var f=frac[i];if(f<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f;}
+    var ratio={};for(var gi=0;gi<GOODS.length;gi++){g=GOODS[gi];var p=get(prod,g),d=get(cons,g);ratio[g]=(d<=1e-9)?1:Math.min(1,p/d);}
+    var md=0;for(i=0;i<n;i++){var r=1;for(g in eff[i].in)r=Math.min(r,ratio[g]==null?0:ratio[g]);var nf=0.5*frac[i]+0.5*r;md=Math.max(md,Math.abs(nf-frac[i]));frac[i]=nf;}
+    if(md<0.0005)break;}
+  prod={};cons={};for(i=0;i<n;i++){var f2=frac[i];if(f2<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f2;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f2;}
+  var sur={};for(var gj=0;gj<GOODS.length;gj++){g=GOODS[gj];sur[g]=get(prod,g)-get(cons,g);}
+  return {prod:prod,cons:cons,surplus:sur};}
+
+function scenario(){return {
+  turns:24, buildRate:{1:4,2:1,3:0}, majorThreshold:600,
+  start:[["solar",0],["solar",1],["habitat",0],["iceExtractor",0],["waterPlant",0],["electrolysis",0],
+         ["oreMine",0],["smelter",0],["greenhouse",0],["volatilesWell",0]],
+  directives:[
+    {id:"D1",name:"Provision",good:"food",rate:14,dur:2,deadline:6,req:[],must:true,reward:{buildRate:{2:1}},rp:40},
+    {id:"D2",name:"Refinery",good:"metal",rate:18,dur:3,deadline:10,req:["D1"],must:true,reward:{unlock:["assembler"],buildRate:{3:1}},rp:60},
+    {id:"D3",name:"Electronics",good:"components",rate:8,dur:3,deadline:15,req:["D2"],must:true,reward:{unlock:["circuitFab","lab"],buildRate:{3:2}},rp:90},
+    {id:"D4",name:"Waterworks",good:"water",rate:24,dur:3,deadline:15,req:["D2"],must:false,reward:{buildRate:{1:2}},rp:50},
+    {id:"D5",name:"Hi-tech",good:"circuits",rate:9,dur:4,deadline:21,req:["D3"],must:true,reward:{buildRate:{3:1}},rp:140},
+    {id:"D6",name:"Foodbelt",good:"food",rate:30,dur:3,deadline:20,req:["D3"],must:false,reward:{buildRate:{2:2}},rp:70},
+    {id:"D7",name:"Datacore",good:"research",rate:9,dur:3,deadline:24,req:["D5"],must:true,reward:{},rp:220}
+  ]};}
+
+/* ---- placement helpers ---- */
+function unlocked(S,t){return !TYPES[t].locked||S.unlocked[t];}
+function tileFree(S,id){var t=S.map.tiles[id];return !t.wreck&&(S.occ[id]==null||S.occ[id]<0);}
+function eligible(S,type,id){var T=TYPES[type],t=S.map.tiles[id];if(!tileFree(S,id))return false;if(T.deposit&&t.dep!==T.deposit)return false;return true;}
+function canPlace(S,type,id){var T=TYPES[type];if(!unlocked(S,type))return false;if(get(S.placed,T.bt)>=get(S.buildRate,T.bt))return false;return eligible(S,type,id);}
+function placeAt(S,type,id){var idx=S.buildings.length;S.buildings.push({type:type,tile:id,turn:S.turn});S.occ[id]=idx;S.placed[TYPES[type].bt]=get(S.placed,TYPES[type].bt)+1;S.tilesUsed++;}
+function prereqsDone(S,d){for(var i=0;i<d.req.length;i++)if(!S.done[d.req[i]])return false;return true;}
+
+/* greedy start placement (gives a viable opening colony) */
+function tileScore(S,type,id){var T=TYPES[type],t=S.map.tiles[id],s=0;
+  if(!T.deposit&&t.dep)s-=6; if(!T.lavaBonus&&t.lava)s-=3; s+=(adjMult(S,type,id)-1)*10;
+  if(T.solarScaled)s+=sunFactor(t.q)*3; return s;}
+function bestTile(S,type){var best=-1,bs=-1e9;for(var id=0;id<S.map.tiles.length;id++){if(!eligible(S,type,id))continue;var sc=tileScore(S,type,id);if(sc>bs){bs=sc;best=id;}}return best;}
+
+/* ===================== GAME STATE ===================== */
+var S;
+function newGame(){
+  var sc=scenario();
+  S={sc:sc,map:buildMap(),turn:1,buildings:[],occ:{},buildRate:Object.assign({},sc.buildRate),
+     unlocked:{},placed:{},done:{},failed:{},progress:{},prestige:0,tilesUsed:0,sel:null,selTile:-1,over:false,result:""};
+  for(var i=0;i<sc.start.length;i++){var id=bestTile(S,sc.start[i][0]);if(id>=0)placeAt(S,sc.start[i][0],id);}
+  S.placed={};
+  render();
+}
+function deliverable(S){var out=[];for(var i=0;i<S.sc.directives.length;i++){var d=S.sc.directives[i];if(S.done[d.id]||S.failed[d.id]||S.turn>d.deadline||!prereqsDone(S,d))continue;out.push(d);}return out;}
+
+/* ===================== ACTIONS ===================== */
+function selectType(t){ if(S.over)return; S.sel=(S.sel===t?null:t); S.selTile=-1; render(); }
+function onTile(id){
+  if(S.over)return;
+  if(S.sel && canPlace(S,S.sel,id)){ placeAt(S,S.sel,id); if(get(S.placed,TYPES[S.sel].bt)>=get(S.buildRate,TYPES[S.sel].bt))S.sel=null; render(); return; }
+  var bi=S.occ[id];
+  if(bi!=null&&bi>=0){ S.selTile=(S.selTile===id?-1:id); S.sel=null; render(); return; }
+  S.selTile=-1; render();
+}
+function doDemolish(){
+  if(S.selTile<0)return; var bi=S.occ[S.selTile]; if(bi==null||bi<0)return;
+  var b=S.buildings[bi];
+  if(b.turn===S.turn){ S.placed[TYPES[b.type].bt]=Math.max(0,get(S.placed,TYPES[b.type].bt)-1); } /* refund slot if placed this turn */
+  S.occ[b.tile]=-1; S.buildings[bi]=null; S.tilesUsed--; S.selTile=-1; render();
+}
+function applyReward(S,d){var r=d.reward||{};if(r.unlock)for(var i=0;i<r.unlock.length;i++)S.unlocked[r.unlock[i]]=1;
+  if(r.buildRate)for(var bt in r.buildRate)S.buildRate[bt]=get(S.buildRate,bt)+r.buildRate[bt];if(d.rp)S.prestige+=d.rp;}
+function endTurn(){
+  if(S.over)return;
+  var R=solveFlows(S), avail=Object.assign({},R.surplus), msgs=[];
+  var act=deliverable(S).slice().sort(function(a,b){if(a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
+  for(var i=0;i<act.length;i++){var d=act[i];var give=Math.min(d.rate,Math.max(0,get(avail,d.good)));avail[d.good]=get(avail,d.good)-give;
+    S.progress[d.id]=get(S.progress,d.id)+give;
+    if(S.progress[d.id]>=d.rate*d.dur-1e-6){S.done[d.id]="done";msgs.push("✓ "+d.name+" complete");applyReward(S,d);}}
+  for(i=0;i<S.sc.directives.length;i++){var dd=S.sc.directives[i];if(S.done[dd.id]||S.failed[dd.id])continue;
+    if(S.turn>=dd.deadline&&get(S.progress,dd.id)<dd.rate*dd.dur-1e-6){S.failed[dd.id]="fail";if(dd.must)msgs.push("✗ "+dd.name+" FAILED");}}
+  /* win / lose */
+  var lost=false;for(i=0;i<S.sc.directives.length;i++){if(S.sc.directives[i].must&&S.failed[S.sc.directives[i].id])lost=true;}
+  var allMust=true;for(i=0;i<S.sc.directives.length;i++){var x=S.sc.directives[i];if(x.must&&S.done[x.id]!=="done")allMust=false;}
+  if(lost){S.over=true;S.result="DEFEAT — "+msgs.filter(function(m){return m.indexOf("FAILED")>=0;})[0];}
+  else if(allMust){S.over=true;S.result=(S.prestige>=S.sc.majorThreshold?"MAJOR VICTORY":"MINOR VICTORY")+" — prestige "+Math.round(S.prestige);}
+  else { S.turn++; S.placed={}; S.sel=null; S.selTile=-1;
+    if(S.turn>S.sc.turns){S.over=true;S.result="DEFEAT — ran out of turns";} }
+  S.lastMsgs=msgs;
+  render();
+}
+
+/* ===================== RENDER ===================== */
+var HEX=22;
+function hexXY(q,r){return {x:HEX*Math.sqrt(3)*(q+r/2)+HEX, y:HEX*1.5*r+HEX};}
+function hexPts(cx,cy){var p=[];for(var i=0;i<6;i++){var a=Math.PI/180*(60*i-90);p.push((cx+HEX*0.92*Math.cos(a)).toFixed(1)+","+(cy+HEX*0.92*Math.sin(a)).toFixed(1));}return p.join(" ");}
+function depCol(d){return {ore:"#5a3a26",ice:"#1d3a44",silica:"#4a4030",rare:"#3d1f3f",volatiles:"#37401f"}[d]||"#202736";}
+function tileFill(S,t){var bi=S.occ[t.id];if(bi!=null&&bi>=0)return CATCOLor(S.buildings[bi].type);if(t.wreck)return "#0d1118";if(t.lava)return "#2a1838";if(t.dep)return depCol(t.dep);return "#1a2130";}
+function CATCOLor(type){return CATCOL[TYPES[type].cat]||"#888";}
+function render(){
+  document.getElementById("hTurn").textContent=S.turn;
+  document.getElementById("hTurns").textContent=S.sc.turns;
+  document.getElementById("hPres").textContent=Math.round(S.prestige);
+  var R=solveFlows(S);
+  /* banner */
+  var bn=document.getElementById("banner");
+  if(S.over){bn.style.display="block";bn.textContent=S.result;
+    bn.style.background=S.result.indexOf("VICTORY")>=0?"#16341f":"#341616";
+    bn.style.color=S.result.indexOf("VICTORY")>=0?"#9af0b4":"#ff9b9b";
+  } else if(S.lastMsgs&&S.lastMsgs.length){bn.style.display="block";bn.style.background="#15233a";bn.style.color="#bcd6ff";bn.textContent=S.lastMsgs.join("  ·  ");}
+  else bn.style.display="none";
+  /* map */
+  var legal={}; if(S.sel){for(var id=0;id<S.map.tiles.length;id++)if(canPlace(S,S.sel,id))legal[id]=1;}
+  var minX=1e9,minY=1e9,maxX=-1e9,maxY=-1e9,parts=[];
+  for(var i=0;i<S.map.tiles.length;i++){var t=S.map.tiles[i];var c=hexXY(t.q,t.r);
+    minX=Math.min(minX,c.x-HEX);maxX=Math.max(maxX,c.x+HEX);minY=Math.min(minY,c.y-HEX);maxY=Math.max(maxY,c.y+HEX);}
+  for(i=0;i<S.map.tiles.length;i++){t=S.map.tiles[i];c=hexXY(t.q,t.r);
+    var bi=S.occ[t.id], lab="", lab2=false;
+    if(bi!=null&&bi>=0){lab=ABBR[S.buildings[bi].type];lab2=true;}
+    else if(t.wreck)lab="";else if(t.lava)lab="~";else if(t.dep)lab=t.dep[0].toUpperCase();
+    var cls="hx"+(S.selTile===t.id?" selGlow":(legal[t.id]?" legalGlow":""));
+    parts.push('<g class="'+cls+'" onclick="onTile('+t.id+')">'
+      +'<polygon points="'+hexPts(c.x,c.y)+'" fill="'+tileFill(S,t)+'"></polygon>'
+      +(lab?'<text class="'+(lab2?"lab2":"")+'" x="'+c.x.toFixed(1)+'" y="'+(c.y+0.5).toFixed(1)+'">'+lab+'</text>':'')
+      +'</g>');}
+  document.getElementById("map").innerHTML='<svg viewBox="'+minX.toFixed(0)+' '+minY.toFixed(0)+' '+(maxX-minX).toFixed(0)+' '+(maxY-minY).toFixed(0)+'">'+parts.join("")+'</svg>';
+  /* rates */
+  var rr=[1,2,3].map(function(bt){return "T"+bt+" <b>"+(get(S.buildRate,bt)-get(S.placed,bt))+"</b>/"+get(S.buildRate,bt);}).join("  ");
+  document.getElementById("rates").innerHTML=rr;
+  /* selection info */
+  var si=document.getElementById("selinfo"), demo=document.getElementById("demo");
+  demo.style.display="none";
+  if(S.selTile>=0){var b=S.buildings[S.occ[S.selTile]];si.innerHTML="<b>"+NAME[b.type]+"</b> — "+recipeStr(b.type);demo.style.display="block";}
+  else if(S.sel){si.innerHTML="Placing <b>"+NAME[S.sel]+"</b>. Tap a highlighted tile. ("+recipeStr(S.sel)+")";}
+  else si.innerHTML="Tap a building below, then tap a tile to place it. Tap a built tile to inspect/demolish.";
+  /* flows */
+  var keys=["power","workers","food","water","oxygen","metal","components","circuits","research"];
+  document.getElementById("flows").innerHTML=keys.map(function(g){var v=Math.round(get(R.surplus,g)*10)/10;
+    var cl=v>0.05?"pos":(v<-0.05?"neg":"zero");return '<span class="chip">'+g.slice(0,4)+' <b class="'+cl+'">'+v+'</b></span>';}).join("");
+  /* palette */
+  document.getElementById("palette").innerHTML=ORDER.map(function(t){
+    var T=TYPES[t],lk=!unlocked(S,t),rem=get(S.buildRate,T.bt)-get(S.placed,T.bt),dis=lk||rem<=0||S.over;
+    return '<button class="pbtn'+(S.sel===t?" sel":"")+'" '+(dis?"disabled":"")+' onclick="selectType(\''+t+'\')">'
+      +'<span class="nm" style="color:'+CATCOLor(t)+'">'+(lk?"🔒 ":"")+NAME[t]+'</span>'
+      +'<span class="mt">T'+T.bt+' · '+shortRecipe(t)+'</span>'
+      +'<span class="badge">'+(lk?"":rem)+'</span></button>';}).join("");
+  /* directives */
+  document.getElementById("dirs").innerHTML=S.sc.directives.map(function(d){
+    var pr=get(S.progress,d.id),need=d.rate*d.dur,pct=Math.min(100,100*pr/need);
+    var st=S.done[d.id]?"done":(S.failed[d.id]?"failed":"");
+    var locked=!prereqsDone(S,d)&&!S.done[d.id];
+    var tags=(d.must?'<span class="tag req">★ required</span>':'<span class="tag">optional</span>')
+      +(locked?' <span class="tag lk">needs '+d.req.join(",")+'</span>':'');
+    var fed=deliverable(S).indexOf(d)>=0?get(solveFlows(S).surplus,d.good):0;
+    return '<div class="dir '+st+'"><div class="top"><span class="nm">'+d.name+'</span> '+tags
+      +'<span class="dl">by T'+d.deadline+'</span></div>'
+      +'<div class="req">supply <b>'+d.rate+' '+d.good+'</b>/turn ×'+d.dur+'  ·  reward: '+rewardStr(d)+'</div>'
+      +'<div class="bar"><i style="width:'+pct+'%"></i></div>'
+      +'<div class="small">'+Math.round(pr*10)/10+' / '+need+(st==="done"?"  ✓":(st==="failed"?"  ✗":(locked?"":"  (+"+(Math.round(Math.min(d.rate,Math.max(0,fed))*10)/10)+"/turn)")))+'</div></div>';
+  }).join("");
+  document.getElementById("endturn").disabled=S.over;
+  if(S.over)document.getElementById("endturn").textContent="Game over — tap to restart",document.getElementById("endturn").disabled=false,
+    document.getElementById("endturn").onclick=function(){newGame();document.getElementById("endturn").onclick=endTurn;document.getElementById("endturn").textContent="End Turn ▶";};
+}
+function recipeStr(t){var T=TYPES[t];var i=Object.keys(T.in||{}).map(function(g){return T.in[g]+" "+g;}).join(", ")||"—";
+  var o=Object.keys(T.out||{}).map(function(g){return T.out[g]+" "+g;}).join(", ")||(T.coolOut?"cooling":"—");
+  var extra=(T.deposit?" · needs "+T.deposit:"")+(T.heat?" · heat (wants radiator)":"")+(T.radiation?" · irradiates":"")+(T.solarScaled?" · sunline":"");
+  return i+" → "+o+extra;}
+function shortRecipe(t){var T=TYPES[t];var o=Object.keys(T.out||{})[0];if(o)return "→"+o;if(T.coolOut)return "cooling";return "";}
+function rewardStr(d){var r=d.reward||{},a=[];if(r.unlock)a.push("unlock "+r.unlock.map(function(u){return NAME[u];}).join("/"));
+  if(r.buildRate)for(var bt in r.buildRate)a.push("+"+r.buildRate[bt]+" T"+bt+" build");if(d.rp)a.push(d.rp+" prestige");return a.join(", ")||"—";}
+
+newGame();
+</script>
+</body>
+</html>
