@@ -41,28 +41,40 @@ function bestTileByMult(S,type){
   return best;
 }
 /* constructive planner: drill to the deepest starved input; returns a type to build */
-function chooseBuild(S,good,R,depth){
-  if(depth>10)return null;
+/* What to build to push `good` toward an open directive. Recurses into the deepest
+   under-supplied input. Workers are special: you can't build them — you grow the
+   population, and only when a directive actually needs more (housing if full;
+   life-support only if immigration is paused). No buffers. */
+function chooseForGood(S,good,R,depth){
+  if(depth>12)return null;
+  if(good==="workers"){
+    var ls=["food","water","power"];
+    for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){var s=chooseForGood(S,ls[j],R,depth+1);if(s)return s;} /* feed current pop */
+    for(var k=0;k<ls.length;k++)if(get(R.surplus,ls[k])<S.immig*E.LIFE[ls[k]]-1e-6){var s2=chooseForGood(S,ls[k],R,depth+1);if(s2)return s2;} /* and the incoming wave */
+    if(R.cap-S.pop<=0.01)return (E.unlocked(S,"habitat")&&bestTileByMult(S,"habitat")>=0)?"habitat":null; /* then add housing */
+    return null;                                                             /* fed + room -> wait for immigration */
+  }
   var ps=producersFor(good);
   for(var pi=0;pi<ps.length;pi++){var type=ps[pi],T=TYPES[type];
     if(!E.unlocked(S,type))continue;
-    if(bestTileByMult(S,type)<0)continue;              /* no eligible tile for this producer */
-    if(T.in)for(var g in T.in){                        /* build a starved input first */
-      if(get(R.surplus,g)<T.in[g]*0.6){var sub=chooseBuild(S,g,R,depth+1);if(sub)return sub;}
+    if(bestTileByMult(S,type)<0)continue;
+    var wait=false;
+    if(T.in)for(var g in T.in){
+      if(get(R.surplus,g)<T.in[g]*0.6){var sub=chooseForGood(S,g,R,depth+1);if(sub)return sub;wait=true;}
     }
+    if(wait)continue;                                  /* an input can't be improved now -> don't build it unfed/unstaffed */
     return type;
   }
   return null;
 }
 var ALLMODE=process.env.ALL==="1", ONLY_OPT=process.env.OPT||null;
-var CHASE=ALLMODE||!!ONLY_OPT;                          /* pursuing optionals (Major) -> sort by deadline */
+var CHASE=!!ONLY_OPT;                                   /* OPT mode chases the optional by deadline; ALL mode protects required (must-first) */
 function include(d){return d.must||ALLMODE||(ONLY_OPT&&d.id===ONLY_OPT);}
-function focusList(S){
-  return S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&include(d);})
+/* the currently-OPEN directives we're allowed to pursue, in priority order */
+function targets(S){
+  return E.deliverable(S).filter(include)
     .sort(function(a,b){if(!CHASE&&a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
 }
-function lifeGoals(S,R){return [{good:"power",rate:1},{good:"food",rate:0.5},{good:"water",rate:0.5}]
-  .filter(function(x){return get(R.surplus,x.good)<x.rate;});}
 
 /* reclaim a tile by demolishing a building whose removal keeps life support met
    and doesn't drop any directive that's currently being satisfied (no thrash) */
@@ -91,17 +103,19 @@ function tryBuild(S,type){                             /* place on best tile, re
 }
 function greedyTurn(S){
   for(var guard=0;guard<160;guard++){
-    var R=E.solveFlows(S),placed=false;
-    /* 1) house up when colonists run low and there's room to grow */
-    if(get(R.surplus,"workers")<2 && R.cap-S.pop<S.immig && hasSlot(S,"habitat")){ if(tryBuild(S,"habitat")){continue;} }
-    /* 2) industry is worker-gated: only add worker-consuming buildings if colonists are free */
-    if(get(R.surplus,"workers")>=1){
-      var goals=lifeGoals(S,R).concat(focusList(S).filter(function(d){return get(R.surplus,d.good)<d.rate*1.05+0.25;}));
-      for(var i=0;i<goals.length;i++){var ty=chooseBuild(S,goals[i].good,R,0);
+    var R=E.solveFlows(S),built=false,ls=["food","water","power"];
+    /* 0) survival first: keep current population fed (else immigration stalls everything) */
+    for(var j=0;j<ls.length&&!built;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
+      var t0=chooseForGood(S,ls[j],R,0);if(t0&&hasSlot(S,t0)&&tryBuild(S,t0))built=true;}
+    /* 1) build toward the currently-open directives */
+    if(!built){var ts=targets(S);
+      for(var i=0;i<ts.length;i++){var d=ts[i];
+        if(get(R.surplus,d.good)>=d.rate-0.05)continue;
+        var ty=chooseForGood(S,d.good,R,0);
         if(!ty||!hasSlot(S,ty))continue;
-        if(tryBuild(S,ty)){placed=true;break;}}
+        if(tryBuild(S,ty)){built=true;break;}}
     }
-    if(!placed)break;
+    if(!built)break;
   }
   return E.processEndTurn(S);
 }
