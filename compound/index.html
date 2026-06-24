@@ -192,7 +192,7 @@ function previewDirectives(R){
   var avail=Object.assign({},R.surplus),out={};
   var act=C.deliverable(S).slice().sort(function(a,b){if(a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
   for(var i=0;i<act.length;i++){var d=act[i];var have=get(avail,d.good);
-    if(have>=d.rate-5e-3){out[d.id]={meet:true,have:have};avail[d.good]=have-d.rate;}
+    if(C.meetsRate(have,d.rate)){out[d.id]={meet:true,have:have};avail[d.good]=have-d.rate;}
     else out[d.id]={meet:false,have:have};}
   return out;
 }

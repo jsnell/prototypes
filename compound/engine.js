@@ -166,14 +166,16 @@ function deliverable(S){var out=[];for(var i=0;i<S.sc.directives.length;i++){var
 function applyReward(S,d){var r=d.reward||{};if(r.unlock)for(var i=0;i<r.unlock.length;i++)S.unlocked[r.unlock[i]]=1;
   if(r.buildRate)for(var bt in r.buildRate)S.buildRate[bt]=get(S.buildRate,bt)+r.buildRate[bt];if(d.rp)S.prestige+=d.rp;}
 
-var DIR_EPS=5e-3;
+/* a directive is met when the surplus, rounded the way the UI shows it (1 dp),
+   meets the rate — so "what you see is what you get", no sub-integer gotchas. */
+function meetsRate(have,rate){return Math.round(have*10)/10>=rate;}
 function processEndTurn(S){
   if(S.over)return {msgs:[],over:true};
   var R=solveFlows(S), avail=Object.assign({},R.surplus), msgs=[];
   S.metNow={};
   var act=deliverable(S).slice().sort(function(a,b){if(a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
   for(var i=0;i<act.length;i++){var d=act[i];
-    if(get(avail,d.good)>=d.rate-DIR_EPS){
+    if(meetsRate(get(avail,d.good),d.rate)){
       avail[d.good]=get(avail,d.good)-d.rate; S.metNow[d.id]=1;
       S.progress[d.id]=get(S.progress,d.id)+1;
       if(S.progress[d.id]>=d.dur){S.done[d.id]="done";msgs.push("✓ "+d.id+" "+d.name+" complete");applyReward(S,d);}
@@ -200,6 +202,6 @@ root.COMPOUND={
   effRates:effRates,solveFlows:solveFlows,limitingInput:limitingInput,scenario:scenario,
   unlocked:unlocked,eligible:eligible,placeReason:placeReason,canPlace:canPlace,
   placeAt:placeAt,prereqsDone:prereqsDone,tileScore:tileScore,bestTile:bestTile,
-  newState:newState,deliverable:deliverable,applyReward:applyReward,processEndTurn:processEndTurn
+  newState:newState,deliverable:deliverable,applyReward:applyReward,processEndTurn:processEndTurn,meetsRate:meetsRate
 };
 })(typeof module!=="undefined"&&module.exports?module.exports:(this.window?window:this));
