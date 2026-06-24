@@ -70,7 +70,7 @@ var COLO=0.22;                                       /* adjacency cluster bonus 
 /* population: colonists are a persistent stock = your workforce. Habitats give
    capacity; immigration fills it over time, gated by life support. */
 var LIFE={food:0.2,water:0.2,power:0.2};             /* per-capita life support demand (priority over industry) */
-var HAB_CAP=5, IMMIG_BASE=2, RECY_FRAC=0.6;          /* a reclaimer-serviced habitat recycles 60% of its water */
+var HAB_CAP=5, IMMIG_BASE=3, RECY_FRAC=0.6;          /* a reclaimer-serviced habitat recycles 60% of its water */
 function get(o,k){return o[k]||0;}
 
 /* ---- adjacency / heat / radiation ---- */
@@ -139,9 +139,9 @@ function scenario(){return {
     {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:5,req:[],must:true,reward:{buildRate:{1:1}},rp:40},
     {id:"D2",name:"Metalworks",good:"metal",rate:5,dur:2,deadline:9,req:["D1"],must:true,reward:{buildRate:{2:1}},rp:70},
     {id:"D3",name:"Electronics",good:"electronics",rate:4,dur:2,deadline:13,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{2:1,3:2}},rp:120},
-    {id:"D4",name:"Waterworks",good:"water",rate:12,dur:2,deadline:11,req:["D1"],must:false,reward:{buildRate:{1:1}},rp:60},
+    {id:"D4",name:"Waterworks",good:"water",rate:9,dur:2,deadline:11,req:["D1"],must:false,reward:{buildRate:{1:1}},rp:60},
     {id:"D5",name:"Assembly",good:"components",rate:3,dur:3,deadline:18,req:["D3"],must:true,reward:{buildRate:{2:1,3:1}},rp:160},
-    {id:"D6",name:"Foodbelt",good:"food",rate:12,dur:2,deadline:17,req:["D3"],must:false,reward:{buildRate:{2:1}},rp:90},
+    {id:"D6",name:"Foodbelt",good:"food",rate:14,dur:2,deadline:18,req:["D3"],must:false,reward:{buildRate:{2:1}},rp:90},
     {id:"D7",name:"Datacore",good:"research",rate:3,dur:2,deadline:23,req:["D5"],must:true,reward:{},rp:260}
   ]};}
 
