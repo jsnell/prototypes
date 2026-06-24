@@ -70,7 +70,9 @@ var COLO=0.22;                                       /* adjacency cluster bonus 
 function get(o,k){return o[k]||0;}
 
 /* ---- adjacency / heat / radiation ---- */
-function neighborsProduce(S,id){var t=S.map.tiles[id],set={};for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;var T=TYPES[S.buildings[bi].type];for(var g in (T.out||{}))set[g]=1;if(T.reclaim)set[T.reclaim.good]=1;}return set;}
+function neighborsProduce(S,id){var t=S.map.tiles[id],set={};for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;var T=TYPES[S.buildings[bi].type];for(var g in (T.out||{}))set[g]=1;}return set;}
+/* note: a Reclaimer's recycled output is intentionally NOT a cluster supplier —
+   it draws from adjacent Habitats, so counting it would be a degenerate feedback loop. */
 function neighborHasRadiation(S,id){var t=S.map.tiles[id];for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;if(TYPES[S.buildings[bi].type].radiation)return true;}return false;}
 function countAdj(S,id,pred){var t=S.map.tiles[id],n=0;for(var i=0;i<t.nb.length;i++){var bi=S.occ[t.nb[i]];if(bi==null||bi<0)continue;if(pred(S.buildings[bi].type))n++;}return n;}
 function clusterCount(S,type,id){var T=TYPES[type];if(!T.in)return 0;var np=neighborsProduce(S,id),mt=0;for(var g in T.in){if(g==="power"||g==="workers")continue;if(np[g])mt++;}return mt>3?3:mt;}
