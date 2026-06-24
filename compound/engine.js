@@ -39,7 +39,7 @@ var TYPES={
   scrapper:{bt:2,in:{power:2,workers:1},out:{metal:2,rare:1},requiresWreck:true,cat:"ext"}, /* alt metal+rare, on wrecks */
   smelter:{bt:1,in:{ore:2,power:1,workers:1},out:{metal:2},heat:2,cat:"ref"},
   waterPlant:{bt:1,in:{ice:2,power:1,workers:1},out:{water:3},cat:"ref"},
-  reclaimer:{bt:2,in:{power:1,workers:1},recycles:{good:"water",from:"habitat",amt:0.6},cat:"ref"}, /* cuts water use of adjacent habitats (each served once) */
+  reclaimer:{bt:2,in:{power:1,workers:1},recycles:{from:"habitat",frac:0.6},cat:"ref"}, /* an adjacent Habitat recycles 60% of its water */
   greenhouse:{bt:1,in:{water:1,power:1,workers:1},out:{food:3},radSensitive:true,cat:"ref"},
   algaeVat:{bt:2,in:{power:2,workers:1},out:{food:2},cat:"ref"},                /* alt food: power-heavy, rad-proof */
   glassKiln:{bt:1,in:{silica:2,power:1,workers:1},out:{glass:2},heat:2,cat:"ref"},
@@ -70,7 +70,7 @@ var COLO=0.22;                                       /* adjacency cluster bonus 
 /* population: colonists are a persistent stock = your workforce. Habitats give
    capacity; immigration fills it over time, gated by life support. */
 var LIFE={food:0.2,water:0.2,power:0.2};             /* per-capita life support demand (priority over industry) */
-var HAB_CAP=5, IMMIG_BASE=3;
+var HAB_CAP=5, IMMIG_BASE=3, RECY_FRAC=0.6;          /* a reclaimer-serviced habitat recycles 60% of its water */
 function get(o,k){return o[k]||0;}
 
 /* ---- adjacency / heat / radiation ---- */
@@ -88,24 +88,18 @@ function adjMult(S,type,id){var T=TYPES[type],tile=S.map.tiles[id],m=1;
   if(T.radSensitive&&!tile.lava&&neighborHasRadiation(S,id))m*=0.4;
   return m;}
 function radiated(S,id){var t=S.map.tiles[id];return !t.lava&&neighborHasRadiation(S,id);}
-/* reclaimers cut water use of adjacent habitats; each habitat is served by at most ONE reclaimer
-   (lowest building index wins) so two reclaimers can't double-dip the same habitat */
-function reclaimClaims(S){var claimed={};
-  for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b)continue;var T=TYPES[b.type];if(!T.recycles)continue;var rc=T.recycles,t=S.map.tiles[b.tile];
-    for(var k=0;k<t.nb.length;k++){var nb=t.nb[k],hb=S.occ[nb];if(hb==null||hb<0)continue;if(S.buildings[hb].type!==rc.from)continue;if(claimed[nb])continue;claimed[nb]={good:rc.good,amt:rc.amt};}}
-  return claimed;}
-function reclaimServes(S,id){var claimed={},n=0;
-  for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b)continue;var T=TYPES[b.type];if(!T.recycles)continue;var t=S.map.tiles[b.tile];
-    for(var k=0;k<t.nb.length;k++){var nb=t.nb[k],hb=S.occ[nb];if(hb==null||hb<0)continue;if(S.buildings[hb].type!==T.recycles.from)continue;if(claimed[nb])continue;claimed[nb]=1;if(b.tile===id)n++;}}
-  return n;}
+/* a Habitat is "serviced" if it sits next to a Reclaimer — then it recycles part of its own
+   water. The saving belongs to the Habitat (capped at its own use), so double-dipping is impossible. */
+function habServiced(S,id){return countAdj(S,id,function(t){return !!TYPES[t].recycles;})>0;}
+function reclaimServes(S,id){return countAdj(S,id,function(t){return TYPES[t].cat==="hab";});} /* adjacent habitats (for display) */
+function habCapAt(S,id){var t=S.map.tiles[id];return HAB_CAP*(t.lava?1.4:(radiated(S,id)?0.4:1));}
 function coolingAt(S,id){var tile=S.map.tiles[id],avail=0;
   for(var i=0;i<tile.nb.length;i++){var bi=S.occ[tile.nb[i]];if(bi==null||bi<0)continue;var rt=TYPES[S.buildings[bi].type];if(!rt.coolOut)continue;
     var em=countAdj(S,tile.nb[i],function(t){return TYPES[t].heat>0;});if(em<1)em=1;avail+=rt.coolOut/em;}
   return avail;}
 function heatRatio(S,type,id){var T=TYPES[type];if(!T.heat)return 1;return Math.min(1,(1+coolingAt(S,id))/T.heat);}
 /* total housing capacity (lava tubes hold more, irradiated tiles fewer) */
-function capacityOf(S){var c=0;for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b||TYPES[b.type].cat!=="hab")continue;
-  var t=S.map.tiles[b.tile],m=t.lava?1.4:(radiated(S,b.tile)?0.4:1);c+=HAB_CAP*m;}return c;}
+function capacityOf(S){var c=0;for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b||TYPES[b.type].cat!=="hab")continue;c+=habCapAt(S,b.tile);}return c;}
 
 /* ---- flow solver: optimistic fixed-point throttling (tight convergence) ----
    Colonists (S.pop) supply workers exogenously and demand life support
@@ -115,9 +109,12 @@ function effRates(S){var arr=[];for(var i=0;i<S.buildings.length;i++){var b=S.bu
   for(var g in (T.in||{}))oin[g]=T.in[g]*hr;
   for(var g2 in (T.out||{}))oout[g2]=T.out[g2]*m;
   arr.push({in:oin,out:oout,heat:hr,mult:m});}return arr;}
-/* total life-support demand reduced by reclaimers (per claimed adjacent habitat) */
-function lifeDemand(S){var pop=S.pop||0,L={};for(var g in LIFE)L[g]=pop*LIFE[g];
-  var claims=reclaimClaims(S);for(var tile in claims){var c=claims[tile];if(L[c.good]!=null)L[c.good]=Math.max(0,L[c.good]-c.amt);}
+/* life-support demand. Water is reduced in proportion to the housing capacity that is
+   reclaimer-serviced: a serviced Habitat recycles `frac` of its residents' water. */
+function lifeDemand(S){var pop=S.pop||0,L={food:pop*LIFE.food,power:pop*LIFE.power,water:pop*LIFE.water};
+  var tot=0,serv=0;for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b||TYPES[b.type].cat!=="hab")continue;
+    var c=habCapAt(S,b.tile);tot+=c;if(habServiced(S,b.tile))serv+=c;}
+  if(tot>0)L.water*=(1-(serv/tot)*RECY_FRAC);
   return L;}
 function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=eff[i]?1:0;
   var pop=S.pop||0, L=lifeDemand(S);                         /* life-support demand (tier-0), minus reclaimer recycling */
@@ -136,7 +133,7 @@ function limitingInput(S,R,i){var eff=R.eff[i];if(!eff||R.frac[i]>0.999)return n
 
 /* ---- scenario ---- */
 function scenario(){return {
-  turns:24, buildRate:{1:2,2:1,3:0}, majorThreshold:720, startPop:5,
+  turns:24, buildRate:{1:2,2:1,3:0}, majorThreshold:700, startPop:5,
   start:[["solar",0],["solar",0],["habitat",0],["iceExtractor",0],["waterPlant",0],["greenhouse",0]],
   directives:[
     {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:5,req:[],must:true,reward:{immig:1,buildRate:{1:1}},rp:40},
@@ -224,10 +221,10 @@ function processEndTurn(S){
 
 root.COMPOUND={
   W:W,H:H,TYPES:TYPES,PRODUCER:PRODUCER,NAME:NAME,ABBR:ABBR,CATCOL:CATCOL,CATNAME:CATNAME,
-  ORDER:ORDER,GOODORDER:GOODORDER,GOODS:GOODS,COLO:COLO,LIFE:LIFE,HAB_CAP:HAB_CAP,IMMIG_BASE:IMMIG_BASE,
+  ORDER:ORDER,GOODORDER:GOODORDER,GOODS:GOODS,COLO:COLO,LIFE:LIFE,HAB_CAP:HAB_CAP,IMMIG_BASE:IMMIG_BASE,RECY_FRAC:RECY_FRAC,
   sunFactor:sunFactor,buildMap:buildMap,get:get,capacityOf:capacityOf,
   neighborsProduce:neighborsProduce,neighborHasRadiation:neighborHasRadiation,countAdj:countAdj,
-  clusterCount:clusterCount,adjMult:adjMult,radiated:radiated,reclaimClaims:reclaimClaims,reclaimServes:reclaimServes,coolingAt:coolingAt,heatRatio:heatRatio,
+  clusterCount:clusterCount,adjMult:adjMult,radiated:radiated,habServiced:habServiced,reclaimServes:reclaimServes,habCapAt:habCapAt,coolingAt:coolingAt,heatRatio:heatRatio,
   effRates:effRates,solveFlows:solveFlows,limitingInput:limitingInput,lifeDemand:lifeDemand,scenario:scenario,
   unlocked:unlocked,eligible:eligible,placeReason:placeReason,canPlace:canPlace,
   placeAt:placeAt,prereqsDone:prereqsDone,tileScore:tileScore,bestTile:bestTile,

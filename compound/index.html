@@ -165,7 +165,7 @@ var S;
 function gn(g){return ({power:"pwr",workers:"wkr"})[g]||g;}
 function insStr(t){var T=TYPES[t],a=[];for(var g in (T.in||{}))a.push(T.in[g]+" "+gn(g));return a.join(" + ")||"—";}
 function outsStr(t){var T=TYPES[t],a=[];for(var g in (T.out||{}))a.push(T.out[g]+" "+gn(g));
-  if(T.cap)a.push("houses "+T.cap); if(T.recycles)a.push("−"+T.recycles.amt+" "+gn(T.recycles.good)+"/"+T.recycles.from); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
+  if(T.cap)a.push("houses "+T.cap); if(T.recycles)a.push("−"+Math.round(T.recycles.frac*100)+"% water/"+T.recycles.from); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
 function fxTags(t){var T=TYPES[t],a=[];
   if(T.deposit)a.push("⛏ "+T.deposit); if(T.requiresWreck)a.push("⌗ on wreck"); if(T.solarScaled)a.push("☀ sunline");
   if(T.recycles)a.push("♺ cuts water use"); if(T.heat)a.push("♨ heat "+T.heat); if(T.radiation)a.push("☢ irradiates");
@@ -261,9 +261,10 @@ function modifierLines(bi){
   var b=S.buildings[bi],T=TYPES[b.type],tile=S.map.tiles[b.tile],a=[];
   var cl=C.clusterCount(S,b.type,b.tile);
   if(T.in)a.push((cl>0?'<span class="pos">':'<span class="zero">')+"cluster ×"+(1+C.COLO*cl).toFixed(2)+" ("+cl+" adjacent supplier"+(cl===1?"":"s")+")</span>");
-  if(T.cap){var cm=tile.lava?1.4:(C.radiated(S,b.tile)?0.4:1);
-    a.push((cm>1?'<span class="pos">':cm<1?'<span class="neg">':'<span class="zero">')+"houses "+Math.round(C.HAB_CAP*cm)+" colonists"+(tile.lava?" (lava tube ×1.4)":C.radiated(S,b.tile)?" (irradiated ×0.4)":"")+"</span>");}
-  if(T.recycles){var sv=C.reclaimServes(S,b.tile);a.push((sv>0?'<span class="pos">':'<span class="neg">')+"cuts colony water −"+T.recycles.amt+" × "+sv+" Habitat"+(sv===1?"":"s")+" = −"+(T.recycles.amt*sv).toFixed(1)+(sv===0?" (place beside un-served Habitats)":"")+"</span>");}
+  if(T.cap){var cm=tile.lava?1.4:(C.radiated(S,b.tile)?0.4:1),svc=C.habServiced(S,b.tile);
+    a.push((cm>1?'<span class="pos">':cm<1?'<span class="neg">':'<span class="zero">')+"houses "+Math.round(C.HAB_CAP*cm)+" colonists"+(tile.lava?" (lava tube ×1.4)":C.radiated(S,b.tile)?" (irradiated ×0.4)":"")+"</span>");
+    if(svc)a.push('<span class="pos">recycles '+Math.round(C.RECY_FRAC*100)+'% of its water (Reclaimer)</span>');}
+  if(T.recycles){var sv=C.reclaimServes(S,b.tile);a.push((sv>0?'<span class="pos">':'<span class="neg">')+"recycles "+Math.round(T.recycles.frac*100)+"% water for "+sv+" adjacent Habitat"+(sv===1?"":"s")+(sv===0?" — place beside Habitats":"")+"</span>");}
   if(T.solarScaled)a.push('<span class="'+(C.sunFactor(tile.q)>0.7?"pos":"zero")+'">sunline ×'+C.sunFactor(tile.q).toFixed(2)+" (column "+tile.q+")</span>");
   if(T.lavaBonus&&!T.cap)a.push(tile.lava?'<span class="pos">lava tube ×1.4</span>':'<span class="zero">lava tube ×1.4 (not on lava)</span>');
   if(T.radSensitive&&!T.cap){var ir=C.radiated(S,b.tile);a.push(ir?'<span class="neg">irradiated ×0.4</span>':(tile.lava?'<span class="pos">shielded by lava</span>':'<span class="zero">not irradiated</span>'));}
