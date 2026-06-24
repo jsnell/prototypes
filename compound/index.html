@@ -156,10 +156,11 @@ var S;
 /* ---------- compact recipe text ---------- */
 function gn(g){return ({power:"pwr",workers:"wkr"})[g]||g;}
 function insStr(t){var T=TYPES[t],a=[];for(var g in (T.in||{}))a.push(T.in[g]+" "+gn(g));return a.join(" + ")||"—";}
-function outsStr(t){var T=TYPES[t],a=[];for(var g in (T.out||{}))a.push(T.out[g]+" "+gn(g));if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
+function outsStr(t){var T=TYPES[t],a=[];for(var g in (T.out||{}))a.push(T.out[g]+" "+gn(g));
+  if(T.reclaim)a.push(T.reclaim.per+" "+gn(T.reclaim.good)+"/hab"); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
 function fxTags(t){var T=TYPES[t],a=[];
-  if(T.deposit)a.push("⛏ "+T.deposit); if(T.solarScaled)a.push("☀ sunline");
-  if(T.heat)a.push("♨ heat "+T.heat); if(T.radiation)a.push("☢ irradiates");
+  if(T.deposit)a.push("⛏ "+T.deposit); if(T.requiresWreck)a.push("⌗ on wreck"); if(T.solarScaled)a.push("☀ sunline");
+  if(T.reclaim)a.push("♺ from Habitats"); if(T.heat)a.push("♨ heat "+T.heat); if(T.radiation)a.push("☢ irradiates");
   if(T.lavaBonus)a.push("✦ lava×1.4"); if(T.radSensitive)a.push("rad-sensitive"); if(T.labSyn)a.push("lab synergy");
   return a.join(" · ");}
 
@@ -191,7 +192,7 @@ function previewDirectives(R){
   var avail=Object.assign({},R.surplus),out={};
   var act=C.deliverable(S).slice().sort(function(a,b){if(a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
   for(var i=0;i<act.length;i++){var d=act[i];var have=get(avail,d.good);
-    if(have>=d.rate-1e-6){out[d.id]={meet:true,have:have};avail[d.good]=have-d.rate;}
+    if(have>=d.rate-5e-3){out[d.id]={meet:true,have:have};avail[d.good]=have-d.rate;}
     else out[d.id]={meet:false,have:have};}
   return out;
 }
@@ -215,7 +216,7 @@ function renderMap(R){
     var bi=S.occ[t.id],built=(bi!=null&&bi>=0),fill,lab="",extra="";
     if(built){fill=CATCOL[TYPES[S.buildings[bi].type].cat]||"#888";lab=ABBR[S.buildings[bi].type];}
     else{fill=tileFill(t);
-      if(t.wreck)lab="";else if(t.lava)lab="~";else if(t.dep)lab=t.dep[0].toUpperCase();}
+      if(t.wreck)lab="×";else if(t.lava)lab="~";else if(t.dep)lab=t.dep[0].toUpperCase();}
     /* base + selection/legal/starved outline */
     var cls="base";
     if(S.selTile===t.id)cls+=" selGlow";
@@ -244,6 +245,7 @@ function modifierLines(bi){
   var b=S.buildings[bi],T=TYPES[b.type],tile=S.map.tiles[b.tile],a=[];
   var cl=C.clusterCount(S,b.type,b.tile);
   if(T.in)a.push((cl>0?'<span class="pos">':'<span class="zero">')+"cluster ×"+(1+C.COLO*cl).toFixed(2)+" ("+cl+" adjacent supplier"+(cl===1?"":"s")+")</span>");
+  if(T.reclaim){var rc=C.reclaimAdj(S,b.tile);a.push((rc>0?'<span class="pos">':'<span class="neg">')+"recycles "+T.reclaim.per+" water × "+rc+" adjacent Habitat"+(rc===1?"":"s")+(rc===0?" — place beside Habitats":"")+"</span>");}
   if(T.solarScaled)a.push('<span class="'+(C.sunFactor(tile.q)>0.7?"pos":"zero")+'">sunline ×'+C.sunFactor(tile.q).toFixed(2)+" (column "+tile.q+")</span>");
   if(T.lavaBonus)a.push(tile.lava?'<span class="pos">lava tube ×1.4</span>':'<span class="zero">lava tube ×1.4 (not on lava)</span>');
   if(T.radSensitive){var ir=C.radiated(S,b.tile);a.push(ir?'<span class="neg">irradiated ×0.4</span>':(tile.lava?'<span class="pos">shielded by lava</span>':'<span class="zero">not irradiated</span>'));}
@@ -283,7 +285,7 @@ function inspector(R){
   }
 }
 function tileDesc(t){
-  if(t.wreck)return "wreckage — cannot build here";
+  if(t.wreck)return "<b>wreck</b> — build a Scrapper here (alt metal + rare, no deposit needed)";
   var a=[];
   if(t.dep)a.push("<b>"+t.dep+" deposit</b> — required by the "+NAME[C.PRODUCER[t.dep]]);
   if(t.lava)a.push("<b>lava tube</b> — Habitat ×1.4, shields radiation");
@@ -293,15 +295,16 @@ function tileDesc(t){
 
 /* ---------- flows ---------- */
 function renderFlows(R){
+  var UND=0.99;
   var html=C.GOODORDER.filter(function(g){return get(R.prod,g)>0.01||get(R.cons,g)>0.01;}).map(function(g){
     var v=Math.round(get(R.surplus,g)*10)/10, ratio=R.ratio[g]==null?1:R.ratio[g];
-    var cl=ratio<0.985?"neg":(v>0.05?"pos":"zero");
-    return '<span class="chip">'+gn(g)+' <b class="'+cl+'">'+v+'</b>'+(ratio<0.985?' ⚠':'')+'</span>';
+    var cl=ratio<UND?"neg":(v>0.05?"pos":"zero");
+    return '<span class="chip">'+gn(g)+' <b class="'+cl+'">'+v+'</b>'+(ratio<UND?' ⚠':'')+'</span>';
   }).join("");
   document.getElementById("flows").innerHTML=html||'<span class="small">no production yet</span>';
-  /* shortfalls */
-  var shorts=C.GOODS.filter(function(g){return get(R.cons,g)>0.01&&(R.ratio[g]==null?1:R.ratio[g])<0.985;});
-  var throttled=0;for(var i=0;i<R.frac.length;i++)if(R.eff[i]&&R.frac[i]<0.9)throttled++;
+  /* shortfalls — same threshold as the chips and the throttle count */
+  var shorts=C.GOODS.filter(function(g){return get(R.cons,g)>0.01&&(R.ratio[g]==null?1:R.ratio[g])<UND;});
+  var throttled=0;for(var i=0;i<R.frac.length;i++)if(R.eff[i]&&R.frac[i]<UND)throttled++;
   var el=document.getElementById("short");
   if(shorts.length)el.innerHTML='<span class="neg">⚠ Undersupplied: '+shorts.map(gn).join(", ")
     +'</span> — '+throttled+' building'+(throttled===1?"":"s")+' throttled. Build more producers (or cluster them).';
@@ -353,11 +356,12 @@ function rewardStr(d){var r=d.reward||{},a=[];
 /* ---------- legend ---------- */
 function renderLegend(){
   var cats=Object.keys(C.CATNAME).map(function(k){return '<span><i class="sw" style="background:'+CATCOL[k]+'"></i>'+C.CATNAME[k]+'</span>';}).join("");
-  var deps=["ore","ice","silica","rare","volatiles"].map(function(d){return '<span><i class="sw" style="background:'+depCol(d)+'"></i>'+d+'</span>';}).join("");
+  var deps=["ore","ice","silica","rare"].map(function(d){return '<span><i class="sw" style="background:'+depCol(d)+'"></i>'+d+'</span>';}).join("");
   document.getElementById("legend").innerHTML=
     '<div class="small" style="margin-bottom:4px">Building categories</div><div class="leg">'+cats+'</div>'
     +'<div class="small" style="margin:8px 0 4px">Deposits (dot in tile corner; needed by extractors)</div><div class="leg">'+deps+'</div>'
-    +'<div class="small" style="margin-top:8px">~ lava tube (Habitat ×1.4, blocks radiation) · ☢ irradiated (Hab/Greenhouse ×0.4) · ♨ heat plant needs a Radiator · red outline = building starved · ☀ Solar stronger on the left (sunward).</div>';
+    +'<div class="small" style="margin-top:8px">~ lava tube (Habitat ×1.4, blocks radiation) · × wreck (build a Scrapper here) · ☢ irradiated (Hab/Greenhouse ×0.4) · ♨ heat plant needs a Radiator · red outline = building starved · ☀ Solar stronger on the left (sunward).</div>'
+    +'<div class="small" style="margin-top:8px"><b>Two routes to some goods:</b> power (Solar / Reactor) · water (Water Plant / Reclaimer) · food (Greenhouse / Algae Vat) · metal+rare (mines / Scrapper on wrecks). Pick by your map and bottleneck.</div>';
 }
 
 /* ---------- top-level render ---------- */
