@@ -136,12 +136,12 @@ function scenario(){return {
   turns:24, buildRate:{1:2,2:1,3:0}, majorThreshold:700, startPop:5,
   start:[["solar",0],["solar",0],["habitat",0],["iceExtractor",0],["waterPlant",0],["greenhouse",0]],
   directives:[
-    {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:5,req:[],must:true,reward:{immig:1,buildRate:{1:1}},rp:40},
-    {id:"D2",name:"Metalworks",good:"metal",rate:5,dur:2,deadline:9,req:["D1"],must:true,reward:{immig:1,buildRate:{2:1}},rp:70},
+    {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:5,req:[],must:true,reward:{buildRate:{1:1}},rp:40},
+    {id:"D2",name:"Metalworks",good:"metal",rate:5,dur:2,deadline:9,req:["D1"],must:true,reward:{buildRate:{2:1}},rp:70},
     {id:"D3",name:"Electronics",good:"electronics",rate:4,dur:2,deadline:13,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{2:1,3:2}},rp:120},
-    {id:"D4",name:"Waterworks",good:"water",rate:8,dur:2,deadline:11,req:["D1"],must:false,reward:{immig:2},rp:60},
-    {id:"D5",name:"Assembly",good:"components",rate:3,dur:3,deadline:18,req:["D3"],must:true,reward:{immig:1,buildRate:{2:1,3:1}},rp:160},
-    {id:"D6",name:"Foodbelt",good:"food",rate:10,dur:2,deadline:17,req:["D3"],must:false,reward:{immig:2},rp:90},
+    {id:"D4",name:"Waterworks",good:"water",rate:8,dur:2,deadline:11,req:["D1"],must:false,reward:{buildRate:{1:1}},rp:60},
+    {id:"D5",name:"Assembly",good:"components",rate:3,dur:3,deadline:18,req:["D3"],must:true,reward:{buildRate:{2:1,3:1}},rp:160},
+    {id:"D6",name:"Foodbelt",good:"food",rate:10,dur:2,deadline:17,req:["D3"],must:false,reward:{buildRate:{2:1}},rp:90},
     {id:"D7",name:"Datacore",good:"research",rate:3,dur:2,deadline:23,req:["D5"],must:true,reward:{},rp:260}
   ]};}
 

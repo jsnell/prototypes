@@ -66,6 +66,8 @@
   #undo{ padding:14px 16px; font-size:15px; font-weight:700; border:1px solid var(--line); border-radius:12px;
     background:var(--panel2); color:var(--ink); }
   #undo:disabled{ opacity:.4; }
+  #copy{ padding:14px 12px; font-size:13px; font-weight:600; border:1px solid var(--line); border-radius:12px;
+    background:var(--panel2); color:var(--dim); white-space:nowrap; }
   #endturn{ flex:1; padding:14px; font-size:16px; font-weight:700; border:0; border-radius:12px;
     background:var(--accent); color:#04101f; }
   .btn{ padding:7px 11px; border-radius:8px; border:1px solid var(--line); background:var(--panel2); color:var(--ink); font-size:12px; cursor:pointer; }
@@ -152,6 +154,7 @@
 
 <div id="bigbtn">
   <button id="undo" onclick="doUndo()">↶ Undo</button>
+  <button id="copy" onclick="copyGame()" title="Copy full game log to clipboard">⧉ Copy</button>
   <button id="endturn" onclick="endTurn()">End Turn ▶</button>
 </div>
 
@@ -172,32 +175,53 @@ function fxTags(t){var T=TYPES[t],a=[];
   if(T.lavaBonus)a.push("✦ lava×1.4"); if(T.radSensitive)a.push("rad-sensitive"); if(T.labSyn)a.push("lab synergy");
   return a.join(" · ");}
 
-/* ---------- undo (full-state history; survives End Turn) ---------- */
-var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","prestige","tilesUsed","over","result","lastMsgs"];
-var hist=[];
+/* ---------- undo (full-state history; survives End Turn) + move log ---------- */
+var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","prestige","tilesUsed","pop","immig","lifeShort","grew","over","result","lastMsgs"];
+var hist=[], moveLog=[];
 function snapshot(){var o={};for(var i=0;i<SNAP.length;i++)o[SNAP[i]]=S[SNAP[i]];return JSON.stringify(o);}
-function pushUndo(){hist.push(snapshot());if(hist.length>300)hist.shift();}
-function doUndo(){if(!hist.length)return;var s=JSON.parse(hist.pop());for(var k in s)S[k]=s[k];S.sel=null;S.selTile=-1;render();}
+function pushUndo(){hist.push(snapshot());if(hist.length>400)hist.shift();}
+function doUndo(){if(!hist.length)return;var s=JSON.parse(hist.pop());for(var k in s)S[k]=s[k];moveLog.pop();S.sel=null;S.selTile=-1;render();}
 
 /* ---------- turn transition animation ---------- */
 function turnAnim(){var m=document.getElementById("map");m.classList.remove("turn");void m.offsetWidth;m.classList.add("turn");}
 
 /* ---------- actions ---------- */
-function newGame(){hist=[];S=C.newState();render();}
+function newGame(){hist=[];moveLog=[];S=C.newState();render();}
 function selectType(t){if(S.over)return;S.sel=(S.sel===t?null:t);S.selTile=-1;render();}
 function onTile(id){
   if(S.over)return;
-  if(S.sel&&C.canPlace(S,S.sel,id)){pushUndo();C.placeAt(S,S.sel,id);
+  if(S.sel&&C.canPlace(S,S.sel,id)){pushUndo();var t=S.map.tiles[id];moveLog.push({t:S.turn,a:"+",b:S.sel,q:t.q,r:t.r});C.placeAt(S,S.sel,id);
     if(get(S.placed,TYPES[S.sel].bt)>=get(S.buildRate,TYPES[S.sel].bt))S.sel=null;render();return;}
   S.selTile=(S.selTile===id?-1:id);render();      /* otherwise inspect the tile */
 }
 function doDemolish(){
   if(S.selTile<0)return;var bi=S.occ[S.selTile];if(bi==null||bi<0)return;pushUndo();
-  var b=S.buildings[bi];
+  var b=S.buildings[bi],t=S.map.tiles[b.tile];moveLog.push({t:S.turn,a:"-",b:b.type,q:t.q,r:t.r});
   if(b.turn===S.turn)S.placed[TYPES[b.type].bt]=Math.max(0,get(S.placed,TYPES[b.type].bt)-1);
   S.occ[b.tile]=-1;S.buildings[bi]=null;S.tilesUsed--;S.selTile=-1;render();
 }
-function endTurn(){if(S.over){newGame();return;}pushUndo();C.processEndTurn(S);render();turnAnim();}
+function endTurn(){if(S.over){newGame();return;}pushUndo();moveLog.push({t:S.turn,a:"end"});C.processEndTurn(S);render();turnAnim();}
+
+/* ---------- copy full game log (debug / sharing) ---------- */
+function gameLogText(){
+  var byTurn={};moveLog.forEach(function(m){(byTurn[m.t]=byTurn[m.t]||[]).push(m);});
+  var lines=Object.keys(byTurn).map(Number).sort(function(a,b){return a-b;}).map(function(t){
+    var es=byTurn[t],parts=es.filter(function(m){return m.a!=="end";}).map(function(m){return m.a+m.b+"@"+m.q+","+m.r;});
+    return "T"+t+": "+(parts.join(" ")||"(no builds)")+(es.some(function(m){return m.a==="end";})?" | end":"");});
+  var dirs=S.sc.directives.map(function(d){return d.id+(S.done[d.id]?"✓":S.failed[d.id]?"✗":"·"+get(S.progress,d.id)+"/"+d.dur);}).join(" ");
+  var hdr="COMPOUND log — result="+(S.result||"in progress")+"; turn "+S.turn+"/"+S.sc.turns
+    +" · pop "+Math.round(S.pop)+"/"+Math.round(C.capacityOf(S))+" · immig "+S.immig+"/turn · prestige "+Math.round(S.prestige)
+    +"\ndirectives: "+dirs+"\nbuildRate "+JSON.stringify(S.buildRate)+" · tiles used "+S.tilesUsed+"\n----";
+  return hdr+"\n"+lines.join("\n");
+}
+function copyGame(){copyText(gameLogText());}
+function copyText(text){
+  if(navigator.clipboard&&navigator.clipboard.writeText)navigator.clipboard.writeText(text).then(function(){flashCopy();},function(){fallbackCopy(text);});
+  else fallbackCopy(text);
+}
+function fallbackCopy(text){var ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();
+  try{document.execCommand("copy");flashCopy();}catch(e){console.log(text);alert("Copy not available — game log printed to console.");}document.body.removeChild(ta);}
+function flashCopy(){var b=document.getElementById("copy");if(!b)return;var o=b.textContent;b.textContent="✓ copied";setTimeout(function(){b.textContent=o;},1200);}
 
 /* ---------- directive preview (mirror of engine allocation, for live display) ---------- */
 function previewDirectives(R){
