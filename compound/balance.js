@@ -34,6 +34,8 @@ function bestTileByMult(S,type){
     if(!E.eligible(S,type,id))continue;
     var t=S.map.tiles[id],m=E.adjMult(S,type,id)*E.heatRatio(S,type,id);
     if(T.cap)m=t.lava?1.4:(E.radiated(S,id)?0.4:1);     /* housing: value lava, avoid irradiation */
+    if(T.radiation)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].cat==="hab";}); /* keep reactors off housing */
+    if(T.cap)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].radiation;});         /* keep housing off reactors */
     if(!T.deposit&&!T.requiresWreck&&t.dep)m-=0.25;     /* don't squat a deposit needlessly */
     if(!T.lavaBonus&&t.lava)m-=0.4;                     /* don't waste a lava tube on non-housing */
     if(m>bm){bm=m;best=id;}
@@ -70,10 +72,19 @@ function chooseForGood(S,good,R,depth){
 var ALLMODE=process.env.ALL==="1", ONLY_OPT=process.env.OPT||null;
 var CHASE=!!ONLY_OPT;                                   /* OPT mode chases the optional by deadline; ALL mode protects required (must-first) */
 function include(d){return d.must||ALLMODE||(ONLY_OPT&&d.id===ONLY_OPT);}
-/* the currently-OPEN directives we're allowed to pursue, in priority order */
-function targets(S){
-  return E.deliverable(S).filter(include)
-    .sort(function(a,b){if(!CHASE&&a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
+function byPrio(a,b){if(!CHASE&&a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;}
+function reqAllDone(S){return S.sc.directives.every(function(d){return !d.must||S.done[d.id];});}
+/* what to pursue this iteration: open required always; future required if labour is spare
+   (pre-build); optionals only once required is secured — unless CHASE (a deliberate Major run) */
+function targetList(S,R){
+  var open=E.deliverable(S),spare=get(R.surplus,"workers")>=2,done=reqAllDone(S);
+  return S.sc.directives.filter(function(d){
+    if(S.done[d.id]||S.failed[d.id]||!include(d))return false;
+    var isOpen=open.indexOf(d)>=0;
+    if(CHASE)return isOpen||spare;
+    if(d.must)return isOpen||spare;
+    return done;
+  }).sort(byPrio);
 }
 
 /* reclaim a tile by demolishing a building whose removal keeps life support met
@@ -96,10 +107,15 @@ function safeDemolish(S){
   }
   return false;
 }
+function adjEmptyFor(S,type,id){var t=S.map.tiles[id];for(var k=0;k<t.nb.length;k++)if(E.eligible(S,type,t.nb[k]))return t.nb[k];return -1;}
 function tryBuild(S,type){                             /* place on best tile, reclaiming one if full */
   var id=bestTileByMult(S,type);
   if(id<0){if(!safeDemolish(S))return false;id=bestTileByMult(S,type);if(id<0)return false;}
-  E.placeAt(S,type,id);return true;
+  E.placeAt(S,type,id);
+  if(TYPES[type].heat&&E.heatRatio(S,type,id)<0.999&&hasSlot(S,"radiator")){ /* cool a hot building */
+    var rid=adjEmptyFor(S,"radiator",id);if(rid>=0)E.placeAt(S,"radiator",rid);
+  }
+  return true;
 }
 function greedyTurn(S){
   for(var guard=0;guard<160;guard++){
@@ -107,8 +123,8 @@ function greedyTurn(S){
     /* 0) survival first: keep current population fed (else immigration stalls everything) */
     for(var j=0;j<ls.length&&!built;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
       var t0=chooseForGood(S,ls[j],R,0);if(t0&&hasSlot(S,t0)&&tryBuild(S,t0))built=true;}
-    /* 1) build toward the currently-open directives */
-    if(!built){var ts=targets(S);
+    /* 1) build toward directives (required protected; optionals only with slack) */
+    if(!built){var ts=targetList(S,R);
       for(var i=0;i<ts.length;i++){var d=ts[i];
         if(get(R.surplus,d.good)>=d.rate-0.05)continue;
         var ty=chooseForGood(S,d.good,R,0);
