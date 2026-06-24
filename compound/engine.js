@@ -39,7 +39,7 @@ var TYPES={
   scrapper:{bt:2,in:{power:2,workers:1},out:{metal:2,rare:1},requiresWreck:true,cat:"ext"}, /* alt metal+rare, on wrecks */
   smelter:{bt:1,in:{ore:2,power:1,workers:1},out:{metal:2},heat:2,cat:"ref"},
   waterPlant:{bt:1,in:{ice:2,power:1,workers:1},out:{water:3},cat:"ref"},
-  reclaimer:{bt:2,in:{power:1,workers:1},reclaim:{good:"water",per:2,from:"habitat"},cat:"ref"}, /* alt water from adjacent habs */
+  reclaimer:{bt:2,in:{power:1,workers:1},recycles:{good:"water",from:"habitat",amt:0.6},cat:"ref"}, /* cuts water use of adjacent habitats (each served once) */
   greenhouse:{bt:1,in:{water:1,power:1,workers:1},out:{food:3},radSensitive:true,cat:"ref"},
   algaeVat:{bt:2,in:{power:2,workers:1},out:{food:2},cat:"ref"},                /* alt food: power-heavy, rad-proof */
   glassKiln:{bt:1,in:{silica:2,power:1,workers:1},out:{glass:2},heat:2,cat:"ref"},
@@ -64,7 +64,7 @@ var CATNAME={pow:"Power",rad:"Cooling",hab:"Housing",ext:"Extraction",ref:"Refin
 var ORDER=["solar","reactor","radiator","habitat","oreMine","iceExtractor","silicaQuarry","rareMine","scrapper",
   "smelter","waterPlant","reclaimer","greenhouse","algaeVat","glassKiln","foundry","electronicsFab","assembler","lab"];
 var GOODORDER=["power","workers","food","water","ore","ice","silica","rare","metal","glass","alloy","electronics","components","research"];
-var GOODS=(function(){var s={};for(var t in TYPES){var T=TYPES[t];for(var g in (T.in||{}))s[g]=1;for(var g2 in (T.out||{}))s[g2]=1;if(T.reclaim)s[T.reclaim.good]=1;}var a=[];for(var k in s)a.push(k);return a;})();
+var GOODS=(function(){var s={};for(var t in TYPES){var T=TYPES[t];for(var g in (T.in||{}))s[g]=1;for(var g2 in (T.out||{}))s[g2]=1;if(T.recycles)s[T.recycles.good]=1;}var a=[];for(var k in s)a.push(k);return a;})();
 
 var COLO=0.22;                                       /* adjacency cluster bonus */
 function get(o,k){return o[k]||0;}
@@ -84,7 +84,16 @@ function adjMult(S,type,id){var T=TYPES[type],tile=S.map.tiles[id],m=1;
   if(T.radSensitive&&!tile.lava&&neighborHasRadiation(S,id))m*=0.4;
   return m;}
 function radiated(S,id){var t=S.map.tiles[id];return !t.lava&&neighborHasRadiation(S,id);}
-function reclaimAdj(S,id){var T=TYPES[S.buildings[S.occ[id]].type];if(!T.reclaim)return 0;return countAdj(S,id,function(t){return t===T.reclaim.from;});}
+/* reclaimers cut water use of adjacent habitats; each habitat is served by at most ONE reclaimer
+   (lowest building index wins) so two reclaimers can't double-dip the same habitat */
+function reclaimClaims(S){var claimed={};
+  for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b)continue;var T=TYPES[b.type];if(!T.recycles)continue;var rc=T.recycles,t=S.map.tiles[b.tile];
+    for(var k=0;k<t.nb.length;k++){var nb=t.nb[k],hb=S.occ[nb];if(hb==null||hb<0)continue;if(S.buildings[hb].type!==rc.from)continue;if(claimed[nb])continue;claimed[nb]={good:rc.good,amt:rc.amt};}}
+  return claimed;}
+function reclaimServes(S,id){var claimed={},n=0;
+  for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b)continue;var T=TYPES[b.type];if(!T.recycles)continue;var t=S.map.tiles[b.tile];
+    for(var k=0;k<t.nb.length;k++){var nb=t.nb[k],hb=S.occ[nb];if(hb==null||hb<0)continue;if(S.buildings[hb].type!==T.recycles.from)continue;if(claimed[nb])continue;claimed[nb]=1;if(b.tile===id)n++;}}
+  return n;}
 function coolingAt(S,id){var tile=S.map.tiles[id],avail=0;
   for(var i=0;i<tile.nb.length;i++){var bi=S.occ[tile.nb[i]];if(bi==null||bi<0)continue;var rt=TYPES[S.buildings[bi].type];if(!rt.coolOut)continue;
     var em=countAdj(S,tile.nb[i],function(t){return TYPES[t].heat>0;});if(em<1)em=1;avail+=rt.coolOut/em;}
@@ -92,11 +101,10 @@ function coolingAt(S,id){var tile=S.map.tiles[id],avail=0;
 function heatRatio(S,type,id){var T=TYPES[type];if(!T.heat)return 1;return Math.min(1,(1+coolingAt(S,id))/T.heat);}
 
 /* ---- flow solver: optimistic fixed-point throttling (tight convergence) ---- */
-function effRates(S){var arr=[];for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b){arr.push(null);continue;}var T=TYPES[b.type];
-  var hr=heatRatio(S,b.type,b.tile),m=adjMult(S,b.type,b.tile)*hr,oin={},oout={};
-  for(var g in (T.in||{}))oin[g]=T.in[g]*hr;
+function effRates(S){var claimed=reclaimClaims(S),arr=[];for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b){arr.push(null);continue;}var T=TYPES[b.type];
+  var hr=heatRatio(S,b.type,b.tile),m=adjMult(S,b.type,b.tile)*hr,oin={},oout={},cut=claimed[b.tile];
+  for(var g in (T.in||{})){var v=T.in[g];if(cut&&cut.good===g)v=Math.max(0,v-cut.amt);oin[g]=v*hr;}
   for(var g2 in (T.out||{}))oout[g2]=T.out[g2]*m;
-  if(T.reclaim){var cnt=countAdj(S,b.tile,(function(f){return function(t){return t===f;};})(T.reclaim.from));oout[T.reclaim.good]=get(oout,T.reclaim.good)+T.reclaim.per*cnt;}
   arr.push({in:oin,out:oout,heat:hr,mult:m});}return arr;}
 function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=eff[i]?1:0;var prod,cons,ratio={};
   for(var it=0;it<200;it++){prod={};cons={};
@@ -157,7 +165,7 @@ function newState(){
   var sc=scenario();
   var S={sc:sc,map:buildMap(),turn:1,buildings:[],occ:{},buildRate:Object.assign({},sc.buildRate),
      unlocked:{},placed:{},done:{},failed:{},progress:{},metNow:{},prestige:0,tilesUsed:0,
-     sel:null,selTile:-1,over:false,result:"",undo:[],lastMsgs:[]};
+     sel:null,selTile:-1,over:false,result:"",lastMsgs:[]};
   for(var i=0;i<sc.start.length;i++){var id=bestTile(S,sc.start[i][0]);if(id>=0)placeAt(S,sc.start[i][0],id);}
   S.placed={};
   return S;
@@ -187,7 +195,7 @@ function processEndTurn(S){
   var allMust=true;for(i=0;i<S.sc.directives.length;i++){var x=S.sc.directives[i];if(x.must&&S.done[x.id]!=="done")allMust=false;}
   if(lost){S.over=true;S.result="DEFEAT — "+(msgs.filter(function(m){return m.indexOf("FAILED")>=0;})[0]||"required directive failed");}
   else if(allMust){S.over=true;S.result=(S.prestige>=S.sc.majorThreshold?"MAJOR VICTORY":"MINOR VICTORY")+" — prestige "+Math.round(S.prestige);}
-  else { S.turn++; S.placed={}; S.sel=null; S.selTile=-1; S.undo=[];
+  else { S.turn++; S.placed={}; S.sel=null; S.selTile=-1;
     if(S.turn>S.sc.turns){S.over=true;S.result="DEFEAT — ran out of turns";} }
   S.lastMsgs=msgs;
   return {msgs:msgs,over:S.over,result:S.result};
@@ -198,7 +206,7 @@ root.COMPOUND={
   ORDER:ORDER,GOODORDER:GOODORDER,GOODS:GOODS,COLO:COLO,
   sunFactor:sunFactor,buildMap:buildMap,get:get,
   neighborsProduce:neighborsProduce,neighborHasRadiation:neighborHasRadiation,countAdj:countAdj,
-  clusterCount:clusterCount,adjMult:adjMult,radiated:radiated,reclaimAdj:reclaimAdj,coolingAt:coolingAt,heatRatio:heatRatio,
+  clusterCount:clusterCount,adjMult:adjMult,radiated:radiated,reclaimClaims:reclaimClaims,reclaimServes:reclaimServes,coolingAt:coolingAt,heatRatio:heatRatio,
   effRates:effRates,solveFlows:solveFlows,limitingInput:limitingInput,scenario:scenario,
   unlocked:unlocked,eligible:eligible,placeReason:placeReason,canPlace:canPlace,
   placeAt:placeAt,prereqsDone:prereqsDone,tileScore:tileScore,bestTile:bestTile,

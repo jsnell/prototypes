@@ -20,6 +20,8 @@
   #banner{ display:none; padding:8px 10px; border-radius:8px; font-weight:600; margin:6px 0; text-align:center; }
   #map{ width:100%; background:var(--panel); border:1px solid var(--line); border-radius:10px; padding:4px; }
   svg{ width:100%; height:auto; display:block; }
+  @keyframes turnpulse{ 0%{ opacity:.25; filter:brightness(1.7) } 100%{ opacity:1; filter:none } }
+  #map.turn{ animation:turnpulse .35s ease-out; }
   .hx{ cursor:pointer; }
   .hx polygon.base{ stroke:#0b0e14; stroke-width:1; }
   .hx text{ text-anchor:middle; dominant-baseline:middle; pointer-events:none; font-weight:700; }
@@ -157,21 +159,25 @@ var S;
 function gn(g){return ({power:"pwr",workers:"wkr"})[g]||g;}
 function insStr(t){var T=TYPES[t],a=[];for(var g in (T.in||{}))a.push(T.in[g]+" "+gn(g));return a.join(" + ")||"—";}
 function outsStr(t){var T=TYPES[t],a=[];for(var g in (T.out||{}))a.push(T.out[g]+" "+gn(g));
-  if(T.reclaim)a.push(T.reclaim.per+" "+gn(T.reclaim.good)+"/hab"); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
+  if(T.recycles)a.push("−"+T.recycles.amt+" "+gn(T.recycles.good)+"/"+T.recycles.from); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
 function fxTags(t){var T=TYPES[t],a=[];
   if(T.deposit)a.push("⛏ "+T.deposit); if(T.requiresWreck)a.push("⌗ on wreck"); if(T.solarScaled)a.push("☀ sunline");
-  if(T.reclaim)a.push("♺ from Habitats"); if(T.heat)a.push("♨ heat "+T.heat); if(T.radiation)a.push("☢ irradiates");
+  if(T.recycles)a.push("♺ cuts water use"); if(T.heat)a.push("♨ heat "+T.heat); if(T.radiation)a.push("☢ irradiates");
   if(T.lavaBonus)a.push("✦ lava×1.4"); if(T.radSensitive)a.push("rad-sensitive"); if(T.labSyn)a.push("lab synergy");
   return a.join(" · ");}
 
-/* ---------- undo ---------- */
-function snapshot(){return JSON.stringify({b:S.buildings,o:S.occ,p:S.placed,u:S.tilesUsed});}
-function pushUndo(){S.undo.push(snapshot());if(S.undo.length>60)S.undo.shift();}
-function doUndo(){if(!S.undo.length||S.over)return;var s=JSON.parse(S.undo.pop());
-  S.buildings=s.b;S.occ=s.o;S.placed=s.p;S.tilesUsed=s.u;S.sel=null;S.selTile=-1;render();}
+/* ---------- undo (full-state history; survives End Turn) ---------- */
+var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","prestige","tilesUsed","over","result","lastMsgs"];
+var hist=[];
+function snapshot(){var o={};for(var i=0;i<SNAP.length;i++)o[SNAP[i]]=S[SNAP[i]];return JSON.stringify(o);}
+function pushUndo(){hist.push(snapshot());if(hist.length>300)hist.shift();}
+function doUndo(){if(!hist.length)return;var s=JSON.parse(hist.pop());for(var k in s)S[k]=s[k];S.sel=null;S.selTile=-1;render();}
+
+/* ---------- turn transition animation ---------- */
+function turnAnim(){var m=document.getElementById("map");m.classList.remove("turn");void m.offsetWidth;m.classList.add("turn");}
 
 /* ---------- actions ---------- */
-function newGame(){S=C.newState();render();}
+function newGame(){hist=[];S=C.newState();render();}
 function selectType(t){if(S.over)return;S.sel=(S.sel===t?null:t);S.selTile=-1;render();}
 function onTile(id){
   if(S.over)return;
@@ -185,7 +191,7 @@ function doDemolish(){
   if(b.turn===S.turn)S.placed[TYPES[b.type].bt]=Math.max(0,get(S.placed,TYPES[b.type].bt)-1);
   S.occ[b.tile]=-1;S.buildings[bi]=null;S.tilesUsed--;S.selTile=-1;render();
 }
-function endTurn(){if(S.over){newGame();return;}C.processEndTurn(S);render();}
+function endTurn(){if(S.over){newGame();return;}pushUndo();C.processEndTurn(S);render();turnAnim();}
 
 /* ---------- directive preview (mirror of engine allocation, for live display) ---------- */
 function previewDirectives(R){
@@ -232,7 +238,11 @@ function renderMap(R){
     if(C.radiated(S,t.id))sg+="☢";
     if(built){var bt=S.buildings[bi].type;if(TYPES[bt].heat&&C.heatRatio(S,bt,t.id)<0.999)sg+="♨";}
     if(sg)extra+='<text class="cn" x="'+(c.x+HEX*0.45).toFixed(1)+'" y="'+(c.y+HEX*0.5).toFixed(1)+'" fill="#ffb04a">'+sg+'</text>';
-    if(lab)g+='<text class="lab" x="'+c.x.toFixed(1)+'" y="'+(c.y+0.5).toFixed(1)+'">'+lab+'</text>';
+    if(S.sel&&legal[t.id]){                            /* preview the effective multiplier for the selected building */
+      var mm=C.adjMult(S,S.sel,t.id)*C.heatRatio(S,S.sel,t.id);
+      var mc=mm>1.005?"#7af0a4":(mm<0.995?"#ff9b9b":"#eaf2ff");
+      g+='<text class="lab" style="fill:'+mc+';font-size:7.5px" x="'+c.x.toFixed(1)+'" y="'+(c.y+0.5).toFixed(1)+'">×'+mm.toFixed(2)+'</text>';
+    } else if(lab)g+='<text class="lab" x="'+c.x.toFixed(1)+'" y="'+(c.y+0.5).toFixed(1)+'">'+lab+'</text>';
     g+=extra+'</g>';
     parts.push(g);
   }
@@ -245,7 +255,8 @@ function modifierLines(bi){
   var b=S.buildings[bi],T=TYPES[b.type],tile=S.map.tiles[b.tile],a=[];
   var cl=C.clusterCount(S,b.type,b.tile);
   if(T.in)a.push((cl>0?'<span class="pos">':'<span class="zero">')+"cluster ×"+(1+C.COLO*cl).toFixed(2)+" ("+cl+" adjacent supplier"+(cl===1?"":"s")+")</span>");
-  if(T.reclaim){var rc=C.reclaimAdj(S,b.tile);a.push((rc>0?'<span class="pos">':'<span class="neg">')+"recycles "+T.reclaim.per+" water × "+rc+" adjacent Habitat"+(rc===1?"":"s")+(rc===0?" — place beside Habitats":"")+"</span>");}
+  if(T.recycles){var sv=C.reclaimServes(S,b.tile);a.push((sv>0?'<span class="pos">':'<span class="neg">')+"recycling −"+T.recycles.amt+" water from "+sv+" Habitat"+(sv===1?"":"s")+(sv===0?" — place beside un-served Habitats":"")+"</span>");}
+  var rcl=C.reclaimClaims(S)[b.tile];if(rcl)a.push('<span class="pos">water −'+rcl.amt+" (recycled by adjacent Reclaimer)</span>");
   if(T.solarScaled)a.push('<span class="'+(C.sunFactor(tile.q)>0.7?"pos":"zero")+'">sunline ×'+C.sunFactor(tile.q).toFixed(2)+" (column "+tile.q+")</span>");
   if(T.lavaBonus)a.push(tile.lava?'<span class="pos">lava tube ×1.4</span>':'<span class="zero">lava tube ×1.4 (not on lava)</span>');
   if(T.radSensitive){var ir=C.radiated(S,b.tile);a.push(ir?'<span class="neg">irradiated ×0.4</span>':(tile.lava?'<span class="pos">shielded by lava</span>':'<span class="zero">not irradiated</span>'));}
@@ -385,7 +396,7 @@ function render(){
   renderPalette();
   renderDirs(R);
 
-  document.getElementById("undo").disabled=!S.undo.length||S.over;
+  document.getElementById("undo").disabled=!hist.length;
   var et=document.getElementById("endturn");
   if(S.over){et.textContent="▶ Play again";}else{et.textContent="End Turn ▶";}
 }
