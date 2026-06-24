@@ -70,7 +70,7 @@ var COLO=0.22;                                       /* adjacency cluster bonus 
 /* population: colonists are a persistent stock = your workforce. Habitats give
    capacity; immigration fills it over time, gated by life support. */
 var LIFE={food:0.2,water:0.2,power:0.2};             /* per-capita life support demand (priority over industry) */
-var HAB_CAP=5, IMMIG_BASE=3, RECY_FRAC=0.6;          /* a reclaimer-serviced habitat recycles 60% of its water */
+var HAB_CAP=5, IMMIG_BASE=2, RECY_FRAC=0.6;          /* a reclaimer-serviced habitat recycles 60% of its water */
 function get(o,k){return o[k]||0;}
 
 /* ---- adjacency / heat / radiation ---- */
