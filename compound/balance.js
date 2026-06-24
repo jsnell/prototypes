@@ -72,19 +72,16 @@ function chooseForGood(S,good,R,depth){
 var ALLMODE=process.env.ALL==="1", ONLY_OPT=process.env.OPT||null;
 var CHASE=!!ONLY_OPT;                                   /* OPT mode chases the optional by deadline; ALL mode protects required (must-first) */
 function include(d){return d.must||ALLMODE||(ONLY_OPT&&d.id===ONLY_OPT);}
-function byPrio(a,b){if(!CHASE&&a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;}
-function reqAllDone(S){return S.sc.directives.every(function(d){return !d.must||S.done[d.id];});}
-/* what to pursue this iteration: open required always; future required if labour is spare
-   (pre-build); optionals only once required is secured — unless CHASE (a deliberate Major run) */
+/* urgency = latest turn you can still start sustaining and finish by the deadline.
+   Lower = more urgent. An at-risk required outranks an optional; a slacked required
+   yields to an urgent optional (exactly how a player works "whatever's most due"). */
+function startBy(S,d){return d.deadline-(d.dur-get(S.progress,d.id))+1;}
 function targetList(S,R){
-  var open=E.deliverable(S),spare=get(R.surplus,"workers")>=2,done=reqAllDone(S);
+  var open=E.deliverable(S),spare=get(R.surplus,"workers")>=2;
   return S.sc.directives.filter(function(d){
     if(S.done[d.id]||S.failed[d.id]||!include(d))return false;
-    var isOpen=open.indexOf(d)>=0;
-    if(CHASE)return isOpen||spare;
-    if(d.must)return isOpen||spare;
-    return done;
-  }).sort(byPrio);
+    return open.indexOf(d)>=0||spare;            /* open always; pre-build upcoming only with spare labour */
+  }).sort(function(a,b){var u=startBy(S,a)-startBy(S,b);return u||(a.must===b.must?0:(a.must?-1:1));});
 }
 
 /* reclaim a tile by demolishing a building whose removal keeps life support met
@@ -123,10 +120,13 @@ function greedyTurn(S){
     /* 0) survival first: keep current population fed (else immigration stalls everything) */
     for(var j=0;j<ls.length&&!built;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
       var t0=chooseForGood(S,ls[j],R,0);if(t0&&hasSlot(S,t0)&&tryBuild(S,t0))built=true;}
-    /* 1) build toward directives (required protected; optionals only with slack) */
+    /* 1) build toward directives, urgency-ordered. Never spend on an optional while a
+       required is unmet this turn (don't build things that prevent satisfying required). */
     if(!built){var ts=targetList(S,R);
+      var reqAtRisk=E.deliverable(S).some(function(d){return d.must&&startBy(S,d)<=S.turn&&get(R.surplus,d.good)<d.rate-0.05;});
       for(var i=0;i<ts.length;i++){var d=ts[i];
         if(get(R.surplus,d.good)>=d.rate-0.05)continue;
+        if(!d.must&&reqAtRisk)continue;
         var ty=chooseForGood(S,d.good,R,0);
         if(!ty||!hasSlot(S,ty))continue;
         if(tryBuild(S,ty)){built=true;break;}}
