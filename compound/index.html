@@ -85,6 +85,7 @@
   <h1>COMPOUND</h1>
   <div class="sp"></div>
   <div class="stat">Turn <b id="hTurn">1</b>/<b id="hTurns">24</b></div>
+  <div class="stat">Pop <b id="hPop">5</b>/<b id="hCap">5</b> <span class="small" id="hImmig"></span></div>
   <div class="stat">Prestige <b id="hPres">0</b><span class="small" id="hMaj"></span></div>
 </header>
 
@@ -132,15 +133,20 @@
    <b>Place buildings</b> (free) from the palette: tap one, then tap a highlighted tile. Earth only delivers a
    few per tier each turn (the <b>T1/T2/T3</b> counts). <b>Nothing is stockpiled</b> — every turn each building
    turns input flows into output flows; spare output feeds your active directives.<br><br>
+   <b>Population is your workforce.</b> Habitats provide <b>housing capacity</b>; colonists arrive by
+   <b>immigration</b> (a fixed number per turn — directives raise it) and fill empty housing over time. You can't
+   conjure workers on demand — grow housing ahead of need. <b>Life support</b> (food/water/power per colonist) is
+   paid <b>before</b> any industry; if it falls short, immigration <b>pauses</b> until you fix it.<br><br>
    <b>Directives are sustained goals:</b> "supply ≥ X /turn for D turns". Each turn you clear the bar counts once;
    meeting it consumes that surplus, so directives compete for the same goods. Completing one only unlocks its
    dependents <b>next</b> turn.<br><br>
    <b>Placement matters.</b> Extractors need their deposit. <b>Solar</b> is stronger toward the sunward (left) edge.
    A building gets <b>+22%</b> per adjacent tile producing one of its inputs — cluster your chains. <b>Heat</b>
-   plants (♨) want an adjacent <b>Radiator</b> or they throttle. <b>Reactors irradiate</b> neighbours (☢), halving
-   Habitat/Greenhouse output — unless they sit in a <b>lava tube</b> (which also boosts Habitats ×1.4).<br><br>
-   Tap any tile to see exactly what it's doing, what's throttling it, and every active bonus. <b>Undo</b> reverts
-   placements this turn; demolishing something placed this turn refunds the slot.
+   plants (♨) want an adjacent <b>Radiator</b> or they throttle. <b>Reactors irradiate</b> neighbours (☢), cutting
+   Habitat housing and Greenhouse output — unless on a <b>lava tube</b> (which boosts Habitat capacity ×1.4).
+   When placing, each legal hex shows the <b>multiplier</b> you'd get there.<br><br>
+   Tap any tile to see what it's doing, what's throttling it, and every active bonus. <b>Undo</b> rewinds your
+   moves — including past an End Turn.
   </div>
 </details>
 
@@ -159,7 +165,7 @@ var S;
 function gn(g){return ({power:"pwr",workers:"wkr"})[g]||g;}
 function insStr(t){var T=TYPES[t],a=[];for(var g in (T.in||{}))a.push(T.in[g]+" "+gn(g));return a.join(" + ")||"—";}
 function outsStr(t){var T=TYPES[t],a=[];for(var g in (T.out||{}))a.push(T.out[g]+" "+gn(g));
-  if(T.recycles)a.push("−"+T.recycles.amt+" "+gn(T.recycles.good)+"/"+T.recycles.from); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
+  if(T.cap)a.push("houses "+T.cap); if(T.recycles)a.push("−"+T.recycles.amt+" "+gn(T.recycles.good)+"/"+T.recycles.from); if(T.coolOut)a.push("cooling "+T.coolOut);return a.join(" + ")||"—";}
 function fxTags(t){var T=TYPES[t],a=[];
   if(T.deposit)a.push("⛏ "+T.deposit); if(T.requiresWreck)a.push("⌗ on wreck"); if(T.solarScaled)a.push("☀ sunline");
   if(T.recycles)a.push("♺ cuts water use"); if(T.heat)a.push("♨ heat "+T.heat); if(T.radiation)a.push("☢ irradiates");
@@ -255,11 +261,12 @@ function modifierLines(bi){
   var b=S.buildings[bi],T=TYPES[b.type],tile=S.map.tiles[b.tile],a=[];
   var cl=C.clusterCount(S,b.type,b.tile);
   if(T.in)a.push((cl>0?'<span class="pos">':'<span class="zero">')+"cluster ×"+(1+C.COLO*cl).toFixed(2)+" ("+cl+" adjacent supplier"+(cl===1?"":"s")+")</span>");
-  if(T.recycles){var sv=C.reclaimServes(S,b.tile);a.push((sv>0?'<span class="pos">':'<span class="neg">')+"recycling −"+T.recycles.amt+" water from "+sv+" Habitat"+(sv===1?"":"s")+(sv===0?" — place beside un-served Habitats":"")+"</span>");}
-  var rcl=C.reclaimClaims(S)[b.tile];if(rcl)a.push('<span class="pos">water −'+rcl.amt+" (recycled by adjacent Reclaimer)</span>");
+  if(T.cap){var cm=tile.lava?1.4:(C.radiated(S,b.tile)?0.4:1);
+    a.push((cm>1?'<span class="pos">':cm<1?'<span class="neg">':'<span class="zero">')+"houses "+Math.round(C.HAB_CAP*cm)+" colonists"+(tile.lava?" (lava tube ×1.4)":C.radiated(S,b.tile)?" (irradiated ×0.4)":"")+"</span>");}
+  if(T.recycles){var sv=C.reclaimServes(S,b.tile);a.push((sv>0?'<span class="pos">':'<span class="neg">')+"cuts colony water −"+T.recycles.amt+" × "+sv+" Habitat"+(sv===1?"":"s")+" = −"+(T.recycles.amt*sv).toFixed(1)+(sv===0?" (place beside un-served Habitats)":"")+"</span>");}
   if(T.solarScaled)a.push('<span class="'+(C.sunFactor(tile.q)>0.7?"pos":"zero")+'">sunline ×'+C.sunFactor(tile.q).toFixed(2)+" (column "+tile.q+")</span>");
-  if(T.lavaBonus)a.push(tile.lava?'<span class="pos">lava tube ×1.4</span>':'<span class="zero">lava tube ×1.4 (not on lava)</span>');
-  if(T.radSensitive){var ir=C.radiated(S,b.tile);a.push(ir?'<span class="neg">irradiated ×0.4</span>':(tile.lava?'<span class="pos">shielded by lava</span>':'<span class="zero">not irradiated</span>'));}
+  if(T.lavaBonus&&!T.cap)a.push(tile.lava?'<span class="pos">lava tube ×1.4</span>':'<span class="zero">lava tube ×1.4 (not on lava)</span>');
+  if(T.radSensitive&&!T.cap){var ir=C.radiated(S,b.tile);a.push(ir?'<span class="neg">irradiated ×0.4</span>':(tile.lava?'<span class="pos">shielded by lava</span>':'<span class="zero">not irradiated</span>'));}
   if(T.heat){var cool=C.coolingAt(S,b.tile),hr=C.heatRatio(S,b.type,b.tile);
     a.push((hr>0.999?'<span class="pos">':'<span class="neg">')+"heat "+T.heat+", cooling "+(1+cool).toFixed(1)+" → ×"+hr.toFixed(2)+(hr<0.999?" (needs a Radiator)":"")+"</span>");}
   if(T.labSyn)a.push('<span class="zero">lab synergy: +25%/adj lab, +10%/adj habitat</span>');
@@ -283,11 +290,12 @@ function inspector(R){
   if(bi!=null&&bi>=0){
     var b=S.buildings[bi],T=TYPES[b.type],frac=R.frac[bi],lim=C.limitingInput(S,R,bi);
     var eff=R.eff[bi],eo=[];for(var g in eff.out)eo.push((Math.round(eff.out[g]*frac*10)/10)+" "+gn(g));
+    var passive=!T.in&&!T.out;   /* housing / radiator: no throughput to report */
     var h='<b style="color:'+CATCOL[T.cat]+'">'+NAME[b.type]+'</b> <span class="small">'+C.CATNAME[T.cat]+'</span>';
     h+='<br><span class="small">'+insStr(b.type)+' → '+outsStr(b.type)+'</span>';
-    h+='<br>'+(frac>0.999?'<span class="pos">running at 100%</span>'
+    if(!passive){h+='<br>'+(frac>0.999?'<span class="pos">running at 100%</span>'
         :'<span class="neg">running at '+Math.round(frac*100)+'%</span>'+(lim?' <span class="small neg">— short on '+gn(lim)+'</span>':''));
-    if(eo.length)h+=' <span class="small">· output now: '+eo.join(", ")+'</span>';
+      if(eo.length)h+=' <span class="small">· output now: '+eo.join(", ")+'</span>';}
     var mods=modifierLines(bi);if(mods.length)h+='<br><span class="small">'+mods.join(" · ")+'</span>';
     var ter=tileDesc(t);if(ter)h+='<br><span class="small">tile: '+ter+'</span>';
     si.innerHTML=h;act.style.display="flex";
@@ -317,9 +325,11 @@ function renderFlows(R){
   var shorts=C.GOODS.filter(function(g){return get(R.cons,g)>0.01&&(R.ratio[g]==null?1:R.ratio[g])<UND;});
   var throttled=0;for(var i=0;i<R.frac.length;i++)if(R.eff[i]&&R.frac[i]<UND)throttled++;
   var el=document.getElementById("short");
+  var L=R.life||{},ls='Life support (first call on food/water/power): <b>'+(Math.round(get(L,"food")*10)/10)+'</b>f · <b>'+(Math.round(get(L,"water")*10)/10)+'</b>w · <b>'+(Math.round(get(L,"power")*10)/10)+'</b>p for '+Math.round(R.pop)+' colonists.';
+  if(!R.lifeMet)ls='<span class="neg">⚠ Life support short — immigration paused until food/water/power are all met.</span>';
   if(shorts.length)el.innerHTML='<span class="neg">⚠ Undersupplied: '+shorts.map(gn).join(", ")
-    +'</span> — '+throttled+' building'+(throttled===1?"":"s")+' throttled. Build more producers (or cluster them).';
-  else el.innerHTML='<span class="pos">✓ every chain fully supplied.</span>';
+    +'</span> — '+throttled+' building'+(throttled===1?"":"s")+' throttled.<br>'+ls;
+  else el.innerHTML='<span class="pos">✓ every chain fully supplied.</span><br>'+ls;
 }
 
 /* ---------- palette ---------- */
@@ -380,6 +390,9 @@ function render(){
   var R=C.solveFlows(S);
   document.getElementById("hTurn").textContent=S.turn;
   document.getElementById("hTurns").textContent=S.sc.turns;
+  document.getElementById("hPop").textContent=Math.round(S.pop);
+  document.getElementById("hCap").textContent=Math.round(R.cap);
+  document.getElementById("hImmig").innerHTML=S.lifeShort?'<span class="neg">⚠ paused</span>':"+"+S.immig+"/turn";
   document.getElementById("hPres").textContent=Math.round(S.prestige);
   document.getElementById("hMaj").textContent=" (MAJOR ≥"+S.sc.majorThreshold+")";
   var bn=document.getElementById("banner");

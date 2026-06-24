@@ -31,7 +31,7 @@ var TYPES={
   solar:{bt:1,out:{power:3},solarScaled:true,cat:"pow"},
   reactor:{bt:2,in:{water:1,workers:1},out:{power:9},heat:3,radiation:true,cat:"pow"},
   radiator:{bt:1,coolOut:4,cat:"rad"},
-  habitat:{bt:1,in:{food:1,water:1,power:1},out:{workers:3},radSensitive:true,lavaBonus:true,cat:"hab"},
+  habitat:{bt:1,cap:5,radSensitive:true,lavaBonus:true,cat:"hab"},   /* housing capacity; pop lives here, not instant workers */
   oreMine:{bt:1,in:{power:1,workers:1},out:{ore:3},deposit:"ore",cat:"ext"},
   iceExtractor:{bt:1,in:{power:1,workers:1},out:{ice:3},deposit:"ice",cat:"ext"},
   silicaQuarry:{bt:1,in:{power:1,workers:1},out:{silica:3},deposit:"silica",cat:"ext"},
@@ -67,6 +67,10 @@ var GOODORDER=["power","workers","food","water","ore","ice","silica","rare","met
 var GOODS=(function(){var s={};for(var t in TYPES){var T=TYPES[t];for(var g in (T.in||{}))s[g]=1;for(var g2 in (T.out||{}))s[g2]=1;if(T.recycles)s[T.recycles.good]=1;}var a=[];for(var k in s)a.push(k);return a;})();
 
 var COLO=0.22;                                       /* adjacency cluster bonus */
+/* population: colonists are a persistent stock = your workforce. Habitats give
+   capacity; immigration fills it over time, gated by life support. */
+var LIFE={food:0.2,water:0.2,power:0.2};             /* per-capita life support demand (priority over industry) */
+var HAB_CAP=5, IMMIG_BASE=3;
 function get(o,k){return o[k]||0;}
 
 /* ---- adjacency / heat / radiation ---- */
@@ -99,36 +103,48 @@ function coolingAt(S,id){var tile=S.map.tiles[id],avail=0;
     var em=countAdj(S,tile.nb[i],function(t){return TYPES[t].heat>0;});if(em<1)em=1;avail+=rt.coolOut/em;}
   return avail;}
 function heatRatio(S,type,id){var T=TYPES[type];if(!T.heat)return 1;return Math.min(1,(1+coolingAt(S,id))/T.heat);}
+/* total housing capacity (lava tubes hold more, irradiated tiles fewer) */
+function capacityOf(S){var c=0;for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b||TYPES[b.type].cat!=="hab")continue;
+  var t=S.map.tiles[b.tile],m=t.lava?1.4:(radiated(S,b.tile)?0.4:1);c+=HAB_CAP*m;}return c;}
 
-/* ---- flow solver: optimistic fixed-point throttling (tight convergence) ---- */
-function effRates(S){var claimed=reclaimClaims(S),arr=[];for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b){arr.push(null);continue;}var T=TYPES[b.type];
-  var hr=heatRatio(S,b.type,b.tile),m=adjMult(S,b.type,b.tile)*hr,oin={},oout={},cut=claimed[b.tile];
-  for(var g in (T.in||{})){var v=T.in[g];if(cut&&cut.good===g)v=Math.max(0,v-cut.amt);oin[g]=v*hr;}
+/* ---- flow solver: optimistic fixed-point throttling (tight convergence) ----
+   Colonists (S.pop) supply workers exogenously and demand life support
+   (food/water/power) with PRIORITY over industry. */
+function effRates(S){var arr=[];for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b){arr.push(null);continue;}var T=TYPES[b.type];
+  var hr=heatRatio(S,b.type,b.tile),m=adjMult(S,b.type,b.tile)*hr,oin={},oout={};
+  for(var g in (T.in||{}))oin[g]=T.in[g]*hr;
   for(var g2 in (T.out||{}))oout[g2]=T.out[g2]*m;
   arr.push({in:oin,out:oout,heat:hr,mult:m});}return arr;}
-function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=eff[i]?1:0;var prod,cons,ratio={};
-  for(var it=0;it<200;it++){prod={};cons={};
+/* total life-support demand reduced by reclaimers (per claimed adjacent habitat) */
+function lifeDemand(S){var pop=S.pop||0,L={};for(var g in LIFE)L[g]=pop*LIFE[g];
+  var claims=reclaimClaims(S);for(var tile in claims){var c=claims[tile];if(L[c.good]!=null)L[c.good]=Math.max(0,L[c.good]-c.amt);}
+  return L;}
+function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=eff[i]?1:0;
+  var pop=S.pop||0, L=lifeDemand(S);                         /* life-support demand (tier-0), minus reclaimer recycling */
+  var prod,cons,ratio={};
+  for(var it=0;it<200;it++){prod={workers:pop};cons={};        /* colonists supply labor */
     for(i=0;i<n;i++){if(!eff[i])continue;var f=frac[i];if(f<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f;}
-    ratio={};for(var gi=0;gi<GOODS.length;gi++){g=GOODS[gi];var p=get(prod,g),d=get(cons,g);ratio[g]=(d<=1e-12)?1:Math.min(1,p/d);}
+    ratio={};for(var gi=0;gi<GOODS.length;gi++){g=GOODS[gi];var avail=Math.max(0,get(prod,g)-get(L,g)),d=get(cons,g);ratio[g]=(d<=1e-12)?1:Math.min(1,avail/d);}
     var md=0;for(i=0;i<n;i++){if(!eff[i])continue;var r=1;for(g in eff[i].in)r=Math.min(r,ratio[g]==null?0:ratio[g]);var nf=0.5*frac[i]+0.5*r;md=Math.max(md,Math.abs(nf-frac[i]));frac[i]=nf;}
     if(md<1e-7)break;}
-  prod={};cons={};for(i=0;i<n;i++){if(!eff[i])continue;var f2=frac[i];if(f2<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f2;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f2;}
-  var sur={};for(var gj=0;gj<GOODS.length;gj++){g=GOODS[gj];sur[g]=get(prod,g)-get(cons,g);}
-  return {prod:prod,cons:cons,surplus:sur,frac:frac,ratio:ratio,eff:eff};}
+  prod={workers:pop};cons={};for(i=0;i<n;i++){if(!eff[i])continue;var f2=frac[i];if(f2<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f2;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f2;}
+  var sur={};for(var gj=0;gj<GOODS.length;gj++){g=GOODS[gj];sur[g]=get(prod,g)-get(cons,g)-get(L,g);}
+  var lifeMet=get(prod,"food")>=get(L,"food")-1e-6&&get(prod,"water")>=get(L,"water")-1e-6&&get(prod,"power")>=get(L,"power")-1e-6;
+  return {prod:prod,cons:cons,surplus:sur,frac:frac,ratio:ratio,eff:eff,life:L,lifeMet:lifeMet,pop:pop,cap:capacityOf(S)};}
 function limitingInput(S,R,i){var eff=R.eff[i];if(!eff||R.frac[i]>0.999)return null;var best=null,bv=2;
   for(var g in eff.in){var r=R.ratio[g]==null?0:R.ratio[g];if(r<bv){bv=r;best=g;}}return bv<0.999?best:null;}
 
 /* ---- scenario ---- */
 function scenario(){return {
-  turns:24, buildRate:{1:2,2:1,3:0}, majorThreshold:720,
+  turns:24, buildRate:{1:2,2:1,3:0}, majorThreshold:720, startPop:5,
   start:[["solar",0],["solar",0],["habitat",0],["iceExtractor",0],["waterPlant",0],["greenhouse",0]],
   directives:[
-    {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:5,req:[],must:true,reward:{buildRate:{1:1}},rp:40},
-    {id:"D2",name:"Metalworks",good:"metal",rate:5,dur:2,deadline:9,req:["D1"],must:true,reward:{buildRate:{2:1}},rp:70},
+    {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:5,req:[],must:true,reward:{immig:1,buildRate:{1:1}},rp:40},
+    {id:"D2",name:"Metalworks",good:"metal",rate:5,dur:2,deadline:9,req:["D1"],must:true,reward:{immig:1,buildRate:{2:1}},rp:70},
     {id:"D3",name:"Electronics",good:"electronics",rate:4,dur:2,deadline:13,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{2:1,3:2}},rp:120},
-    {id:"D4",name:"Waterworks",good:"water",rate:8,dur:2,deadline:11,req:["D1"],must:false,reward:{buildRate:{1:1}},rp:60},
-    {id:"D5",name:"Assembly",good:"components",rate:3,dur:3,deadline:18,req:["D3"],must:true,reward:{buildRate:{2:1,3:1}},rp:160},
-    {id:"D6",name:"Foodbelt",good:"food",rate:10,dur:2,deadline:17,req:["D3"],must:false,reward:{buildRate:{2:1}},rp:90},
+    {id:"D4",name:"Waterworks",good:"water",rate:8,dur:2,deadline:11,req:["D1"],must:false,reward:{immig:2},rp:60},
+    {id:"D5",name:"Assembly",good:"components",rate:3,dur:3,deadline:18,req:["D3"],must:true,reward:{immig:1,buildRate:{2:1,3:1}},rp:160},
+    {id:"D6",name:"Foodbelt",good:"food",rate:10,dur:2,deadline:17,req:["D3"],must:false,reward:{immig:2},rp:90},
     {id:"D7",name:"Datacore",good:"research",rate:3,dur:2,deadline:23,req:["D5"],must:true,reward:{},rp:260}
   ]};}
 
@@ -165,6 +181,7 @@ function newState(){
   var sc=scenario();
   var S={sc:sc,map:buildMap(),turn:1,buildings:[],occ:{},buildRate:Object.assign({},sc.buildRate),
      unlocked:{},placed:{},done:{},failed:{},progress:{},metNow:{},prestige:0,tilesUsed:0,
+     pop:sc.startPop,immig:IMMIG_BASE,lifeShort:false,grew:0,
      sel:null,selTile:-1,over:false,result:"",lastMsgs:[]};
   for(var i=0;i<sc.start.length;i++){var id=bestTile(S,sc.start[i][0]);if(id>=0)placeAt(S,sc.start[i][0],id);}
   S.placed={};
@@ -172,7 +189,7 @@ function newState(){
 }
 function deliverable(S){var out=[];for(var i=0;i<S.sc.directives.length;i++){var d=S.sc.directives[i];if(S.done[d.id]||S.failed[d.id]||S.turn>d.deadline||!prereqsDone(S,d))continue;out.push(d);}return out;}
 function applyReward(S,d){var r=d.reward||{};if(r.unlock)for(var i=0;i<r.unlock.length;i++)S.unlocked[r.unlock[i]]=1;
-  if(r.buildRate)for(var bt in r.buildRate)S.buildRate[bt]=get(S.buildRate,bt)+r.buildRate[bt];if(d.rp)S.prestige+=d.rp;}
+  if(r.buildRate)for(var bt in r.buildRate)S.buildRate[bt]=get(S.buildRate,bt)+r.buildRate[bt];if(r.immig)S.immig+=r.immig;if(d.rp)S.prestige+=d.rp;}
 
 /* a directive is met when the surplus, rounded the way the UI shows it (1 dp),
    meets the rate — so "what you see is what you get", no sub-integer gotchas. */
@@ -193,9 +210,13 @@ function processEndTurn(S){
     if(S.turn>=dd.deadline&&get(S.progress,dd.id)<dd.dur){S.failed[dd.id]="fail";if(dd.must)msgs.push("✗ "+dd.id+" "+dd.name+" FAILED");}}
   var lost=false;for(i=0;i<S.sc.directives.length;i++){if(S.sc.directives[i].must&&S.failed[S.sc.directives[i].id])lost=true;}
   var allMust=true;for(i=0;i<S.sc.directives.length;i++){var x=S.sc.directives[i];if(x.must&&S.done[x.id]!=="done")allMust=false;}
+  /* population: immigration fills housing if life support held; otherwise paused (pop holds) */
+  S.lifeShort=!R.lifeMet; S.grew=0;
   if(lost){S.over=true;S.result="DEFEAT — "+(msgs.filter(function(m){return m.indexOf("FAILED")>=0;})[0]||"required directive failed");}
   else if(allMust){S.over=true;S.result=(S.prestige>=S.sc.majorThreshold?"MAJOR VICTORY":"MINOR VICTORY")+" — prestige "+Math.round(S.prestige);}
   else { S.turn++; S.placed={}; S.sel=null; S.selTile=-1;
+    if(R.lifeMet){var room=R.cap-S.pop;if(room>0){S.grew=Math.min(S.immig,room);S.pop+=S.grew;}}
+    else msgs.push("⚠ life support short — immigration paused");
     if(S.turn>S.sc.turns){S.over=true;S.result="DEFEAT — ran out of turns";} }
   S.lastMsgs=msgs;
   return {msgs:msgs,over:S.over,result:S.result};
@@ -203,11 +224,11 @@ function processEndTurn(S){
 
 root.COMPOUND={
   W:W,H:H,TYPES:TYPES,PRODUCER:PRODUCER,NAME:NAME,ABBR:ABBR,CATCOL:CATCOL,CATNAME:CATNAME,
-  ORDER:ORDER,GOODORDER:GOODORDER,GOODS:GOODS,COLO:COLO,
-  sunFactor:sunFactor,buildMap:buildMap,get:get,
+  ORDER:ORDER,GOODORDER:GOODORDER,GOODS:GOODS,COLO:COLO,LIFE:LIFE,HAB_CAP:HAB_CAP,IMMIG_BASE:IMMIG_BASE,
+  sunFactor:sunFactor,buildMap:buildMap,get:get,capacityOf:capacityOf,
   neighborsProduce:neighborsProduce,neighborHasRadiation:neighborHasRadiation,countAdj:countAdj,
   clusterCount:clusterCount,adjMult:adjMult,radiated:radiated,reclaimClaims:reclaimClaims,reclaimServes:reclaimServes,coolingAt:coolingAt,heatRatio:heatRatio,
-  effRates:effRates,solveFlows:solveFlows,limitingInput:limitingInput,scenario:scenario,
+  effRates:effRates,solveFlows:solveFlows,limitingInput:limitingInput,lifeDemand:lifeDemand,scenario:scenario,
   unlocked:unlocked,eligible:eligible,placeReason:placeReason,canPlace:canPlace,
   placeAt:placeAt,prereqsDone:prereqsDone,tileScore:tileScore,bestTile:bestTile,
   newState:newState,deliverable:deliverable,applyReward:applyReward,processEndTurn:processEndTurn,meetsRate:meetsRate

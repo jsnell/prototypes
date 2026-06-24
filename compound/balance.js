@@ -48,14 +48,20 @@ function focusList(S){
   return S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&(!MUST_ONLY||d.must);})
     .sort(function(a,b){if(a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
 }
+/* life support must stay ahead of the (growing) population, else immigration pauses */
+function lifeGoals(S,R){return [{good:"power",rate:1},{good:"food",rate:0.5},{good:"water",rate:0.5}]
+  .filter(function(x){return get(R.surplus,x.good)<x.rate;});}
 function greedyTurn(S){
-  for(var guard=0;guard<80;guard++){
-    var R=E.solveFlows(S),placed=false,foc=focusList(S);
-    for(var i=0;i<foc.length;i++){var d=foc[i];
-      if(get(R.surplus,d.good)>=d.rate*1.1+0.4)continue;       /* already comfortably met */
-      var c=chooseBuild(S,d.good,R,0);
-      if(!c||!hasSlot(S,c.type)||c.id<0)continue;
-      E.placeAt(S,c.type,c.id);placed=true;break;
+  for(var guard=0;guard<120;guard++){
+    var R=E.solveFlows(S),placed=false;
+    /* 1) only house up when colonists are running out AND there's growth room (don't over-build) */
+    if(get(R.surplus,"workers")<2 && R.cap-S.pop<S.immig && hasSlot(S,"habitat") && E.bestTile(S,"habitat")>=0){E.placeAt(S,"habitat",E.bestTile(S,"habitat"));continue;}
+    /* 2) industry is worker-gated: only add worker-consuming buildings if colonists are free */
+    if(get(R.surplus,"workers")>=1){
+      var goals=lifeGoals(S,R).concat(focusList(S).filter(function(d){return get(R.surplus,d.good)<d.rate*1.1+0.4;}));
+      for(var i=0;i<goals.length;i++){var c=chooseBuild(S,goals[i].good,R,0);
+        if(!c||!hasSlot(S,c.type)||c.id<0)continue;
+        E.placeAt(S,c.type,c.id);placed=true;break;}
     }
     if(!placed)break;
   }
@@ -72,7 +78,7 @@ function run(verbose){
       var sg=["power","workers","food","water","metal","alloy","electronics","components","research"]
         .map(function(g){return g.slice(0,4)+(Math.round(get(R.surplus,g)*10)/10);}).join(" ");
       var prog=S.sc.directives.map(function(d){return d.id+":"+get(S.progress,d.id)+"/"+d.dur+(S.done[d.id]?"✓":(S.failed[d.id]?"✗":""));}).join(" ");
-      log.push("T"+t+" b="+S.tilesUsed+" pr="+Math.round(S.prestige)+" ["+sg+"]\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
+      log.push("T"+t+" b="+S.tilesUsed+" pop="+Math.round(S.pop)+"/"+Math.round(R.cap)+"(+"+S.immig+") pr="+Math.round(S.prestige)+" ["+sg+"]\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
     }
   }
   return {S:S,log:log};
