@@ -42,11 +42,10 @@ function bestTileByMult(S,type){
   }
   return best;
 }
-/* constructive planner: drill to the deepest starved input; returns a type to build */
-/* What to build to push `good` toward an open directive. Recurses into the deepest
-   under-supplied input. Workers are special: you can't build them — you grow the
-   population, and only when a directive actually needs more (housing if full;
-   life-support only if immigration is paused). No buffers. */
+/* What to build to push `good` up: pick the buildable producer with the highest output of
+   `good` (so a free tier gets used — e.g. a reactor on the idle T2 slot, algae on T2 when T1 is
+   full), then drill into its deepest under-supplied input first. Workers can't be built — you
+   grow population: feed it, feed the incoming wave, then add housing. */
 function chooseForGood(S,good,R,depth){
   if(depth>12)return null;
   if(good==="workers"){
@@ -54,35 +53,26 @@ function chooseForGood(S,good,R,depth){
     for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){var s=chooseForGood(S,ls[j],R,depth+1);if(s)return s;} /* feed current pop */
     for(var k=0;k<ls.length;k++)if(get(R.surplus,ls[k])<S.immig*E.LIFE[ls[k]]-1e-6){var s2=chooseForGood(S,ls[k],R,depth+1);if(s2)return s2;} /* and the incoming wave */
     if(R.cap-S.pop<=0.01)return (E.unlocked(S,"habitat")&&bestTileByMult(S,"habitat")>=0)?"habitat":null; /* then add housing */
-    return null;                                                             /* fed + room -> wait for immigration */
+    return null;
   }
-  var ps=producersFor(good);
+  var ps=producersFor(good).filter(function(t){return E.unlocked(S,t);})
+    .sort(function(a,b){return get(TYPES[b].out||{},good)-get(TYPES[a].out||{},good);}); /* most powerful first */
   for(var pi=0;pi<ps.length;pi++){var type=ps[pi],T=TYPES[type];
-    if(!E.unlocked(S,type))continue;
-    if(bestTileByMult(S,type)<0)continue;
+    if(!hasSlot(S,type)||bestTileByMult(S,type)<0)continue;   /* only a producer whose tier has a free slot */
     var wait=false;
     if(T.in)for(var g in T.in){
       if(get(R.surplus,g)<T.in[g]*0.6){var sub=chooseForGood(S,g,R,depth+1);if(sub)return sub;wait=true;}
     }
-    if(wait)continue;                                  /* an input can't be improved now -> don't build it unfed/unstaffed */
+    if(wait)continue;
     return type;
   }
   return null;
 }
 var ALLMODE=process.env.ALL==="1", ONLY_OPT=process.env.OPT||null;
-var CHASE=!!ONLY_OPT;                                   /* OPT mode chases the optional by deadline; ALL mode protects required (must-first) */
 function include(d){return d.must||ALLMODE||(ONLY_OPT&&d.id===ONLY_OPT);}
-/* urgency = latest turn you can still start sustaining and finish by the deadline.
-   Lower = more urgent. An at-risk required outranks an optional; a slacked required
-   yields to an urgent optional (exactly how a player works "whatever's most due"). */
+/* urgency = latest turn you can still start sustaining and finish by the deadline (lower=sooner) */
 function startBy(S,d){return d.deadline-(d.dur-get(S.progress,d.id))+1;}
-function targetList(S,R){
-  var open=E.deliverable(S),spare=get(R.surplus,"workers")>=2;
-  return S.sc.directives.filter(function(d){
-    if(S.done[d.id]||S.failed[d.id]||!include(d))return false;
-    return open.indexOf(d)>=0||spare;            /* open always; pre-build upcoming only with spare labour */
-  }).sort(function(a,b){var u=startBy(S,a)-startBy(S,b);return u||(a.must===b.must?0:(a.must?-1:1));});
-}
+function byUrg(S){return function(a,b){var u=startBy(S,a)-startBy(S,b);return u||(a.must===b.must?0:(a.must?-1:1));};}
 
 /* reclaim a tile by demolishing a building whose removal keeps life support met
    and doesn't drop any directive that's currently being satisfied (no thrash) */
@@ -114,24 +104,54 @@ function tryBuild(S,type){                             /* place on best tile, re
   }
   return true;
 }
+/* (a) satisfy current open directives: keep the colony fed, then build toward any open
+   directive that's below its rate (most urgent first). No verify — this IS the current goal. */
+function buildCurrent(S){
+  var R=E.solveFlows(S),ls=["food","water","power"];
+  for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
+    var t=chooseForGood(S,ls[j],R,0);if(t&&hasSlot(S,t)&&tryBuild(S,t))return true;}
+  var open=E.deliverable(S).filter(include).filter(function(d){return get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S));
+  for(var i=0;i<open.length;i++){var t2=chooseForGood(S,open[i].good,R,0);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2))return true;}
+  return false;
+}
+/* snapshot just the mutable placement state, so a tentative build can be rolled back */
+function snapshot(S){return {b:S.buildings.slice(),o:Object.assign({},S.occ),p:Object.assign({},S.placed),u:S.tilesUsed};}
+function restore(S,s){S.buildings=s.b;S.occ=s.o;S.placed=s.p;S.tilesUsed=s.u;}
+function satisfiedSet(S,R){var ids={};E.deliverable(S).filter(include).forEach(function(d){if(get(R.surplus,d.good)>=d.rate-0.05)ids[d.id]=d;});return {ids:ids,life:R.lifeMet};}
+function violates(before,R2){
+  if(before.life&&!R2.lifeMet)return true;
+  for(var id in before.ids){if(get(R2.surplus,before.ids[id].good)<before.ids[id].rate-0.05)return true;}
+  return false;
+}
+/* things worth building for LATER: foundational growth (life-support headroom + housing for the
+   incoming population) first, then each upcoming directive's chain (most urgent first). */
+function futureBuilds(S,R){
+  var out=[],seen={};
+  /* foundational capacity everything will need, ahead of demand: power, then workforce */
+  if(get(R.surplus,"power")<6){var p=chooseForGood(S,"power",R,0);if(p){seen[p]=1;out.push(p);}}
+  var w=chooseForGood(S,"workers",R,0);if(w&&!seen[w]){seen[w]=1;out.push(w);}
+  /* then each upcoming directive that isn't already satisfied, most urgent first (don't overbuild) */
+  S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&include(d)&&get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S))
+    .forEach(function(d){var t=chooseForGood(S,d.good,R,0);if(t&&!seen[t]){seen[t]=1;out.push(t);}});
+  return out;
+}
+/* (b) build ahead for future needs, but ONLY keep a build if it doesn't drop a directive we're
+   currently satisfying (or break life support). This is "(b) except if it re-compromises (a)". */
+function buildAhead(S){
+  var R=E.solveFlows(S),before=satisfiedSet(S,R),cands=futureBuilds(S,R);
+  for(var i=0;i<cands.length;i++){var type=cands[i];if(!hasSlot(S,type))continue;
+    var snap=snapshot(S);
+    if(!tryBuild(S,type)){restore(S,snap);continue;}
+    if(violates(before,E.solveFlows(S))){restore(S,snap);continue;}
+    return true;
+  }
+  return false;
+}
 function greedyTurn(S){
-  for(var guard=0;guard<160;guard++){
-    var R=E.solveFlows(S),built=false,ls=["food","water","power"];
-    /* 0) survival first: keep current population fed (else immigration stalls everything) */
-    for(var j=0;j<ls.length&&!built;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
-      var t0=chooseForGood(S,ls[j],R,0);if(t0&&hasSlot(S,t0)&&tryBuild(S,t0))built=true;}
-    /* 1) build toward directives, urgency-ordered. Never spend on an optional while a
-       required is unmet this turn (don't build things that prevent satisfying required). */
-    if(!built){var ts=targetList(S,R);
-      var reqAtRisk=E.deliverable(S).some(function(d){return d.must&&startBy(S,d)<=S.turn&&get(R.surplus,d.good)<d.rate-0.05;});
-      for(var i=0;i<ts.length;i++){var d=ts[i];
-        if(get(R.surplus,d.good)>=d.rate-0.05)continue;
-        if(!d.must&&reqAtRisk)continue;
-        var ty=chooseForGood(S,d.good,R,0);
-        if(!ty||!hasSlot(S,ty))continue;
-        if(tryBuild(S,ty)){built=true;break;}}
-    }
-    if(!built)break;
+  for(var guard=0;guard<120;guard++){
+    if(buildCurrent(S))continue;   /* (a) */
+    if(buildAhead(S))continue;     /* (b) */
+    break;
   }
   return E.processEndTurn(S);
 }
@@ -152,7 +172,7 @@ function run(verbose){
   return {S:S,log:log};
 }
 
-var EXPORT={greedyTurn:greedyTurn,run:run,chooseForGood:chooseForGood,targetList:targetList,bestTileByMult:bestTileByMult,tryBuild:tryBuild};
+var EXPORT={greedyTurn:greedyTurn,run:run,chooseForGood:chooseForGood,buildCurrent:buildCurrent,buildAhead:buildAhead,bestTileByMult:bestTileByMult,tryBuild:tryBuild};
 if(typeof module!=="undefined"&&module.exports)module.exports=EXPORT;
 if(typeof require!=="undefined"&&require.main===module){
   var v=run(true);
