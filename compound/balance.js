@@ -104,14 +104,16 @@ function tryBuild(S,type){                             /* place on best tile, re
   }
   return true;
 }
+var BLOG=[];  /* decision log: {t, phase, goal, type} */
+function logBuild(S,phase,goal,type){BLOG.push({t:S.turn,phase:phase,goal:goal,type:type});}
 /* (a) satisfy current open directives: keep the colony fed, then build toward any open
    directive that's below its rate (most urgent first). No verify — this IS the current goal. */
 function buildCurrent(S){
   var R=E.solveFlows(S),ls=["food","water","power"];
   for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
-    var t=chooseForGood(S,ls[j],R,0);if(t&&hasSlot(S,t)&&tryBuild(S,t))return true;}
+    var t=chooseForGood(S,ls[j],R,0);if(t&&hasSlot(S,t)&&tryBuild(S,t)){logBuild(S,"a-life",ls[j],t);return true;}}
   var open=E.deliverable(S).filter(include).filter(function(d){return get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S));
-  for(var i=0;i<open.length;i++){var t2=chooseForGood(S,open[i].good,R,0);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2))return true;}
+  for(var i=0;i<open.length;i++){var t2=chooseForGood(S,open[i].good,R,0);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2)){logBuild(S,"a-dir",open[i].id,t2);return true;}}
   return false;
 }
 /* snapshot just the mutable placement state, so a tentative build can be rolled back */
@@ -128,22 +130,22 @@ function violates(before,R2){
 function futureBuilds(S,R){
   var out=[],seen={};
   /* foundational capacity everything will need, ahead of demand: power, then workforce */
-  if(get(R.surplus,"power")<6){var p=chooseForGood(S,"power",R,0);if(p){seen[p]=1;out.push(p);}}
-  var w=chooseForGood(S,"workers",R,0);if(w&&!seen[w]){seen[w]=1;out.push(w);}
+  if(get(R.surplus,"power")<6){var p=chooseForGood(S,"power",R,0);if(p){seen[p]=1;out.push({type:p,why:"power"});}}
+  var w=chooseForGood(S,"workers",R,0);if(w&&!seen[w]){seen[w]=1;out.push({type:w,why:"workers"});}
   /* then each upcoming directive that isn't already satisfied, most urgent first (don't overbuild) */
   S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&include(d)&&get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S))
-    .forEach(function(d){var t=chooseForGood(S,d.good,R,0);if(t&&!seen[t]){seen[t]=1;out.push(t);}});
+    .forEach(function(d){var t=chooseForGood(S,d.good,R,0);if(t&&!seen[t]){seen[t]=1;out.push({type:t,why:d.id});}});
   return out;
 }
 /* (b) build ahead for future needs, but ONLY keep a build if it doesn't drop a directive we're
    currently satisfying (or break life support). This is "(b) except if it re-compromises (a)". */
 function buildAhead(S){
   var R=E.solveFlows(S),before=satisfiedSet(S,R),cands=futureBuilds(S,R);
-  for(var i=0;i<cands.length;i++){var type=cands[i];if(!hasSlot(S,type))continue;
+  for(var i=0;i<cands.length;i++){var type=cands[i].type;if(!hasSlot(S,type))continue;
     var snap=snapshot(S);
     if(!tryBuild(S,type)){restore(S,snap);continue;}
     if(violates(before,E.solveFlows(S))){restore(S,snap);continue;}
-    return true;
+    logBuild(S,"b",cands[i].why,type);return true;
   }
   return false;
 }
@@ -166,7 +168,8 @@ function run(verbose){
       var sg=["power","workers","food","water","metal","alloy","electronics","components","research"]
         .map(function(g){return g.slice(0,4)+(Math.round(get(R.surplus,g)*10)/10);}).join(" ");
       var prog=S.sc.directives.map(function(d){return d.id+":"+get(S.progress,d.id)+"/"+d.dur+(S.done[d.id]?"✓":(S.failed[d.id]?"✗":""));}).join(" ");
-      log.push("T"+t+" b="+S.tilesUsed+" pop="+Math.round(S.pop)+"/"+Math.round(R.cap)+"(+"+S.immig+") pr="+Math.round(S.prestige)+" ["+sg+"]\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
+      var decs=BLOG.filter(function(x){return x.t===t;}).map(function(x){return x.type+"["+x.phase+":"+x.goal+"]";}).join(" ");
+      log.push("T"+t+" b="+S.tilesUsed+" pop="+Math.round(S.pop)+"/"+Math.round(R.cap)+"(+"+S.immig+") pr="+Math.round(S.prestige)+" ["+sg+"]\n   builds: "+(decs||"-")+"\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
     }
   }
   return {S:S,log:log};
