@@ -46,12 +46,12 @@ function bestTileByMult(S,type){
    `good` (so a free tier gets used — e.g. a reactor on the idle T2 slot, algae on T2 when T1 is
    full), then drill into its deepest under-supplied input first. Workers can't be built — you
    grow population: feed it, feed the incoming wave, then add housing. */
-function chooseForGood(S,good,R,depth){
+function chooseForGood(S,good,R,depth,ahead){
   if(depth>12)return null;
   if(good==="workers"){
     var ls=["food","water","power"];
-    for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){var s=chooseForGood(S,ls[j],R,depth+1);if(s)return s;} /* feed current pop */
-    for(var k=0;k<ls.length;k++)if(get(R.surplus,ls[k])<S.immig*E.LIFE[ls[k]]-1e-6){var s2=chooseForGood(S,ls[k],R,depth+1);if(s2)return s2;} /* and the incoming wave */
+    for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){var s=chooseForGood(S,ls[j],R,depth+1,ahead);if(s)return s;} /* feed current pop */
+    for(var k=0;k<ls.length;k++)if(get(R.surplus,ls[k])<S.immig*E.LIFE[ls[k]]-1e-6){var s2=chooseForGood(S,ls[k],R,depth+1,ahead);if(s2)return s2;} /* and the incoming wave */
     if(R.cap-S.pop<=0.01)return (E.unlocked(S,"habitat")&&bestTileByMult(S,"habitat")>=0)?"habitat":null; /* then add housing */
     return null;
   }
@@ -61,7 +61,8 @@ function chooseForGood(S,good,R,depth){
     if(!hasSlot(S,type)||bestTileByMult(S,type)<0)continue;   /* only a producer whose tier has a free slot */
     var wait=false;
     if(T.in)for(var g in T.in){
-      if(get(R.surplus,g)<T.in[g]*0.6){var sub=chooseForGood(S,g,R,depth+1);if(sub)return sub;wait=true;}
+      if(get(R.surplus,g)<T.in[g]*0.6){var sub=chooseForGood(S,g,R,depth+1,ahead);if(sub)return sub;
+        if(!(ahead&&g==="workers"))wait=true;}  /* building AHEAD: don't let a worker shortfall block — position it now, it runs when pop arrives. Materials still block. */
     }
     if(wait)continue;
     return type;
@@ -113,7 +114,7 @@ function buildCurrent(S){
   for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
     var t=chooseForGood(S,ls[j],R,0);if(t&&hasSlot(S,t)&&tryBuild(S,t)){logBuild(S,"a-life",ls[j],t);return true;}}
   var open=E.deliverable(S).filter(include).filter(function(d){return get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S));
-  for(var i=0;i<open.length;i++){var t2=chooseForGood(S,open[i].good,R,0);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2)){logBuild(S,"a-dir",open[i].id,t2);return true;}}
+  for(var i=0;i<open.length;i++){var t2=chooseForGood(S,open[i].good,R,0,true);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2)){logBuild(S,"a-dir",open[i].id,t2);return true;}} /* overbuild past worker throttle to hit rate now */
   return false;
 }
 /* snapshot just the mutable placement state, so a tentative build can be rolled back */
@@ -130,23 +131,26 @@ function violates(before,R2){
 function futureBuilds(S,R){
   var out=[],seen={};
   /* foundational capacity everything will need, ahead of demand: power, then workforce */
-  if(get(R.surplus,"power")<6){var p=chooseForGood(S,"power",R,0);if(p){seen[p]=1;out.push({type:p,why:"power"});}}
-  var w=chooseForGood(S,"workers",R,0);if(w&&!seen[w]){seen[w]=1;out.push({type:w,why:"workers"});}
+  if(get(R.surplus,"power")<6){var p=chooseForGood(S,"power",R,0,true);if(p){seen[p]=1;out.push({type:p,why:"power"});}}
+  var w=chooseForGood(S,"workers",R,0,true);if(w&&!seen[w]){seen[w]=1;out.push({type:w,why:"workers"});}
   /* then each upcoming directive that isn't already satisfied, most urgent first (don't overbuild) */
   S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&include(d)&&get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S))
-    .forEach(function(d){var t=chooseForGood(S,d.good,R,0);if(t&&!seen[t]){seen[t]=1;out.push({type:t,why:d.id});}});
+    .forEach(function(d){var t=chooseForGood(S,d.good,R,0,true);if(t&&!seen[t]){seen[t]=1;out.push({type:t,why:d.id});}});
   return out;
 }
 /* (b) build ahead for future needs, but ONLY keep a build if it doesn't drop a directive we're
    currently satisfying (or break life support). This is "(b) except if it re-compromises (a)". */
 function buildAhead(S){
   var R=E.solveFlows(S),before=satisfiedSet(S,R),cands=futureBuilds(S,R);
-  for(var i=0;i<cands.length;i++){var type=cands[i].type;if(!hasSlot(S,type))continue;
+  var dbg=process.env.DBG&&[];
+  for(var i=0;i<cands.length;i++){var type=cands[i].type;
+    if(!hasSlot(S,type)){if(dbg)dbg.push(type+"/"+cands[i].why+":noslot");continue;}
     var snap=snapshot(S);
-    if(!tryBuild(S,type)){restore(S,snap);continue;}
-    if(violates(before,E.solveFlows(S))){restore(S,snap);continue;}
+    if(!tryBuild(S,type)){restore(S,snap);if(dbg)dbg.push(type+"/"+cands[i].why+":cantplace");continue;}
+    if(violates(before,E.solveFlows(S))){restore(S,snap);if(dbg)dbg.push(type+"/"+cands[i].why+":violates");continue;}
     logBuild(S,"b",cands[i].why,type);return true;
   }
+  if(dbg)console.error("  T"+S.turn+" buildAhead found nothing. candidates: ["+dbg.join(", ")+"]  slotsLeft="+JSON.stringify(slotsLeft(S)));
   return false;
 }
 function greedyTurn(S){
@@ -155,6 +159,7 @@ function greedyTurn(S){
     if(buildAhead(S))continue;     /* (b) */
     break;
   }
+  if(process.env.DBG){var sl=slotsLeft(S);if(sl[1]+sl[2]+sl[3]>0)console.error("  >>> T"+S.turn+" WASTED slots: "+JSON.stringify(sl));}
   return E.processEndTurn(S);
 }
 
