@@ -152,12 +152,16 @@ function run(verbose){
   return {S:S,log:log};
 }
 
-var v=run(true);
-console.log(v.log.join("\n"));
-console.log("\nRESULT: "+v.S.result);
-console.log("buildRate end:",JSON.stringify(v.S.buildRate),"tiles used:",v.S.tilesUsed);
-var req=v.S.sc.directives.filter(function(d){return d.must;});
-var won=req.filter(function(d){return v.S.done[d.id];}).length;
-var opt=v.S.sc.directives.filter(function(d){return !d.must;});
-var optWon=opt.filter(function(d){return v.S.done[d.id];}).length;
-console.log("required: "+won+"/"+req.length+"   optional: "+optWon+"/"+opt.length);
+var EXPORT={greedyTurn:greedyTurn,run:run,chooseForGood:chooseForGood,targetList:targetList,bestTileByMult:bestTileByMult,tryBuild:tryBuild};
+if(typeof module!=="undefined"&&module.exports)module.exports=EXPORT;
+if(typeof require!=="undefined"&&require.main===module){
+  var v=run(true);
+  console.log(v.log.join("\n"));
+  console.log("\nRESULT: "+v.S.result);
+  console.log("buildRate end:",JSON.stringify(v.S.buildRate),"tiles used:",v.S.tilesUsed);
+  var req=v.S.sc.directives.filter(function(d){return d.must;});
+  var won=req.filter(function(d){return v.S.done[d.id];}).length;
+  var opt=v.S.sc.directives.filter(function(d){return !d.must;});
+  var optWon=opt.filter(function(d){return v.S.done[d.id];}).length;
+  console.log("required: "+won+"/"+req.length+"   optional: "+optWon+"/"+opt.length);
+}
