@@ -158,6 +158,30 @@ fn scenario() -> Vec<Directive> {
 }
 const TURNS: u32 = 24;
 
+// Directive-set variants to sweep (mechanics held constant). Each returns (name, economy, directives).
+// Index map: D1=0 D2=1 D3=2 D4=3(opt water) D5=4 D6=5(opt food) D7=6. Edit/extend freely.
+fn variants() -> Vec<(String, Econ, Vec<Directive>)> {
+    let e = default_econ();
+    let base = || scenario();
+    let mut out: Vec<(String, Econ, Vec<Directive>)> = Vec::new();
+    out.push(("baseline".into(), e.clone(), base()));
+    // optional-vs-critical-path tension: tighten / loosen the water optional's deadline
+    { let mut s=base(); s[3].deadline=9;  out.push(("D4 water dl 9".into(),  e.clone(), s)); }
+    { let mut s=base(); s[3].deadline=10; out.push(("D4 water dl 10".into(), e.clone(), s)); }
+    { let mut s=base(); s[3].deadline=13; out.push(("D4 water dl 13".into(), e.clone(), s)); }
+    { let mut s=base(); s[3].rate=12.0;   out.push(("D4 water rate 12".into(),e.clone(), s)); }
+    // long-pole optional (food) — earlier deadline / higher rate
+    { let mut s=base(); s[5].deadline=14; out.push(("D6 food dl 14".into(),  e.clone(), s)); }
+    { let mut s=base(); s[5].rate=18.0;   out.push(("D6 food rate 18".into(), e.clone(), s)); }
+    // harder long-pole required: components sustain longer / research demands more labs
+    { let mut s=base(); s[4].dur=4;       out.push(("D5 comp dur 4".into(),   e.clone(), s)); }
+    { let mut s=base(); s[6].rate=6.0;    out.push(("D7 research rate 6".into(),e.clone(), s)); }
+    { let mut s=base(); s[6].rate=8.0; s[6].dur=3; out.push(("D7 research 8/d3".into(), e.clone(), s)); }
+    // reward-timing: D3 grants its tier-3 later (move to D5) — does deferring it widen the gap?
+    { let mut s=base(); s[2].rew_build=[0,0,0,0]; s[4].rew_build=[0,0,0,1]; out.push(("T3 reward on D5".into(), e.clone(), s)); }
+    out
+}
+
 // economy knobs (the things we iterate on). Loaded from params.txt when present so engine.js stays
 // the single source of truth; falls back to these defaults otherwise.
 #[derive(Clone)]
@@ -462,6 +486,96 @@ fn multisets(items:&[usize], k:usize) -> Vec<Vec<usize>> {
 
 struct Node { s:State, parent:i32, plan:Vec<usize> }
 
+// parallel beam search: minimize the turn all directives complete. returns (turn, build order).
+fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (Option<u32>, Vec<Vec<usize>>) {
+    let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
+    let root = eng.new_state(econ);
+    let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![]}]];
+    let mut solution: Option<u32> = None;
+    let mut sol_chain: Vec<Vec<usize>> = vec![];
+    let ndir = sc.len();
+    let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>)>, Vec<Vec<usize>>) {
+        let mut children=Vec::new(); let mut wins=Vec::new();
+        if node.s.over { return (children,wins); }
+        let (sur,_life,ratio)=eng.solve(&node.s);
+        let cands=candidate_types(eng,&node.s,sc,&sur,&ratio);
+        let mut by:[Vec<usize>;4]=[vec![],vec![],vec![],vec![]];
+        for &t in &cands { by[eng.bt[t].bt].push(t); }
+        let m1=multisets(&by[1], node.s.build_rate[1] as usize);
+        let m2=multisets(&by[2], node.s.build_rate[2] as usize);
+        let m3=multisets(&by[3], node.s.build_rate[3] as usize);
+        let need=short_goods(eng,&node.s,sc,&sur,&ratio);
+        let mut plans: Vec<(f64,Vec<usize>)> = Vec::new();
+        for a in &m1 { for b in &m2 { for c in &m3 {
+            let mut p=Vec::with_capacity(a.len()+b.len()+c.len());
+            p.extend_from_slice(a); p.extend_from_slice(b); p.extend_from_slice(c);
+            let mut hit=[false;NG]; let mut score=0.0;
+            for &t in &p { let bt=&eng.bt[t];
+                for g in 0..NG { if bt.out[g]>0.0 && need[g] && !hit[g] {hit[g]=true; score+=10.0;} }
+                if t==HABITAT { score += if eng.capacity(&node.s)-node.s.pop < node.s.immig as f64 {6.0} else {1.0}; }
+                if t==RADIATOR { score+=4.0; }
+            }
+            score -= 0.3*(p.len() as f64);
+            plans.push((score,p));
+        }}}
+        plans.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
+        plans.truncate(plancap);
+        for (_,plan) in plans {
+            let mut c=node.s.clone();
+            for &ty in &plan { let id=eng.best_tile_mult(&c,ty);
+                if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); } }
+            eng.end_turn(&mut c,sc);
+            if (0..ndir).all(|d| c.done[d]) { wins.push(plan); continue; }
+            if c.over { continue; }
+            let sf=eng.score(&c,sc);
+            children.push((sf, c, pi as i32, plan));
+        }
+        (children, wins)
+    };
+    for turn in 1..=horizon {
+        let prev = levels.last().unwrap();
+        let np = prev.len();
+        let mut children: Vec<(f64, State, i32, Vec<usize>)> = Vec::new();
+        let mut win: Option<(i32,Vec<usize>)> = None;
+        std::thread::scope(|scope| {
+            let chunk = (np + nthreads - 1)/nthreads.max(1);
+            let mut handles=Vec::new();
+            for c in 0..nthreads {
+                let lo=c*chunk; let hi=((c+1)*chunk).min(np); if lo>=hi {continue;}
+                let exp=&expand_node; let prev=&prev;
+                handles.push(scope.spawn(move || {
+                    let mut ch=Vec::new(); let mut wn:Option<(i32,Vec<usize>)>=None;
+                    for pi in lo..hi { let (mut c2,wins)=exp(pi,&prev[pi]); ch.append(&mut c2);
+                        if wn.is_none() { if let Some(p)=wins.into_iter().next() { wn=Some((pi as i32,p)); } } }
+                    (ch,wn)
+                }));
+            }
+            for h in handles { let (mut ch,wn)=h.join().unwrap(); children.append(&mut ch);
+                if win.is_none() { win=wn; } }
+        });
+        if let Some((pi,plan)) = win {
+            let mut chain=vec![plan];
+            let mut p=pi; let mut lvl=levels.len()-1;
+            while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push(nd.plan.clone()); p=nd.parent; lvl-=1; }
+            chain.reverse();
+            sol_chain=chain; solution=Some(turn); break;
+        }
+        children.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
+        let mut seen=std::collections::HashSet::new();
+        let mut kept: Vec<Node> = Vec::new();
+        for (_,st,par,plan) in children.into_iter() {
+            if kept.len()>=beam {break;}
+            let mut sig: Vec<u32> = st.bld.iter().map(|b| (b.ty as u32)*100 + b.tile as u32).collect();
+            sig.sort();
+            if !seen.insert(sig) {continue;}
+            kept.push(Node{s:st,parent:par,plan});
+        }
+        if kept.is_empty() { break; }
+        levels.push(kept);
+    }
+    (solution, sol_chain)
+}
+
 fn main() {
     let mode = env::args().nth(1).unwrap_or("search".to_string());
     let eng = Eng::new();
@@ -526,97 +640,28 @@ fn main() {
         return;
     }
 
-    let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
-    let root = eng.new_state(&econ);
-    let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![]}]];
-    let mut solution: Option<u32> = None;
-    let mut sol_chain: Vec<Vec<usize>> = vec![];
-
-    // expand a single node -> (scored non-terminal children, terminal all-7 plans), with parent index pi
-    let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>)>, Vec<Vec<usize>>) {
-        let mut children=Vec::new(); let mut wins=Vec::new();
-        if node.s.over { return (children,wins); }
-        let (sur,_life,ratio)=eng.solve(&node.s);
-        let cands=candidate_types(&eng,&node.s,&sc,&sur,&ratio);
-        let mut by:[Vec<usize>;4]=[vec![],vec![],vec![],vec![]];
-        for &t in &cands { by[eng.bt[t].bt].push(t); }
-        let m1=multisets(&by[1], node.s.build_rate[1] as usize);
-        let m2=multisets(&by[2], node.s.build_rate[2] as usize);
-        let m3=multisets(&by[3], node.s.build_rate[3] as usize);
-        let need=short_goods(&eng,&node.s,&sc,&sur,&ratio);
-        let mut plans: Vec<(f64,Vec<usize>)> = Vec::new();
-        for a in &m1 { for b in &m2 { for c in &m3 {
-            let mut p=Vec::with_capacity(a.len()+b.len()+c.len());
-            p.extend_from_slice(a); p.extend_from_slice(b); p.extend_from_slice(c);
-            let mut hit=[false;NG]; let mut score=0.0;
-            for &t in &p { let bt=&eng.bt[t];
-                for g in 0..NG { if bt.out[g]>0.0 && need[g] && !hit[g] {hit[g]=true; score+=10.0;} }
-                if t==HABITAT { score += if eng.capacity(&node.s)-node.s.pop < node.s.immig as f64 {6.0} else {1.0}; }
-                if t==RADIATOR { score+=4.0; }
-            }
-            score -= 0.3*(p.len() as f64);
-            plans.push((score,p));
-        }}}
-        plans.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
-        plans.truncate(plancap);
-        for (_,plan) in plans {
-            let mut c=node.s.clone();
-            for &ty in &plan { let id=eng.best_tile_mult(&c,ty);
-                if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); } }
-            eng.end_turn(&mut c,&sc);
-            if (0..7).all(|d| c.done[d]) { wins.push(plan); continue; }
-            if c.over { continue; }
-            let sf=eng.score(&c,&sc);
-            children.push((sf, c, pi as i32, plan));
+    if mode=="sweep" {
+        // run greedy + search on each named variant; tabulate outcomes so we can see which
+        // directive sets widen the greedy-vs-optimal gap. Columns: greedy and search each as
+        // done/total @turn (prestige); turn-gap counts only when BOTH complete all directives.
+        println!("{:<26} {:>14} {:>14} {:>6}", "variant", "greedy", "search", "gap");
+        for (name, e2, sc2) in variants() {
+            let (gs, gdt) = eng.greedy_run(&e2, &sc2);
+            let g_done = (0..sc2.len()).filter(|&d| gs.done[d]).count();
+            let g_all = g_done==sc2.len();
+            let g_turn = if g_all { (0..sc2.len()).map(|d| gdt[d]).max().unwrap() } else {-1};
+            let (sol,_) = beam_search(&eng,&sc2,&e2,beam,horizon,plancap);
+            // search prestige/done: re-derive by replaying? simpler: report turn; full-completion implied
+            let s_turn = sol.map(|t| t as i32).unwrap_or(-1);
+            let g_col = format!("{}/{} @T{} ({})", g_done, sc2.len(), if g_all{g_turn}else{-1}, gs.prestige as i32);
+            let s_col = if s_turn>0 { format!("all @T{}", s_turn) } else { "no all".to_string() };
+            let gap = if g_all && s_turn>0 { format!("{}", g_turn - s_turn) } else { "-".to_string() };
+            println!("{:<26} {:>14} {:>14} {:>6}", name, g_col, s_col, gap);
         }
-        (children, wins)
-    };
-
-    for turn in 1..=horizon {
-        let prev = levels.last().unwrap();
-        let np = prev.len();
-        // parallel expansion across threads
-        let mut children: Vec<(f64, State, i32, Vec<usize>)> = Vec::new();
-        let mut win: Option<(i32,Vec<usize>)> = None;  // (parent pi, plan)
-        std::thread::scope(|scope| {
-            let chunk = (np + nthreads - 1)/nthreads.max(1);
-            let mut handles=Vec::new();
-            for c in 0..nthreads {
-                let lo=c*chunk; let hi=((c+1)*chunk).min(np); if lo>=hi {continue;}
-                let exp=&expand_node; let prev=&prev;
-                handles.push(scope.spawn(move || {
-                    let mut ch=Vec::new(); let mut wn:Option<(i32,Vec<usize>)>=None;
-                    for pi in lo..hi { let (mut c2,wins)=exp(pi,&prev[pi]); ch.append(&mut c2);
-                        if wn.is_none() { if let Some(p)=wins.into_iter().next() { wn=Some((pi as i32,p)); } } }
-                    (ch,wn)
-                }));
-            }
-            for h in handles { let (mut ch,wn)=h.join().unwrap(); children.append(&mut ch);
-                if win.is_none() { win=wn; } }
-        });
-        if let Some((pi,plan)) = win {
-            // reconstruct chain by walking parents
-            let mut chain=vec![plan];
-            let mut p=pi; let mut lvl=levels.len()-1;
-            while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push(nd.plan.clone()); p=nd.parent; lvl-=1; }
-            chain.reverse();
-            sol_chain=chain; solution=Some(turn); break;
-        }
-        // dedup by building multiset signature; keep top beam
-        children.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
-        let mut seen=std::collections::HashSet::new();
-        let mut kept: Vec<Node> = Vec::new();
-        for (_,st,par,plan) in children.into_iter() {
-            if kept.len()>=beam {break;}
-            let mut sig: Vec<u32> = st.bld.iter().map(|b| (b.ty as u32)*100 + b.tile as u32).collect();
-            sig.sort();
-            if !seen.insert(sig) {continue;}
-            kept.push(Node{s:st,parent:par,plan});
-        }
-        if kept.is_empty() { break; }
-        levels.push(kept);
+        return;
     }
 
+    let (solution, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
     let s_turn = solution.map(|t| t as i32).unwrap_or(-1);
     if mode=="gap" {
         let (gs, gdt) = eng.greedy_run(&econ,&sc);
