@@ -149,7 +149,42 @@ fn scenario() -> Vec<Directive> {
     ]
 }
 const TURNS: u32 = 24;
-const MAJOR: f64 = 700.0;
+
+// economy knobs (the things we iterate on). Loaded from params.txt when present so engine.js stays
+// the single source of truth; falls back to these defaults otherwise.
+#[derive(Clone)]
+struct Econ { build_rate:[u8;4], immig:u32, start_pop:f64 }
+fn default_econ() -> Econ { Econ{ build_rate:[0,1,1,0], immig:2, start_pop:5.0 } }
+
+// params.txt format (good = GOODORDER index, matching the good consts above):
+//   buildRate <t1> <t2> <t3>
+//   immig <n>
+//   startPop <n>
+//   dir <good> <rate> <dur> <deadline> <must> <rb1> <rb2> <rb3> <immigR> <unlock> <rp> [req...]
+fn load_params(path:&str) -> Option<(Econ, Vec<Directive>)> {
+    let txt = std::fs::read_to_string(path).ok()?;
+    let mut econ = default_econ(); let mut dirs = Vec::new();
+    for line in txt.lines() {
+        let t:Vec<&str> = line.split_whitespace().collect();
+        if t.is_empty() { continue; }
+        match t[0] {
+            "buildRate" => econ.build_rate=[0, t[1].parse().unwrap(), t[2].parse().unwrap(), t[3].parse().unwrap()],
+            "immig" => econ.immig = t[1].parse().unwrap(),
+            "startPop" => econ.start_pop = t[1].parse().unwrap(),
+            "dir" => {
+                let g:usize=t[1].parse().unwrap();
+                let rb=[0, t[6].parse().unwrap(), t[7].parse().unwrap(), t[8].parse().unwrap()];
+                let req:Vec<usize> = t[12..].iter().map(|x| x.parse().unwrap()).collect();
+                dirs.push(Directive{ good:g, rate:t[2].parse().unwrap(), dur:t[3].parse().unwrap(),
+                    deadline:t[4].parse().unwrap(), req, must:t[5]=="1", rew_build:rb,
+                    rew_immig:t[9].parse().unwrap(), rew_unlock:t[10]=="1", rp:t[11].parse().unwrap() });
+            }
+            _ => {}
+        }
+    }
+    if dirs.is_empty() { return None; }
+    Some((econ, dirs))
+}
 
 #[derive(Clone, Copy)]
 struct Building { ty:u8, tile:u16 }
@@ -358,12 +393,10 @@ impl Eng {
         best
     }
 
-    fn new_state(&self, sc:&[Directive]) -> State {
-        let mut br=[0u8;4]; br[1]=1; br[2]=1; br[3]=0;
-        let mut s=State{ bld:vec![], occ:[-1;NT], placed:[0;4], build_rate:br, unlocked:[false;NB],
-            done:[false;7], failed:[false;7], progress:[0;7], prestige:0.0, pop:5.0, immig:IMMIG_BASE, turn:1, over:false,
+    fn new_state(&self, econ:&Econ) -> State {
+        let mut s=State{ bld:vec![], occ:[-1;NT], placed:[0;4], build_rate:econ.build_rate, unlocked:[false;NB],
+            done:[false;7], failed:[false;7], progress:[0;7], prestige:0.0, pop:econ.start_pop, immig:econ.immig, turn:1, over:false,
             eval_sur:[0.0;NG], eval_life:false };
-        let _ = sc;
         let start=[SOLAR,SOLAR,HABITAT,ICEX,WATERPLANT,GREENHOUSE];
         for &t in &start { let id=self.best_tile_start(&s,t); if id>=0 { self.place(&mut s,t,id as usize); } }
         s.placed=[0;4];
@@ -424,10 +457,11 @@ struct Node { s:State, parent:i32, plan:Vec<usize> }
 fn main() {
     let mode = env::args().nth(1).unwrap_or("search".to_string());
     let eng = Eng::new();
-    let sc = scenario();
+    let params_path = env::var("PARAMS").unwrap_or_else(|_| "params.txt".to_string());
+    let (econ, sc) = load_params(&params_path).unwrap_or_else(|| (default_econ(), scenario()));
 
     if mode=="nobuild" {
-        let mut s=eng.new_state(&sc);
+        let mut s=eng.new_state(&econ);
         while !s.over {
             let (sur,life,_)=eng.solve(&s);
             println!("T{} pop={:.0} life={} pow={:.1} food={:.1} water={:.1} metal={:.1} elec={:.1}",
@@ -453,7 +487,7 @@ fn main() {
             vec![GREENHOUSE,GREENHOUSE,ALGAE,ALGAE,LAB],
             vec![HABITAT,HABITAT],
         ];
-        let mut s=eng.new_state(&sc);
+        let mut s=eng.new_state(&econ);
         for (t,plan) in order.iter().enumerate() {
             if s.over {break;}
             for &ty in plan { let id=eng.best_tile_mult(&s,ty);
@@ -473,7 +507,7 @@ fn main() {
     let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
 
     let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
-    let root = eng.new_state(&sc);
+    let root = eng.new_state(&econ);
     let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![]}]];
     let mut solution: Option<u32> = None;
     let mut sol_chain: Vec<Vec<usize>> = vec![];
