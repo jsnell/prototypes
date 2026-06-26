@@ -160,9 +160,10 @@ fn scenario() -> Vec<Directive> {
         mk(ELEC,4.0,2,10,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
         mk(COMP,3.0,3,15,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
         mk(RESEARCH,3.0,2,17,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
-        mk(GLASS,7.0,2,16,vec![],false,[0,0,0,0],0,false,50.0),    // D6 opt glass
-        mk(FOOD,12.0,2,12,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt food
-        mk(ELEC,8.0,2,9,vec![],false,[0,0,0,0],0,false,50.0),      // D8 opt elec
+        mk(RESEARCH,3.0,2,10,vec![],false,[0,0,0,0],0,false,50.0), // D6 opt research@10
+        mk(GLASS,5.0,2,8,vec![],false,[0,0,0,0],0,false,50.0),     // D7 opt glass@8
+        mk(FOOD,12.0,2,10,vec![],false,[0,0,0,0],0,false,50.0),    // D8 opt food@10
+        mk(ELEC,7.0,2,17,vec![],false,[0,0,0,0],0,false,50.0),     // D9 opt elec@17
     ];
     v[1].rew_demolish = 1;  // Metalworks grants +1 demolish/turn (matches engine.js)
     v

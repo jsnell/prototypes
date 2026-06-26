@@ -143,9 +143,10 @@ function scenario(){return {
     {id:"D3",name:"Electronics",good:"electronics",rate:4,dur:2,deadline:10,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{3:1}},rp:120},
     {id:"D4",name:"Assembly",good:"components",rate:3,dur:3,deadline:15,req:["D3"],must:true,reward:{},rp:160},
     {id:"D5",name:"Datacore",good:"research",rate:3,dur:2,deadline:17,req:["D4"],must:true,reward:{},rp:260},
-    {id:"D6",name:"Glassworks",good:"glass",rate:7,dur:2,deadline:16,req:[],must:false,reward:{},rp:50},
-    {id:"D7",name:"Foodbelt",good:"food",rate:12,dur:2,deadline:12,req:[],must:false,reward:{},rp:50},
-    {id:"D8",name:"Circuits",good:"electronics",rate:8,dur:2,deadline:9,req:[],must:false,reward:{},rp:50}
+    {id:"D6",name:"Breakthrough",good:"research",rate:3,dur:2,deadline:10,req:[],must:false,reward:{},rp:50},
+    {id:"D7",name:"Glassworks",good:"glass",rate:5,dur:2,deadline:8,req:[],must:false,reward:{},rp:50},
+    {id:"D8",name:"Foodbelt",good:"food",rate:12,dur:2,deadline:10,req:[],must:false,reward:{},rp:50},
+    {id:"D9",name:"Circuits",good:"electronics",rate:7,dur:2,deadline:17,req:[],must:false,reward:{},rp:50}
   ]};}
 
 /* ---- placement helpers ---- */
