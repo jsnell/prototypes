@@ -691,6 +691,7 @@ fn main() {
         let nsamp:usize = env::var("GENN").ok().and_then(|v|v.parse().ok()).unwrap_or(60);
         let kopt:usize  = env::var("GENK").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
         let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(250);
+        let rewards_on = env::var("REWARDS").map(|v| v=="1").unwrap_or(false); // sample build/immig rewards on optionals
         let mut seed:u64 = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x9e3779b97f4a7c15);
         let e = default_econ();
         // candidate optional goods with sensible rate ranges
@@ -710,8 +711,10 @@ fn main() {
                 let (g,lo,hi)=cand[(xs(&mut seed)%(cand.len() as u64)) as usize];
                 let rate=rng_range(&mut seed,lo,hi) as f64;
                 let dl=rng_range(&mut seed,7,18) as u32;
-                sc2.push(Directive{good:g,rate,dur:2,deadline:dl,req:vec![],must:false,rew_build:dz,rew_immig:0,rew_unlock:false,rp:50.0});
-                desc.push_str(&format!("{}{}@{} ", GOODNAME[g], rate as i32, dl));
+                let mut rb=dz; let mut rimm=0; let mut rtag="";
+                if rewards_on { match xs(&mut seed)%5 { 0=>{rb[1]=1;rtag="+T1";} 1=>{rb[2]=1;rtag="+T2";} 2=>{rb[3]=1;rtag="+T3";} 3=>{rimm=1;rtag="+im";} _=>{} } }
+                sc2.push(Directive{good:g,rate,dur:2,deadline:dl,req:vec![],must:false,rew_build:rb,rew_immig:rimm,rew_unlock:false,rp:50.0});
+                desc.push_str(&format!("{}{}@{}{} ", GOODNAME[g], rate as i32, dl, rtag));
             }
             let (gs,_gdt)=eng.greedy_run(&e,&sc2);
             let greedy_req=(0..sc2.len()).all(|d| !sc2[d].must || gs.done[d]); // required = greedy can do it
