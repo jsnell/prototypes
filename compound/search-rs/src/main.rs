@@ -297,7 +297,7 @@ impl Eng {
         for &nb in &self.map.tiles[id].nb { let bi=s.occ[nb]; if bi<0{continue;}
             let ob=&self.bt[s.bld[bi as usize].ty as usize];
             for &g in &ob.out_idx { np[g]=true; } }   // sparse: only goods this neighbor produces
-        let mut mt=0; for g in 0..NG { if g==POWER||g==WORKERS {continue;} if b.inp[g]>0.0 && np[g] { mt+=1; } }
+        let mut mt=0; for &g in &b.in_idx { if g==POWER||g==WORKERS {continue;} if np[g] { mt+=1; } }
         if mt>3 {3.0} else {mt as f64}
     }
     fn adj_mult(&self, s:&State, t:usize, id:usize) -> f64 {
@@ -598,11 +598,17 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
         }
         combined.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
         combined.truncate(plancap);
+        // memo: while c still equals the (per-dopt) base layout, best_tile_mult(ty) is layout-
+        // independent, so the first placement is identical across all plans sharing this dopt.
+        let mut tile_memo=std::collections::HashMap::<(i64,usize),i32>::new();
         for (_,dopt,plan) in combined {
             let mut c=node.s.clone();
             if let Some(tile)=dopt { eng.demolish_at(&mut c, tile); }
-            for &ty in &plan { let id=eng.best_tile_mult(&c,ty);
-                if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); } }
+            let dk = dopt.map_or(-1i64, |t| t as i64); let mut dirty=false;
+            for &ty in &plan {
+                let id = if dirty { eng.best_tile_mult(&c,ty) }
+                         else { *tile_memo.entry((dk,ty)).or_insert_with(|| eng.best_tile_mult(&c,ty)) };
+                if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); dirty=true; } }
             eng.end_turn(&mut c,sc);
             if c.over {
                 if (0..ndir).all(|d| !sc[d].must || c.done[d]) {
