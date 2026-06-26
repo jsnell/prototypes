@@ -216,16 +216,18 @@ function processEndTurn(S){
   var allDone=true;for(i=0;i<S.sc.directives.length;i++){var y=S.sc.directives[i];if(!S.done[y.id]&&!S.failed[y.id])allDone=false;}
   /* population: immigration fills housing if life support held; otherwise paused (pop holds) */
   S.lifeShort=!R.lifeMet; S.grew=0;
-  /* score = number of directives completed (each 1) — no arbitrary prestige. */
-  var total=S.sc.directives.length, passed=0;
-  for(i=0;i<total;i++)if(S.done[S.sc.directives[i].id])passed++;
-  var verdict=passed+"/"+total+" directives"+(passed===total?" — FULL CLEAR":"");
-  if(lost){S.over=true;S.result="DEFEAT ("+passed+"/"+total+") — "+(msgs.filter(function(m){return m.indexOf("FAILED")>=0;})[0]||"required directive failed");}
+  /* score = STAR RATING = number of OPTIONAL directives completed (required ones are the entry bar,
+     worth 0; failing any required is a defeat). Completing all required with no optionals is a 0-star win. */
+  var optTot=0,optDone=0;
+  for(i=0;i<S.sc.directives.length;i++){var od=S.sc.directives[i];if(!od.must){optTot++;if(S.done[od.id]==="done")optDone++;}}
+  var stars="★".repeat(optDone)+"☆".repeat(optTot-optDone);
+  var verdict="WIN "+(optTot?stars+" — ":"")+optDone+"/"+optTot+" optional"+(optTot===1?"":"s");
+  if(lost){S.over=true;S.result="DEFEAT — "+(msgs.filter(function(m){return m.indexOf("FAILED")>=0;})[0]||"required directive failed");}
   else if(allDone){S.over=true;S.result=verdict;}  /* not lost + all resolved => all required done */
   else { S.turn++; S.placed={}; S.sel=null; S.selTile=-1;
     if(R.lifeMet){var room=R.cap-S.pop;if(room>0){S.grew=Math.min(S.immig,room);S.pop+=S.grew;}}
     else msgs.push("⚠ life support short — immigration paused");
-    if(S.turn>S.sc.turns){S.over=true;S.result=allMust?verdict:("DEFEAT ("+passed+"/"+total+") — ran out of turns");} }
+    if(S.turn>S.sc.turns){S.over=true;S.result=allMust?verdict:"DEFEAT — ran out of turns";} }
   S.lastMsgs=msgs;
   return {msgs:msgs,over:S.over,result:S.result};
 }

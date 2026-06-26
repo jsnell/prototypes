@@ -497,12 +497,13 @@ struct Node { s:State, parent:i32, plan:Vec<usize> }
 
 // parallel beam search: MAXIMIZE the number of directives completed (tie: earliest end turn).
 // returns (count, end_turn, build order). Each playout runs to game end; we track the best terminal.
-fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (usize, u32, Vec<Vec<usize>>) {
+fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (i32, u32, Vec<Vec<usize>>) {
     let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
     let root = eng.new_state(econ);
     let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![]}]];
     let ndir = sc.len();
-    let (mut best_count, mut best_turn, mut best_chain) = (0usize, u32::MAX, Vec::new());
+    let opt_total = (0..ndir).filter(|&d| !sc[d].must).count();  // stars available
+    let (mut best_count, mut best_turn, mut best_chain, mut best_found) = (0usize, u32::MAX, Vec::new(), false);
     // each node -> (live children, best terminal from this node as (count, plan))
     let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>)>, Option<(usize,Vec<usize>)>) {
         let mut children=Vec::new(); let mut term:Option<(usize,Vec<usize>)>=None;
@@ -535,9 +536,11 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
             for &ty in &plan { let id=eng.best_tile_mult(&c,ty);
                 if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); } }
             eng.end_turn(&mut c,sc);
-            if c.over {  // terminal: record its directive count
-                let cnt=(0..ndir).filter(|&d| c.done[d]).count();
-                if term.as_ref().map_or(true,|t| cnt>t.0) { term=Some((cnt,plan)); }
+            if c.over {  // terminal: valid only if all REQUIRED done; score = optionals completed (stars)
+                if (0..ndir).all(|d| !sc[d].must || c.done[d]) {
+                    let opt=(0..ndir).filter(|&d| !sc[d].must && c.done[d]).count();
+                    if term.as_ref().map_or(true,|t| opt>t.0) { term=Some((opt,plan)); }
+                }
                 continue;
             }
             let sf=eng.score(&c,sc);
@@ -567,15 +570,15 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
                 if let Some(x)=tm { if term.as_ref().map_or(true,|y| x.0>y.0){term=Some(x);} } }
         });
         if let Some((cnt,pi,plan)) = term {
-            if cnt>best_count || (cnt==best_count && turn<best_turn) {
+            if !best_found || cnt>best_count || (cnt==best_count && turn<best_turn) {
                 let mut chain=vec![plan];
                 let mut p=pi; let mut lvl=levels.len()-1;
                 while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push(nd.plan.clone()); p=nd.parent; lvl-=1; }
                 chain.reverse();
-                best_count=cnt; best_turn=turn; best_chain=chain;
+                best_count=cnt; best_turn=turn; best_chain=chain; best_found=true;
             }
         }
-        if best_count==ndir { break; }   // can't beat all-done; turn is ~minimal due to beam ordering
+        if best_found && best_count==opt_total { break; }   // got all stars; can't do better
         children.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
         let mut seen=std::collections::HashSet::new();
         let mut kept: Vec<Node> = Vec::new();
@@ -589,7 +592,7 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
         if kept.is_empty() { break; }
         levels.push(kept);
     }
-    (best_count, if best_turn==u32::MAX {0} else {best_turn}, best_chain)
+    (if best_found {best_count as i32} else {-1}, if best_turn==u32::MAX {0} else {best_turn}, best_chain)
 }
 
 fn main() {
@@ -647,32 +650,36 @@ fn main() {
     let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(TURNS);
     let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
 
-    // greedy outcome: (#directives passed, end turn)
-    let greedy_outcome = |e2:&Econ, sc2:&[Directive]| -> (usize, u32) {
+    // metric: STARS = optionals completed; required are mandatory (a required failure = DEFEAT = -1).
+    let opt_tot = |sc2:&[Directive]| (0..sc2.len()).filter(|&d| !sc2[d].must).count();
+    let greedy_outcome = |e2:&Econ, sc2:&[Directive]| -> (i32, u32) {
         let (s,dt)=eng.greedy_run(e2,sc2);
-        let cnt=(0..sc2.len()).filter(|&d| s.done[d]).count();
-        let turn = if cnt==sc2.len() { (0..sc2.len()).map(|d| dt[d]).max().unwrap_or(0) as u32 } else { s.turn };
-        (cnt, turn)
+        let req_all=(0..sc2.len()).all(|d| !sc2[d].must || s.done[d]);
+        let opt=(0..sc2.len()).filter(|&d| !sc2[d].must && s.done[d]).count() as i32;
+        let turn=(0..sc2.len()).filter(|&d| s.done[d]).map(|d| dt[d]).max().unwrap_or(0) as u32;
+        (if req_all {opt} else {-1}, turn)
     };
 
     if mode=="greedy" {
         let (gs, dt) = eng.greedy_run(&econ,&sc);
-        let cnt=(0..sc.len()).filter(|&d| gs.done[d]).count();
-        println!("GREEDY: {}/{} directives, prestige {}", cnt, sc.len(), gs.prestige as i32);
-        for d in 0..sc.len() { println!("  D{} {}", d+1, if gs.done[d]{format!("@T{}",dt[d])} else {"x".to_string()}); }
+        let req_all=(0..sc.len()).all(|d| !sc[d].must || gs.done[d]);
+        let opt=(0..sc.len()).filter(|&d| !sc[d].must && gs.done[d]).count();
+        println!("GREEDY: {}", if req_all {format!("WIN {}/{} stars", opt, opt_tot(&sc))} else {"DEFEAT (required failed)".to_string()});
+        for d in 0..sc.len() { println!("  D{} {} {}", d+1, if sc[d].must{"req"}else{"opt"}, if gs.done[d]{format!("@T{}",dt[d])} else {"x".to_string()}); }
         return;
     }
 
     if mode=="sweep" {
-        // metric for each variant: greedy directives passed vs search (optimal) directives passed.
-        // GAP = search - greedy. A positive gap means the directive set rewards planning over the greedy.
-        println!("{:<24} {:>12} {:>12} {:>5}", "variant", "greedy", "search(opt)", "gap");
+        // per variant: stars (optionals) the optimal gets vs the greedy. GAP = search - greedy.
+        println!("{:<24} {:>14} {:>14} {:>5}", "variant", "greedy", "search(opt)", "gap");
         for (name, e2, sc2) in variants() {
-            let (gc, gt) = greedy_outcome(&e2, &sc2);
-            let (sc_cnt, st, _) = beam_search(&eng,&sc2,&e2,beam,horizon,plancap);
-            println!("{:<24} {:>12} {:>12} {:>5}", name,
-                format!("{}/{} @T{}", gc, sc2.len(), gt), format!("{}/{} @T{}", sc_cnt, sc2.len(), st),
-                sc_cnt as i32 - gc as i32);
+            let (gstar, _) = greedy_outcome(&e2, &sc2);
+            let (sstar, st, _) = beam_search(&eng,&sc2,&e2,beam,horizon,plancap);
+            let ot=opt_tot(&sc2);
+            let g=if gstar<0 {"DEFEAT".to_string()} else {format!("{}/{} stars", gstar, ot)};
+            let s=if sstar<0 {"DEFEAT".to_string()} else {format!("{}/{} @T{}", sstar, ot, st)};
+            let gap=if gstar>=0 && sstar>=0 {format!("{}", sstar-gstar)} else {"-".to_string()};
+            println!("{:<24} {:>14} {:>14} {:>5}", name, g, s, gap);
         }
         return;
     }
@@ -696,7 +703,7 @@ fn main() {
             Directive{good:COMP,rate:3.0,dur:3,deadline:18,req:vec![2],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:160.0},
             Directive{good:RESEARCH,rate:3.0,dur:2,deadline:23,req:vec![3],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:260.0},
         ];
-        let mut results:Vec<(i32,usize,usize,String)>=Vec::new();
+        let mut results:Vec<(i32,i32,i32,String)>=Vec::new(); // (gap, greedy_stars, opt_total, desc)
         for _ in 0..nsamp {
             let mut sc2=spine(); let mut desc=String::new();
             for _ in 0..kopt {
@@ -707,33 +714,35 @@ fn main() {
                 desc.push_str(&format!("{}{}@{} ", GOODNAME[g], rate as i32, dl));
             }
             let (gs,_gdt)=eng.greedy_run(&e,&sc2);
-            let gc=(0..sc2.len()).filter(|&d| gs.done[d]).count();
             let greedy_req=(0..sc2.len()).all(|d| !sc2[d].must || gs.done[d]); // required = greedy can do it
-            let (scn,_,_)=beam_search(&eng,&sc2,&e,gbeam,horizon,plancap);
-            let total=sc2.len();
-            if greedy_req && scn==total && (scn as i32 - gc as i32)>0 { results.push((scn as i32 - gc as i32, gc, total, desc)); }
+            let gstar=(0..sc2.len()).filter(|&d| !sc2[d].must && gs.done[d]).count() as i32;
+            let ot=(0..sc2.len()).filter(|&d| !sc2[d].must).count() as i32;
+            let (sstar,_,_)=beam_search(&eng,&sc2,&e,gbeam,horizon,plancap);
+            // keep: greedy clears required, optimal gets ALL stars, greedy gets fewer
+            if greedy_req && sstar==ot && (sstar - gstar)>0 { results.push((sstar-gstar, gstar, ot, desc)); }
         }
         results.sort_by(|a,b| b.0.cmp(&a.0));
-        println!("GEN: {} samples, {} optionals each, beam {} (kept: optimal=all, greedy<all)", nsamp, kopt, gbeam);
-        if results.is_empty() { println!("  (none — optimal couldn't pass all, or greedy passed all; widen ranges / change K)"); }
-        for (gap,gc,total,desc) in results.iter().take(15) {
-            println!("  gap {}  greedy {}/{}  | optionals: {}", gap, gc, total, desc.trim());
+        println!("GEN: {} samples, {} optionals each, beam {} (kept: greedy clears required, optimal all stars)", nsamp, kopt, gbeam);
+        if results.is_empty() { println!("  (none — optimal couldn't get all stars, or greedy got all; widen ranges / change K)"); }
+        for (gap,gstar,ot,desc) in results.iter().take(15) {
+            println!("  gap {}  greedy {}/{} stars  | optionals: {}", gap, gstar, ot, desc.trim());
         }
         return;
     }
 
-    let (sc_cnt, st, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
+    let (sstar, st, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
+    let ot=opt_tot(&sc);
     if mode=="gap" {
-        let (gc, gt) = greedy_outcome(&econ, &sc);
-        println!("==== GAP (directives passed) ====");
-        println!("greedy: {}/{} @T{}", gc, sc.len(), gt);
-        println!("search: {}/{} @T{}", sc_cnt, sc.len(), st);
-        println!("gap:    {} directives", sc_cnt as i32 - gc as i32);
+        let (gstar, gt) = greedy_outcome(&econ, &sc);
+        println!("==== GAP (stars = optionals; required mandatory) ====");
+        println!("greedy: {}", if gstar<0 {"DEFEAT".to_string()} else {format!("{}/{} stars @T{}", gstar, ot, gt)});
+        println!("search: {}", if sstar<0 {"DEFEAT".to_string()} else {format!("{}/{} stars @T{}", sstar, ot, st)});
+        println!("gap:    {} stars", if gstar>=0 && sstar>=0 {sstar-gstar} else {0});
         for (i,plan) in sol_chain.iter().enumerate() { let a:Vec<&str>=plan.iter().map(|&t|ABBR[t]).collect();
             println!("  search T{}: {}", i+1, if a.is_empty(){"-".to_string()}else{a.join(" ")}); }
         return;
     }
-    println!("BEST {}/{} directives @T{}  (beam={}, horizon={})", sc_cnt, sc.len(), st, beam, horizon);
+    println!("BEST {}/{} stars @T{}  (beam={}, horizon={})", sstar, ot, st, beam, horizon);
     for (i,plan) in sol_chain.iter().enumerate() {
         let abbr: Vec<&str> = plan.iter().map(|&t| ABBR[t]).collect();
         println!("  T{}: {}", i+1, if abbr.is_empty(){"-".to_string()}else{abbr.join(" ")});

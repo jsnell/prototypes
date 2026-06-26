@@ -88,7 +88,7 @@
   <div class="sp"></div>
   <div class="stat">Turn <b id="hTurn">1</b>/<b id="hTurns">24</b></div>
   <div class="stat">Pop <b id="hPop">5</b>/<b id="hCap">5</b> <span class="small" id="hImmig"></span></div>
-  <div class="stat">Directives <b id="hPres">0</b><span class="small" id="hMaj"></span></div>
+  <div class="stat">Stars <b id="hPres">0</b><span class="small" id="hMaj"></span></div>
 </header>
 
 <div id="banner"></div>
@@ -130,9 +130,9 @@
 <details class="panel">
   <summary>How to play</summary>
   <div class="help" style="margin-top:6px">
-   <b>Goal:</b> clear every <span style="color:var(--warn)">★ required</span> directive before its deadline.
-   Your score is the <b>number of directives completed</b> (required + optional) — you can't do everything,
-   so optionals are where skill shows.<br><br>
+   <b>Goal:</b> clear every <span style="color:var(--warn)">★ required</span> directive before its deadline
+   (miss one and the run is a <b>defeat</b>). Each <b>optional</b> you also complete earns a <b>★ star</b> —
+   that's your score. You can't do everything, so stars are where skill shows.<br><br>
    <b>Place buildings</b> (free) from the palette: tap one, then tap a highlighted tile. Earth only delivers a
    few per tier each turn (the <b>T1/T2/T3</b> counts). <b>Nothing is stockpiled</b> — every turn each building
    turns input flows into output flows; spare output feeds your active directives.<br><br>
@@ -419,9 +419,10 @@ function render(){
   document.getElementById("hPop").textContent=Math.round(S.pop);
   document.getElementById("hCap").textContent=Math.round(R.cap);
   document.getElementById("hImmig").innerHTML=S.lifeShort?'<span class="neg">⚠ paused</span>':"+"+S.immig+"/turn";
-  var passed=S.sc.directives.filter(function(d){return S.done[d.id];}).length;
-  document.getElementById("hPres").textContent=passed;
-  document.getElementById("hMaj").textContent="/"+S.sc.directives.length;
+  var opt=S.sc.directives.filter(function(d){return !d.must;});
+  var optDone=opt.filter(function(d){return S.done[d.id];}).length;
+  document.getElementById("hPres").textContent="★".repeat(optDone)+"☆".repeat(opt.length-optDone);
+  document.getElementById("hMaj").textContent=" "+optDone+"/"+opt.length;
   var bn=document.getElementById("banner");
   if(S.over){bn.style.display="block";bn.textContent=S.result;
     var win=S.result.indexOf("DEFEAT")<0;bn.style.background=win?"#16341f":"#341616";bn.style.color=win?"#9af0b4":"#ff9b9b";}
