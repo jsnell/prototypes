@@ -720,7 +720,7 @@ fn main() {
 
     // ---- search / gap / sweep ----  metric: number of directives passed (1/0 each)
     // defaults tuned for ~1s/run (bounded-optimal). Raise BEAM for a stronger but slower search.
-    let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(200);
+    let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(160);
     let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(TURNS);
     let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(100);
 
@@ -764,7 +764,7 @@ fn main() {
         // env: GENN samples (60), GENK optionals (3), SEED, BEAM (250 for speed).
         let nsamp:usize = env::var("GENN").ok().and_then(|v|v.parse().ok()).unwrap_or(60);
         let kopt:usize  = env::var("GENK").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
-        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(200);
+        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(160);
         let rewards_on = env::var("REWARDS").map(|v| v=="1").unwrap_or(false); // sample build/immig rewards on optionals
         let mut seed:u64 = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x9e3779b97f4a7c15);
         let e = default_econ();
