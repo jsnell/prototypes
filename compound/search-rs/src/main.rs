@@ -164,6 +164,7 @@ struct State {
     done: [bool;7], failed: [bool;7], progress: [u8;7],
     prestige: f64, pop: f64, immig: u32, turn: u32,
     over: bool,
+    eval_sur: [f64;NG], eval_life: bool,  // stashed from end_turn's solve, reused by score (avoids a 2nd solve)
 }
 
 struct Eng { bt: Vec<Btype>, map: Map }
@@ -290,6 +291,7 @@ impl Eng {
     fn end_turn(&self, s:&mut State, sc:&[Directive]) {
         if s.over { return; }
         let (sur,life_met,_) = self.solve(s);
+        s.eval_sur = sur; s.eval_life = life_met;   // stash for score() to reuse
         let mut avail = sur;
         // act = deliverable, sorted must-first then deadline asc
         let mut act: Vec<usize> = (0..sc.len()).filter(|&d| self.deliverable(s,sc,d)).collect();
@@ -359,7 +361,8 @@ impl Eng {
     fn new_state(&self, sc:&[Directive]) -> State {
         let mut br=[0u8;4]; br[1]=1; br[2]=1; br[3]=0;
         let mut s=State{ bld:vec![], occ:[-1;NT], placed:[0;4], build_rate:br, unlocked:[false;NB],
-            done:[false;7], failed:[false;7], progress:[0;7], prestige:0.0, pop:5.0, immig:IMMIG_BASE, turn:1, over:false };
+            done:[false;7], failed:[false;7], progress:[0;7], prestige:0.0, pop:5.0, immig:IMMIG_BASE, turn:1, over:false,
+            eval_sur:[0.0;NG], eval_life:false };
         let _ = sc;
         let start=[SOLAR,SOLAR,HABITAT,ICEX,WATERPLANT,GREENHOUSE];
         for &t in &start { let id=self.best_tile_start(&s,t); if id>=0 { self.place(&mut s,t,id as usize); } }
@@ -574,19 +577,33 @@ fn main() {
 
 impl Eng {
     fn score(&self, s:&State, sc:&[Directive]) -> f64 {
-        let (sur,life,_)=self.solve(s);
+        let sur=&s.eval_sur; let life=s.eval_life;   // reuse end_turn's solve (no 2nd solve)
         let mut sco=0.0;
+        // goods that still matter: any not-done directive's good + the recursive material inputs of
+        // its producers. Being ready on the *critical chain* early is what enables an early finish,
+        // so we credit it regardless of how far off the deadline is (no urgency down-weighting).
+        let mut needed=[false;NG];
+        for d in 0..sc.len() { if s.done[d]||s.failed[d] {continue;} needed[sc[d].good]=true; }
+        for _ in 0..4 { // propagate to inputs a few levels (DAG depth is small)
+            let mut more=[false;NG];
+            for g in 0..NG { if !needed[g] {continue;}
+                for &t in producers_for(g) { let bt=&self.bt[t];
+                    for ig in 0..NG { if bt.inp[ig]>0.0 && ig!=WORKERS && !needed[ig] { more[ig]=true; } } } }
+            let mut changed=false; for g in 0..NG { if more[g] && !needed[g] { needed[g]=true; changed=true; } }
+            if !changed { break; }
+        }
         for d in 0..sc.len() {
             if s.done[d] { sco+=1000.0; continue; }
             if s.failed[d] { sco-=5000.0; continue; }
             let prog=(s.progress[d] as f64)/(sc[d].dur as f64);
             let sup=(sur[sc[d].good]/sc[d].rate).min(1.0).max(0.0);
-            let slack = sc[d].deadline as i32 - s.turn as i32;
-            let w= if slack<=0 {0.0} else {1.0/((slack as f64)+1.0)};
-            sco += 600.0*prog + 300.0*sup + 200.0*w*sup;
+            sco += 700.0*prog + 400.0*sup;        // flat: long-pole directives count too
         }
+        // chain readiness: reward having needed goods flowing, but BOUNDED so the beam isn't drawn
+        // toward over-producing a good we don't need much of (addresses the "short a good is fine" note)
+        for g in 0..NG { if needed[g] && g!=WORKERS { sco += 12.0 * sur[g].max(0.0).min(4.0); } }
         if !life { sco-=2000.0; }
-        sco += 2.0*sur[POWER] + s.pop*0.5 - (s.turn as f64)*0.01;
+        sco += s.pop*0.5 - (s.turn as f64)*0.01;
         sco
     }
 }
