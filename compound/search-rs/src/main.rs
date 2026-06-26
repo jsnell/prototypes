@@ -486,17 +486,18 @@ fn multisets(items:&[usize], k:usize) -> Vec<Vec<usize>> {
 
 struct Node { s:State, parent:i32, plan:Vec<usize> }
 
-// parallel beam search: minimize the turn all directives complete. returns (turn, build order).
-fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (Option<u32>, Vec<Vec<usize>>) {
+// parallel beam search: MAXIMIZE the number of directives completed (tie: earliest end turn).
+// returns (count, end_turn, build order). Each playout runs to game end; we track the best terminal.
+fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (usize, u32, Vec<Vec<usize>>) {
     let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
     let root = eng.new_state(econ);
     let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![]}]];
-    let mut solution: Option<u32> = None;
-    let mut sol_chain: Vec<Vec<usize>> = vec![];
     let ndir = sc.len();
-    let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>)>, Vec<Vec<usize>>) {
-        let mut children=Vec::new(); let mut wins=Vec::new();
-        if node.s.over { return (children,wins); }
+    let (mut best_count, mut best_turn, mut best_chain) = (0usize, u32::MAX, Vec::new());
+    // each node -> (live children, best terminal from this node as (count, plan))
+    let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>)>, Option<(usize,Vec<usize>)>) {
+        let mut children=Vec::new(); let mut term:Option<(usize,Vec<usize>)>=None;
+        if node.s.over { return (children,term); }
         let (sur,_life,ratio)=eng.solve(&node.s);
         let cands=candidate_types(eng,&node.s,sc,&sur,&ratio);
         let mut by:[Vec<usize>;4]=[vec![],vec![],vec![],vec![]];
@@ -525,18 +526,21 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
             for &ty in &plan { let id=eng.best_tile_mult(&c,ty);
                 if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); } }
             eng.end_turn(&mut c,sc);
-            if (0..ndir).all(|d| c.done[d]) { wins.push(plan); continue; }
-            if c.over { continue; }
+            if c.over {  // terminal: record its directive count
+                let cnt=(0..ndir).filter(|&d| c.done[d]).count();
+                if term.as_ref().map_or(true,|t| cnt>t.0) { term=Some((cnt,plan)); }
+                continue;
+            }
             let sf=eng.score(&c,sc);
             children.push((sf, c, pi as i32, plan));
         }
-        (children, wins)
+        (children, term)
     };
     for turn in 1..=horizon {
         let prev = levels.last().unwrap();
         let np = prev.len();
         let mut children: Vec<(f64, State, i32, Vec<usize>)> = Vec::new();
-        let mut win: Option<(i32,Vec<usize>)> = None;
+        let mut term: Option<(usize,i32,Vec<usize>)> = None;  // (count, parent_pi, plan)
         std::thread::scope(|scope| {
             let chunk = (np + nthreads - 1)/nthreads.max(1);
             let mut handles=Vec::new();
@@ -544,22 +548,25 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
                 let lo=c*chunk; let hi=((c+1)*chunk).min(np); if lo>=hi {continue;}
                 let exp=&expand_node; let prev=&prev;
                 handles.push(scope.spawn(move || {
-                    let mut ch=Vec::new(); let mut wn:Option<(i32,Vec<usize>)>=None;
-                    for pi in lo..hi { let (mut c2,wins)=exp(pi,&prev[pi]); ch.append(&mut c2);
-                        if wn.is_none() { if let Some(p)=wins.into_iter().next() { wn=Some((pi as i32,p)); } } }
-                    (ch,wn)
+                    let mut ch=Vec::new(); let mut tm:Option<(usize,i32,Vec<usize>)>=None;
+                    for pi in lo..hi { let (mut c2,t2)=exp(pi,&prev[pi]); ch.append(&mut c2);
+                        if let Some((cnt,plan))=t2 { if tm.as_ref().map_or(true,|x| cnt>x.0){tm=Some((cnt,pi as i32,plan));} } }
+                    (ch,tm)
                 }));
             }
-            for h in handles { let (mut ch,wn)=h.join().unwrap(); children.append(&mut ch);
-                if win.is_none() { win=wn; } }
+            for h in handles { let (mut ch,tm)=h.join().unwrap(); children.append(&mut ch);
+                if let Some(x)=tm { if term.as_ref().map_or(true,|y| x.0>y.0){term=Some(x);} } }
         });
-        if let Some((pi,plan)) = win {
-            let mut chain=vec![plan];
-            let mut p=pi; let mut lvl=levels.len()-1;
-            while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push(nd.plan.clone()); p=nd.parent; lvl-=1; }
-            chain.reverse();
-            sol_chain=chain; solution=Some(turn); break;
+        if let Some((cnt,pi,plan)) = term {
+            if cnt>best_count || (cnt==best_count && turn<best_turn) {
+                let mut chain=vec![plan];
+                let mut p=pi; let mut lvl=levels.len()-1;
+                while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push(nd.plan.clone()); p=nd.parent; lvl-=1; }
+                chain.reverse();
+                best_count=cnt; best_turn=turn; best_chain=chain;
+            }
         }
+        if best_count==ndir { break; }   // can't beat all-done; turn is ~minimal due to beam ordering
         children.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
         let mut seen=std::collections::HashSet::new();
         let mut kept: Vec<Node> = Vec::new();
@@ -573,7 +580,7 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
         if kept.is_empty() { break; }
         levels.push(kept);
     }
-    (solution, sol_chain)
+    (best_count, if best_turn==u32::MAX {0} else {best_turn}, best_chain)
 }
 
 fn main() {
@@ -626,64 +633,56 @@ fn main() {
         return;
     }
 
-    // ---- beam search ----
+    // ---- search / gap / sweep ----  metric: number of directives passed (1/0 each)
     let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(2000);
-    let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(14);
+    let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(TURNS);
     let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
 
+    // greedy outcome: (#directives passed, end turn)
+    let greedy_outcome = |e2:&Econ, sc2:&[Directive]| -> (usize, u32) {
+        let (s,dt)=eng.greedy_run(e2,sc2);
+        let cnt=(0..sc2.len()).filter(|&d| s.done[d]).count();
+        let turn = if cnt==sc2.len() { (0..sc2.len()).map(|d| dt[d]).max().unwrap_or(0) as u32 } else { s.turn };
+        (cnt, turn)
+    };
+
     if mode=="greedy" {
-        let (s, dt) = eng.greedy_run(&econ,&sc);
-        let all7=(0..sc.len()).all(|d| s.done[d]);
-        let turn = if all7 { (0..sc.len()).map(|d| dt[d]).max().unwrap() } else {-1};
-        println!("GREEDY: {} prestige={}", if all7 {format!("800 @T{}",turn)} else {"NOT 800".to_string()}, s.prestige as i32);
-        for d in 0..sc.len() { println!("  D{} {}", d+1, if s.done[d]{format!("@T{}",dt[d])} else {"x".to_string()}); }
+        let (gs, dt) = eng.greedy_run(&econ,&sc);
+        let cnt=(0..sc.len()).filter(|&d| gs.done[d]).count();
+        println!("GREEDY: {}/{} directives, prestige {}", cnt, sc.len(), gs.prestige as i32);
+        for d in 0..sc.len() { println!("  D{} {}", d+1, if gs.done[d]{format!("@T{}",dt[d])} else {"x".to_string()}); }
         return;
     }
 
     if mode=="sweep" {
-        // run greedy + search on each named variant; tabulate outcomes so we can see which
-        // directive sets widen the greedy-vs-optimal gap. Columns: greedy and search each as
-        // done/total @turn (prestige); turn-gap counts only when BOTH complete all directives.
-        println!("{:<26} {:>14} {:>14} {:>6}", "variant", "greedy", "search", "gap");
+        // metric for each variant: greedy directives passed vs search (optimal) directives passed.
+        // GAP = search - greedy. A positive gap means the directive set rewards planning over the greedy.
+        println!("{:<24} {:>12} {:>12} {:>5}", "variant", "greedy", "search(opt)", "gap");
         for (name, e2, sc2) in variants() {
-            let (gs, gdt) = eng.greedy_run(&e2, &sc2);
-            let g_done = (0..sc2.len()).filter(|&d| gs.done[d]).count();
-            let g_all = g_done==sc2.len();
-            let g_turn = if g_all { (0..sc2.len()).map(|d| gdt[d]).max().unwrap() } else {-1};
-            let (sol,_) = beam_search(&eng,&sc2,&e2,beam,horizon,plancap);
-            // search prestige/done: re-derive by replaying? simpler: report turn; full-completion implied
-            let s_turn = sol.map(|t| t as i32).unwrap_or(-1);
-            let g_col = format!("{}/{} @T{} ({})", g_done, sc2.len(), if g_all{g_turn}else{-1}, gs.prestige as i32);
-            let s_col = if s_turn>0 { format!("all @T{}", s_turn) } else { "no all".to_string() };
-            let gap = if g_all && s_turn>0 { format!("{}", g_turn - s_turn) } else { "-".to_string() };
-            println!("{:<26} {:>14} {:>14} {:>6}", name, g_col, s_col, gap);
+            let (gc, gt) = greedy_outcome(&e2, &sc2);
+            let (sc_cnt, st, _) = beam_search(&eng,&sc2,&e2,beam,horizon,plancap);
+            println!("{:<24} {:>12} {:>12} {:>5}", name,
+                format!("{}/{} @T{}", gc, sc2.len(), gt), format!("{}/{} @T{}", sc_cnt, sc2.len(), st),
+                sc_cnt as i32 - gc as i32);
         }
         return;
     }
 
-    let (solution, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
-    let s_turn = solution.map(|t| t as i32).unwrap_or(-1);
+    let (sc_cnt, st, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
     if mode=="gap" {
-        let (gs, gdt) = eng.greedy_run(&econ,&sc);
-        let g_all7=(0..sc.len()).all(|d| gs.done[d]);
-        let g_turn = if g_all7 { (0..sc.len()).map(|d| gdt[d]).max().unwrap() } else {-1};
-        println!("==== GAP (Rust canonical) ====");
-        println!("greedy: {}", if g_all7 {format!("800 @T{}",g_turn)} else {format!("NOT 800 (prestige {})",gs.prestige as i32)});
-        println!("search: {}", if s_turn>0 {format!("800 @T{}",s_turn)} else {"no 800 found".to_string()});
-        println!("gap:    {}", if g_all7 && s_turn>0 {format!("{} turns", g_turn - s_turn)} else {"n/a".to_string()});
+        let (gc, gt) = greedy_outcome(&econ, &sc);
+        println!("==== GAP (directives passed) ====");
+        println!("greedy: {}/{} @T{}", gc, sc.len(), gt);
+        println!("search: {}/{} @T{}", sc_cnt, sc.len(), st);
+        println!("gap:    {} directives", sc_cnt as i32 - gc as i32);
         for (i,plan) in sol_chain.iter().enumerate() { let a:Vec<&str>=plan.iter().map(|&t|ABBR[t]).collect();
             println!("  search T{}: {}", i+1, if a.is_empty(){"-".to_string()}else{a.join(" ")}); }
         return;
     }
-    match solution {
-        None => println!("no all-7 within horizon={} (beam={})", horizon, beam),
-        Some(turn) => {
-            println!("BEST all-7 @T{}  (beam={}, horizon={})", turn, beam, horizon);
-            for (i,plan) in sol_chain.iter().enumerate() {
-                let abbr: Vec<&str> = plan.iter().map(|&t| ABBR[t]).collect();
-                println!("  T{}: {}", i+1, if abbr.is_empty(){"-".to_string()}else{abbr.join(" ")});
-            }
-        }
+    println!("BEST {}/{} directives @T{}  (beam={}, horizon={})", sc_cnt, sc.len(), st, beam, horizon);
+    for (i,plan) in sol_chain.iter().enumerate() {
+        let abbr: Vec<&str> = plan.iter().map(|&t| ABBR[t]).collect();
+        println!("  T{}: {}", i+1, if abbr.is_empty(){"-".to_string()}else{abbr.join(" ")});
     }
 }
 
