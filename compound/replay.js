@@ -6,19 +6,18 @@
    ========================================================================== */
 var E=require("./engine.js").COMPOUND,get=E.get;
 
-/* jsnell's MAJOR-by-T12 game (pasted from the ⧉ Copy log) */
+/* jsnell's latest MAJOR-by-T11 game on current settings (pasted from the ⧉ Copy log) */
 var MOVES=[
-  ["+greenhouse@6,1","+habitat@5,1","+reactor@3,6"],
-  ["+waterPlant@7,1","+radiator@3,5","+reactor@4,6"],
-  ["+scrapper@4,2","+oreMine@4,3","+smelter@4,4","+smelter@5,4"],
-  ["+habitat@6,2","+iceExtractor@8,2","+waterPlant@8,3","+reclaimer@5,2"],
-  ["+habitat@5,3","+silicaQuarry@2,2","+glassKiln@2,3","+electronicsFab@2,4","+electronicsFab@1,3"],
-  ["+radiator@3,3","+scrapper@1,6","+reactor@3,2","+iceExtractor@8,4","+waterPlant@7,4"],
-  ["+habitat@4,1","+waterPlant@8,5","+radiator@5,6","+reactor@6,6","-smelter@4,4","+rareMine@4,5"],
-  ["+foundry@4,4","+assembler@0,3","+assembler@1,4","+radiator@0,4","+habitat@0,6","-smelter@5,4","+radiator@2,6"],
-  ["+greenhouse@8,1","+greenhouse@7,2","+greenhouse@6,3"],
-  ["+habitat@4,0"],
-  ["+lab@0,2","+lab@1,2"],
+  ["+greenhouse@6,1","+habitat@6,2","+scrapper@4,2"],
+  ["+waterPlant@7,1","+reactor@3,6","+radiator@3,5"],
+  ["+oreMine@3,4","+smelter@4,4","+scrapper@7,3","+habitat@5,2"],
+  ["+reactor@6,6","+radiator@6,5","+iceExtractor@8,2","+silicaQuarry@2,2"],
+  ["+glassKiln@2,3","+radiator@3,3","+habitat@4,3","+electronicsFab@2,4","+electronicsFab@1,3"],
+  ["+reclaimer@5,3","+waterPlant@7,2","+habitat@6,3","+iceExtractor@8,4","+reactor@7,6"],
+  ["+waterPlant@7,4","+waterPlant@7,5","+foundry@3,2","+radiator@3,1","+assembler@2,1","+foundry@4,5","+assembler@5,5"],
+  ["+habitat@5,4","+habitat@6,4","+solar@0,2","+algaeVat@5,0","+algaeVat@4,0"],
+  ["+solar@0,3","+solar@0,4","+solar@0,5","+algaeVat@3,0","+algaeVat@5,1","+algaeVat@4,1","+greenhouse@8,5"],
+  ["+lab@2,0","+lab@1,0","+solar@0,6","-assembler@5,5","-foundry@4,5","+greenhouse@8,1"],
   []
 ];
 

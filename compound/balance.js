@@ -1,123 +1,68 @@
 "use strict";
 /* ============================================================================
-   COMPOUND — headless balance harness.
-   Plays a greedy strategy that builds toward the active directives' supply
-   chains, then reports whether the required directives are won and the margin.
-   Used to tune the economy without a browser.   Run: node balance.js
+   COMPOUND — headless balance harness: a deliberately NAIVE heuristic player,
+   used to gauge winnability and set Minor thresholds. Each turn it just:
+     0. keeps the colony alive (no life-support good in deficit)
+     1. satisfies the currently-open directives
+     2. keeps housing ahead of the next immigration batch
+     3. builds toward the next upcoming directive
+     4. tops up power/food/water headroom for the next batch
+   Steps 2-4 keep a build only if it doesn't drop a directive already being
+   satisfied. No auto-radiators, no demolition, no magic constants. Heat
+   buildings simply run overheated (reduced output); the AI overbuilds to
+   compensate, exactly as running-overheated-is-fine implies.
+   Run: node balance.js     (ALL=1 also pursues optionals; OPT=Dx chases one)
    ========================================================================== */
 var E=require("./engine.js").COMPOUND;
-var TYPES=E.TYPES,ORDER=E.ORDER,get=E.get;
+var TYPES=E.TYPES,get=E.get;
 
-/* recipe closure: relative units of each good needed to make 1 unit of `good` */
-function recipeWeights(good,depth,acc,scale){
-  acc=acc||{}; depth=depth==null?6:depth; scale=scale==null?1:scale;
-  acc[good]=(acc[good]||0)+scale;
-  if(depth<=0)return acc;
-  var prod=E.PRODUCER[good]; if(!prod)return acc;
-  var T=TYPES[prod]; if(!T||!T.out||!T.out[good]||!T.in)return acc;
-  var per=scale/T.out[good];
-  for(var g in T.in) recipeWeights(g,depth-1,acc,T.in[g]*per);
-  return acc;
-}
 function slotsLeft(S){var o={};for(var bt=1;bt<=3;bt++)o[bt]=get(S.buildRate,bt)-get(S.placed,bt);return o;}
 function hasSlot(S,type){return slotsLeft(S)[TYPES[type].bt]>0;}
 
-/* producers per good, including alternate/branched routes the harness can use */
+/* producers per good, including branched alternates (scrapper for metal/rare, algae for food) */
 var ALT={power:["solar","reactor"],food:["greenhouse","algaeVat"],metal:["smelter","scrapper"],rare:["rareMine","scrapper"]};
 function producersFor(good){return ALT[good]||(E.PRODUCER[good]?[E.PRODUCER[good]]:[]);}
 
-/* ---- placement: pick the tile that maximises the building's effective multiplier,
-   so the AI actually exploits clustering / sunline / lava / radiators ---- */
+/* placement: tile with the best effective multiplier (clustering/sun/lava), keeping reactors off
+   housing and housing off radiation, and not needlessly squatting a deposit or lava tube. */
 function bestTileByMult(S,type){
   var T=TYPES[type],best=-1,bm=-1e9;
   for(var id=0;id<S.map.tiles.length;id++){
     if(!E.eligible(S,type,id))continue;
     var t=S.map.tiles[id],m=E.adjMult(S,type,id)*E.heatRatio(S,type,id);
-    if(T.cap)m=t.lava?1.4:(E.radiated(S,id)?0.4:1);     /* housing: value lava, avoid irradiation */
-    if(T.radiation)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].cat==="hab";}); /* keep reactors off housing */
-    if(T.cap)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].radiation;});         /* keep housing off reactors */
-    if(!T.deposit&&!T.requiresWreck&&t.dep)m-=0.25;     /* don't squat a deposit needlessly */
-    if(!T.lavaBonus&&t.lava)m-=0.4;                     /* don't waste a lava tube on non-housing */
+    if(T.cap)m=t.lava?1.4:(E.radiated(S,id)?0.4:1);
+    if(T.radiation)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].cat==="hab";});
+    if(T.cap)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].radiation;});
+    if(!T.deposit&&!T.requiresWreck&&t.dep)m-=0.25;
+    if(!T.lavaBonus&&t.lava)m-=0.4;
     if(m>bm){bm=m;best=id;}
   }
   return best;
 }
-/* What to build to push `good` up: pick the buildable producer with the highest output of
-   `good` (so a free tier gets used — e.g. a reactor on the idle T2 slot, algae on T2 when T1 is
-   full), then drill into its deepest under-supplied input first. Workers can't be built — you
-   grow population: feed it, feed the incoming wave, then add housing. */
-function chooseForGood(S,good,R,depth,ahead){
-  if(depth>12)return null;
-  if(good==="workers"){
-    var ls=["food","water","power"];
-    for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){var s=chooseForGood(S,ls[j],R,depth+1,ahead);if(s)return s;} /* feed current pop */
-    for(var k=0;k<ls.length;k++)if(get(R.surplus,ls[k])<S.immig*E.LIFE[ls[k]]-1e-6){var s2=chooseForGood(S,ls[k],R,depth+1,ahead);if(s2)return s2;} /* and the incoming wave */
-    if(R.cap-S.pop<=0.01)return (E.unlocked(S,"habitat")&&bestTileByMult(S,"habitat")>=0)?"habitat":null; /* then add housing */
-    return null;
-  }
-  var ps=producersFor(good).filter(function(t){return E.unlocked(S,t);})
-    .sort(function(a,b){return get(TYPES[b].out||{},good)-get(TYPES[a].out||{},good);}); /* most powerful first */
-  for(var pi=0;pi<ps.length;pi++){var type=ps[pi],T=TYPES[type];
-    if(!hasSlot(S,type)||bestTileByMult(S,type)<0)continue;   /* only a producer whose tier has a free slot */
-    var wait=false;
-    if(T.in)for(var g in T.in){
-      if(get(R.surplus,g)<T.in[g]*0.6){var sub=chooseForGood(S,g,R,depth+1,ahead);if(sub)return sub;
-        if(!(ahead&&g==="workers"))wait=true;}  /* building AHEAD: don't let a worker shortfall block — position it now, it runs when pop arrives. Materials still block. */
-    }
-    if(wait)continue;
+/* what to build to raise `good`: among the producers that have a free slot, use the one on the
+   LEAST-contested tier (lowest opportunity cost — e.g. a reactor/scrapper on an idle T2 slot when
+   T1 is full); ties go to the cheaper lower tier. Then drill into any MATERIAL input that's
+   actually in deficit. A shortage of workers (or cooling) doesn't block — the building just runs
+   reduced; housing+immigration supply labour over time. */
+function chooseForGood(S,good,R,depth){
+  if(depth>10)return null;
+  var sl=slotsLeft(S);
+  var ps=producersFor(good).filter(function(t){return E.unlocked(S,t)&&hasSlot(S,t)&&bestTileByMult(S,t)>=0;})
+    .sort(function(a,b){return (sl[TYPES[b].bt]-sl[TYPES[a].bt])||(TYPES[a].bt-TYPES[b].bt);});
+  for(var i=0;i<ps.length;i++){var type=ps[i],T=TYPES[type];
+    if(T.in)for(var g in T.in){if(g!=="workers"&&get(R.surplus,g)<T.in[g]-1e-6){var sub=chooseForGood(S,g,R,depth+1);if(sub)return sub;}}  /* not enough of this input to run the producer -> build it first */
     return type;
   }
   return null;
 }
+function tryBuild(S,type){var id=bestTileByMult(S,type);if(id<0)return false;E.placeAt(S,type,id);return true;}
+
 var ALLMODE=process.env.ALL==="1", ONLY_OPT=process.env.OPT||null;
 function include(d){return d.must||ALLMODE||(ONLY_OPT&&d.id===ONLY_OPT);}
-/* urgency = latest turn you can still start sustaining and finish by the deadline (lower=sooner) */
+/* urgency = latest turn you can still start sustaining and finish by the deadline */
 function startBy(S,d){return d.deadline-(d.dur-get(S.progress,d.id))+1;}
 function byUrg(S){return function(a,b){var u=startBy(S,a)-startBy(S,b);return u||(a.must===b.must?0:(a.must?-1:1));};}
 
-/* reclaim a tile by demolishing a building whose removal keeps life support met
-   and doesn't drop any directive that's currently being satisfied (no thrash) */
-function safeDemolish(S){
-  var R0=E.solveFlows(S);
-  var must=S.sc.directives.filter(function(d){return E.deliverable(S).indexOf(d)>=0&&get(R0.surplus,d.good)>=d.rate-1e-6;});
-  /* candidates ranked by how redundant their output is (highest min-output-surplus first) */
-  var cand=[];
-  for(var i=0;i<S.buildings.length;i++){var b=S.buildings[i];if(!b)continue;var T=TYPES[b.type];
-    var outs=Object.keys(T.out||{});var mn=outs.length?Math.min.apply(null,outs.map(function(g){return get(R0.surplus,g);})):0;
-    cand.push({i:i,score:mn});}
-  cand.sort(function(a,b){return b.score-a.score;});
-  for(var c=0;c<cand.length;c++){var i=cand[c].i,b=S.buildings[i],tile=b.tile;
-    S.buildings[i]=null;S.occ[tile]=-1;S.tilesUsed--;
-    var R=E.solveFlows(S),ok=R.lifeMet;
-    if(ok)for(var m=0;m<must.length;m++){if(get(R.surplus,must[m].good)<must[m].rate-1e-6){ok=false;break;}}
-    if(ok)return true;                                 /* keep it demolished */
-    S.buildings[i]=b;S.occ[tile]=i;S.tilesUsed++;      /* restore */
-  }
-  return false;
-}
-function adjEmptyFor(S,type,id){var t=S.map.tiles[id];for(var k=0;k<t.nb.length;k++)if(E.eligible(S,type,t.nb[k]))return t.nb[k];return -1;}
-function tryBuild(S,type){                             /* place on best tile, reclaiming one if full */
-  var id=bestTileByMult(S,type);
-  if(id<0){if(!safeDemolish(S))return false;id=bestTileByMult(S,type);if(id<0)return false;}
-  E.placeAt(S,type,id);
-  if(TYPES[type].heat&&E.heatRatio(S,type,id)<0.999&&hasSlot(S,"radiator")){ /* cool a hot building */
-    var rid=adjEmptyFor(S,"radiator",id);if(rid>=0)E.placeAt(S,"radiator",rid);
-  }
-  return true;
-}
-var BLOG=[];  /* decision log: {t, phase, goal, type} */
-function logBuild(S,phase,goal,type){BLOG.push({t:S.turn,phase:phase,goal:goal,type:type});}
-/* (a) satisfy current open directives: keep the colony fed, then build toward any open
-   directive that's below its rate (most urgent first). No verify — this IS the current goal. */
-function buildCurrent(S){
-  var R=E.solveFlows(S),ls=["food","water","power"];
-  for(var j=0;j<ls.length;j++)if(get(R.prod,ls[j])<get(R.life,ls[j])-1e-6){
-    var t=chooseForGood(S,ls[j],R,0);if(t&&hasSlot(S,t)&&tryBuild(S,t)){logBuild(S,"a-life",ls[j],t);return true;}}
-  var open=E.deliverable(S).filter(include).filter(function(d){return get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S));
-  for(var i=0;i<open.length;i++){var t2=chooseForGood(S,open[i].good,R,0,true);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2)){logBuild(S,"a-dir",open[i].id,t2);return true;}} /* overbuild past worker throttle to hit rate now */
-  return false;
-}
-/* snapshot just the mutable placement state, so a tentative build can be rolled back */
 function snapshot(S){return {b:S.buildings.slice(),o:Object.assign({},S.occ),p:Object.assign({},S.placed),u:S.tilesUsed};}
 function restore(S,s){S.buildings=s.b;S.occ=s.o;S.placed=s.p;S.tilesUsed=s.u;}
 function satisfiedSet(S,R){var ids={};E.deliverable(S).filter(include).forEach(function(d){if(get(R.surplus,d.good)>=d.rate-0.05)ids[d.id]=d;});return {ids:ids,life:R.lifeMet};}
@@ -126,40 +71,39 @@ function violates(before,R2){
   for(var id in before.ids){if(get(R2.surplus,before.ids[id].good)<before.ids[id].rate-0.05)return true;}
   return false;
 }
-/* things worth building for LATER: foundational growth (life-support headroom + housing for the
-   incoming population) first, then each upcoming directive's chain (most urgent first). */
-function futureBuilds(S,R){
-  var out=[],seen={};
-  /* foundational capacity everything will need, ahead of demand: power, then workforce */
-  if(get(R.surplus,"power")<6){var p=chooseForGood(S,"power",R,0,true);if(p){seen[p]=1;out.push({type:p,why:"power"});}}
-  var w=chooseForGood(S,"workers",R,0,true);if(w&&!seen[w]){seen[w]=1;out.push({type:w,why:"workers"});}
-  /* then each upcoming directive that isn't already satisfied, most urgent first (don't overbuild) */
-  S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&include(d)&&get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S))
-    .forEach(function(d){var t=chooseForGood(S,d.good,R,0,true);if(t&&!seen[t]){seen[t]=1;out.push({type:t,why:d.id});}});
-  return out;
+var BLOG=[];
+function logBuild(S,phase,goal,type){BLOG.push({t:S.turn,phase:phase,goal:goal,type:type});}
+/* speculative build: keep it only if it doesn't drop a directive we're already satisfying */
+function buildAhead(S,type,why){
+  var before=satisfiedSet(S,E.solveFlows(S)),snap=snapshot(S);
+  if(!tryBuild(S,type)){restore(S,snap);return false;}
+  if(violates(before,E.solveFlows(S))){restore(S,snap);return false;}
+  logBuild(S,"ahead",why,type);return true;
 }
-/* (b) build ahead for future needs, but ONLY keep a build if it doesn't drop a directive we're
-   currently satisfying (or break life support). This is "(b) except if it re-compromises (a)". */
-function buildAhead(S){
-  var R=E.solveFlows(S),before=satisfiedSet(S,R),cands=futureBuilds(S,R);
-  var dbg=process.env.DBG&&[];
-  for(var i=0;i<cands.length;i++){var type=cands[i].type;
-    if(!hasSlot(S,type)){if(dbg)dbg.push(type+"/"+cands[i].why+":noslot");continue;}
-    var snap=snapshot(S);
-    if(!tryBuild(S,type)){restore(S,snap);if(dbg)dbg.push(type+"/"+cands[i].why+":cantplace");continue;}
-    if(violates(before,E.solveFlows(S))){restore(S,snap);if(dbg)dbg.push(type+"/"+cands[i].why+":violates");continue;}
-    logBuild(S,"b",cands[i].why,type);return true;
-  }
-  if(dbg)console.error("  T"+S.turn+" buildAhead found nothing. candidates: ["+dbg.join(", ")+"]  slotsLeft="+JSON.stringify(slotsLeft(S)));
+
+var LS=["food","water","power"];
+function buildStep(S){
+  var R=E.solveFlows(S);
+  /* 0. survival: any life-support good in deficit, most negative first */
+  var neg=LS.filter(function(g){return get(R.surplus,g)<-1e-6;}).sort(function(a,b){return get(R.surplus,a)-get(R.surplus,b);});
+  for(var i=0;i<neg.length;i++){var t=chooseForGood(S,neg[i],R,0);if(t&&hasSlot(S,t)&&tryBuild(S,t)){logBuild(S,"survival",neg[i],t);return true;}}
+  /* 1. satisfy the currently-open directives, most urgent first */
+  var open=E.deliverable(S).filter(include).filter(function(d){return get(R.surplus,d.good)<d.rate-0.05;}).sort(byUrg(S));
+  for(var j=0;j<open.length;j++){var t2=chooseForGood(S,open[j].good,R,0);if(t2&&hasSlot(S,t2)&&tryBuild(S,t2)){logBuild(S,"current",open[j].id,t2);return true;}}
+  /* 2. keep housing ahead of the next immigration batch */
+  if(R.cap-S.pop<S.immig&&hasSlot(S,"habitat")&&buildAhead(S,"habitat","housing"))return true;
+  /* 3. build toward the next upcoming directive (not open yet) */
+  var opn=E.deliverable(S);
+  var up=S.sc.directives.filter(function(d){return !S.done[d.id]&&!S.failed[d.id]&&include(d)&&opn.indexOf(d)<0;}).sort(byUrg(S));
+  for(var k=0;k<up.length;k++){var t3=chooseForGood(S,up[k].good,R,0);if(t3&&hasSlot(S,t3)&&buildAhead(S,t3,up[k].id))return true;}
+  /* 4. top up power/food/water headroom for the next batch (lowest surplus first) */
+  var low=LS.slice().sort(function(a,b){return get(R.surplus,a)-get(R.surplus,b);});
+  for(var m=0;m<low.length;m++){if(get(R.surplus,low[m])<S.immig*E.LIFE[low[m]]){var t4=chooseForGood(S,low[m],R,0);if(t4&&hasSlot(S,t4)&&buildAhead(S,t4,"balance:"+low[m]))return true;}}
   return false;
 }
 function greedyTurn(S){
-  for(var guard=0;guard<120;guard++){
-    if(buildCurrent(S))continue;   /* (a) */
-    if(buildAhead(S))continue;     /* (b) */
-    break;
-  }
-  if(process.env.DBG){var sl=slotsLeft(S);if(sl[1]+sl[2]+sl[3]>0)console.error("  >>> T"+S.turn+" WASTED slots: "+JSON.stringify(sl));}
+  for(var guard=0;guard<120;guard++){if(!buildStep(S))break;}
+  if(process.env.DBG){var sl=slotsLeft(S);if(sl[1]+sl[2]+sl[3]>0)console.error("  >>> T"+S.turn+" WASTED "+JSON.stringify(sl));}
   return E.processEndTurn(S);
 }
 
@@ -173,14 +117,14 @@ function run(verbose){
       var sg=["power","workers","food","water","metal","alloy","electronics","components","research"]
         .map(function(g){return g.slice(0,4)+(Math.round(get(R.surplus,g)*10)/10);}).join(" ");
       var prog=S.sc.directives.map(function(d){return d.id+":"+get(S.progress,d.id)+"/"+d.dur+(S.done[d.id]?"✓":(S.failed[d.id]?"✗":""));}).join(" ");
-      var decs=BLOG.filter(function(x){return x.t===t;}).map(function(x){return x.type+"["+x.phase+":"+x.goal+"]";}).join(" ");
+      var decs=BLOG.filter(function(x){return x.t===t;}).map(function(x){return x.type+"["+x.goal+"]";}).join(" ");
       log.push("T"+t+" b="+S.tilesUsed+" pop="+Math.round(S.pop)+"/"+Math.round(R.cap)+"(+"+S.immig+") pr="+Math.round(S.prestige)+" ["+sg+"]\n   builds: "+(decs||"-")+"\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
     }
   }
   return {S:S,log:log};
 }
 
-var EXPORT={greedyTurn:greedyTurn,run:run,chooseForGood:chooseForGood,buildCurrent:buildCurrent,buildAhead:buildAhead,bestTileByMult:bestTileByMult,tryBuild:tryBuild};
+var EXPORT={greedyTurn:greedyTurn,run:run,chooseForGood:chooseForGood,buildStep:buildStep,bestTileByMult:bestTileByMult,tryBuild:tryBuild};
 if(typeof module!=="undefined"&&module.exports)module.exports=EXPORT;
 if(typeof require!=="undefined"&&require.main===module){
   var v=run(true);
