@@ -1,7 +1,7 @@
 "use strict";
 /* ============================================================================
-   COMPOUND — headless balance harness: a deliberately NAIVE heuristic player,
-   used to gauge winnability and set Minor thresholds. Each turn it just:
+   COMPOUND — headless balance harness: a deliberately NAIVE heuristic player
+   that always plays for 800 (all 7 directives). Each turn it just:
      0. keeps the colony alive (no life-support good in deficit)
      1. satisfies the currently-open directives
      2. keeps housing ahead of the next immigration batch
@@ -14,7 +14,7 @@
    a producer's material input) and picks the one with the largest marginal
    output — so cooling and input-drilling are ordinary candidates, not special
    cases, and running overheated stays fine until a radiator simply pays off.
-   Run: node balance.js     (ALL=1 also pursues optionals; OPT=Dx chases one)
+   Run: node balance.js     (DBG=1 logs wasted build slots)
    ========================================================================== */
 var E=require("./engine.js").COMPOUND;
 var TYPES=E.TYPES,get=E.get;
@@ -85,8 +85,9 @@ function chooseForGood(S,good,R,depth){
   return null;
 }
 
-var ALLMODE=process.env.ALL==="1", ONLY_OPT=process.env.OPT||null;
-function include(d){return d.must||ALLMODE||(ONLY_OPT&&d.id===ONLY_OPT);}
+/* the AI always pursues EVERY directive — required and optional — i.e. it always plays for 800.
+   (There used to be a required-only / single-optional mode here; removed so results are unambiguous.) */
+function include(d){return true;}
 /* urgency = latest turn you can still start sustaining and finish by the deadline */
 function startBy(S,d){return d.deadline-(d.dur-get(S.progress,d.id))+1;}
 function byUrg(S){return function(a,b){return startBy(S,a)-startBy(S,b);};}

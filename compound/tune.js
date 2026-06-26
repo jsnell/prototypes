@@ -1,5 +1,12 @@
 "use strict";
 /* ============================================================================
+   >>> GOAL (do not drift): tune the economy so the CURRENT greedy AI — the one
+   >>> that gets 800 points (ALL 7 directives) by turn 11 — instead lands 800 at
+   >>> AROUND TURN 15 (need not be exact). Only the 800/all-7 result matters;
+   >>> "required only / Minor" is noise — never report it. The point is to create
+   >>> a scenario the greedy AI no longer plays optimally, so a future search AI
+   >>> has room to beat it. (Do NOT write that search AI yet.)
+   ============================================================================
    COMPOUND — bottom-up economy tuner. Start from a deliberately TOO-TIGHT base
    economy with NO directive bonuses, run the AI, and see which directive fails
    first (and why). Then add the smallest bonus that gets past that wall, and
