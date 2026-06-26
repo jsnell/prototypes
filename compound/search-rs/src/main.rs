@@ -67,11 +67,14 @@ struct Btype {
     requires_wreck: bool,
     recycles: bool,  // reclaimer
     locked: bool,
+    in_idx: Vec<usize>,  // sparse: good indices this type consumes / produces (perf for solve hot loop)
+    out_idx: Vec<usize>,
 }
 fn z() -> [f64; NG] { [0.0; NG] }
 fn btypes() -> Vec<Btype> {
     let base = Btype{bt:1,inp:z(),out:z(),heat:0.0,cap:0.0,is_hab:false,radiation:false,cool_out:0.0,
-        solar_scaled:false,lava_bonus:false,rad_sensitive:false,lab_syn:false,deposit:-1,requires_wreck:false,recycles:false,locked:false};
+        solar_scaled:false,lava_bonus:false,rad_sensitive:false,lab_syn:false,deposit:-1,requires_wreck:false,recycles:false,locked:false,
+        in_idx:vec![],out_idx:vec![]};
     let mut v = vec![base.clone(); NB];
     macro_rules! set { ($i:expr, $($f:ident : $val:expr),*) => { { let b=&mut v[$i]; $(b.$f=$val;)* } } }
     // solar
@@ -112,6 +115,10 @@ fn btypes() -> Vec<Btype> {
     set!(ASSEMBLER, bt:3, heat:2.0, locked:true); v[ASSEMBLER].inp[ALLOY]=1.0; v[ASSEMBLER].inp[ELEC]=1.0; v[ASSEMBLER].inp[POWER]=1.0; v[ASSEMBLER].inp[WORKERS]=2.0; v[ASSEMBLER].out[COMP]=2.0;
     // lab
     set!(LAB, bt:3, locked:true, lab_syn:true); v[LAB].inp[COMP]=1.0; v[LAB].inp[POWER]=1.0; v[LAB].inp[WORKERS]=2.0; v[LAB].out[RESEARCH]=2.0;
+    for b in v.iter_mut() {
+        b.in_idx =(0..NG).filter(|&g| b.inp[g]>0.0).collect();
+        b.out_idx=(0..NG).filter(|&g| b.out[g]>0.0).collect();
+    }
     v
 }
 
@@ -230,12 +237,13 @@ fn load_params(path:&str) -> Option<(Econ, Vec<Directive>)> {
     Some((econ, dirs))
 }
 
-#[derive(Clone, Copy)]
+#[derive(Clone, Copy, Default)]
 struct Building { ty:u8, tile:u16 }
+const BCAP: usize = 64;   // max buildings (<= 63 tiles); fixed array keeps State Copy (no heap clone)
 
-#[derive(Clone)]
+#[derive(Clone, Copy)]
 struct State {
-    bld: Vec<Building>,
+    bld: [Building; BCAP], nb: usize,
     occ: [i32; NT],
     placed: [u8;4],
     build_rate: [u8;4],
@@ -247,10 +255,23 @@ struct State {
     eval_sur: [f64;NG], eval_life: bool,  // stashed from end_turn's solve, reused by score (avoids a 2nd solve)
 }
 
-struct Eng { bt: Vec<Btype>, map: Map }
+struct Eng { bt: Vec<Btype>, map: Map, elig: Vec<Vec<usize>> }
 
 impl Eng {
-    fn new() -> Eng { Eng{ bt: btypes(), map: build_map() } }
+    fn new() -> Eng {
+        let bt=btypes(); let map=build_map();
+        // precompute, per type, the tiles that are statically eligible (deposit/wreck constraints,
+        // ignoring occupancy) — so best_tile_mult scans 3-5 tiles for extractors instead of all 63.
+        let mut elig=vec![Vec::new(); NB];
+        for t in 0..NB { let b=&bt[t];
+            for id in 0..NT { let tile=&map.tiles[id];
+                let ok = if b.requires_wreck { tile.wreck }
+                    else if tile.wreck { false }
+                    else if b.deposit>=0 { tile.dep==b.deposit }
+                    else { true };
+                if ok { elig[t].push(id); } } }
+        Eng{ bt, map, elig }
+    }
 
     fn unlocked(&self, s:&State, t:usize) -> bool { !self.bt[t].locked || s.unlocked[t] }
     fn eligible(&self, s:&State, t:usize, id:usize) -> bool {
@@ -311,60 +332,58 @@ impl Eng {
         let tile=&self.map.tiles[id]; 5.0*(if tile.lava {1.4} else if self.radiated(s,id){0.4} else {1.0})
     }
     fn capacity(&self, s:&State) -> f64 {
-        let mut c=0.0; for b in &s.bld { if self.bt[b.ty as usize].is_hab { c+=self.hab_cap_at(s,b.tile as usize); } } c
+        let mut c=0.0; for b in &s.bld[..s.nb] { if self.bt[b.ty as usize].is_hab { c+=self.hab_cap_at(s,b.tile as usize); } } c
     }
     fn life_demand(&self, s:&State) -> [f64;NG] {
         let mut l=[0.0;NG]; l[FOOD]=s.pop*LIFE[FOOD]; l[POWER]=s.pop*LIFE[POWER]; l[WATER]=s.pop*LIFE[WATER];
         let (mut tot, mut serv)=(0.0,0.0);
-        for b in &s.bld { if self.bt[b.ty as usize].is_hab { let c=self.hab_cap_at(s,b.tile as usize); tot+=c; if self.hab_serviced(s,b.tile as usize){serv+=c;} } }
+        for b in &s.bld[..s.nb] { if self.bt[b.ty as usize].is_hab { let c=self.hab_cap_at(s,b.tile as usize); tot+=c; if self.hab_serviced(s,b.tile as usize){serv+=c;} } }
         if tot>0.0 { l[WATER] *= 1.0-(serv/tot)*RECY_FRAC; }
         l
     }
 
-    // returns surplus[NG], life_met
+    // returns surplus[NG], life_met, ratio[NG]
     fn solve(&self, s:&State) -> ([f64;NG], bool, [f64;NG]) {
-        let n=s.bld.len();
-        // eff in/out per building
-        let mut ein=vec![[0.0f64;NG]; n];
-        let mut eout=vec![[0.0f64;NG]; n];
-        for i in 0..n {
-            let t=s.bld[i].ty as usize; let id=s.bld[i].tile as usize;
-            let hr=self.heat_ratio(s,t,id); let m=self.adj_mult(s,t,id)*hr;
-            let b=&self.bt[t];
-            for g in 0..NG { if b.inp[g]>0.0 { ein[i][g]=b.inp[g]*hr; } if b.out[g]>0.0 { eout[i][g]=b.out[g]*m; } }
-        }
+        let n=s.nb;
+        // per-building type + effective input/output multipliers (computed once; iteration is sparse)
+        let mut ty=vec![0usize;n]; let mut hr=vec![0.0f64;n]; let mut m=vec![0.0f64;n];
+        for i in 0..n { let t=s.bld[i].ty as usize; let id=s.bld[i].tile as usize;
+            let h=self.heat_ratio(s,t,id); ty[i]=t; hr[i]=h; m[i]=self.adj_mult(s,t,id)*h; }
         let l=self.life_demand(s);
         let mut frac=vec![1.0f64; n];
         let mut ratio=[1.0f64;NG];
         for _ in 0..200 {
             let mut prod=[0.0f64;NG]; prod[WORKERS]=s.pop; let mut cons=[0.0f64;NG];
-            for i in 0..n { let f=frac[i]; if f<=0.0 {continue;}
-                for g in 0..NG { if eout[i][g]>0.0 {prod[g]+=eout[i][g]*f;} if ein[i][g]>0.0 {cons[g]+=ein[i][g]*f;} } }
+            for i in 0..n { let f=frac[i]; if f<=0.0 {continue;} let b=&self.bt[ty[i]];
+                for &g in &b.out_idx { prod[g]+=b.out[g]*m[i]*f; }
+                for &g in &b.in_idx  { cons[g]+=b.inp[g]*hr[i]*f; } }
             for g in 0..NG { let avail=(prod[g]-l[g]).max(0.0); let d=cons[g];
                 ratio[g]= if d<=1e-12 {1.0} else {(avail/d).min(1.0)}; }
             let mut md=0.0;
-            for i in 0..n { let mut r=1.0f64; for g in 0..NG { if ein[i][g]>0.0 { if ratio[g]<r {r=ratio[g];} } }
+            for i in 0..n { let b=&self.bt[ty[i]]; let mut r=1.0f64;
+                for &g in &b.in_idx { if ratio[g]<r {r=ratio[g];} }
                 let nf=0.5*frac[i]+0.5*r; let d=(nf-frac[i]).abs(); if d>md {md=d;} frac[i]=nf; }
             if md<1e-7 { break; }
         }
         let mut prod=[0.0f64;NG]; prod[WORKERS]=s.pop; let mut cons=[0.0f64;NG];
-        for i in 0..n { let f=frac[i]; if f<=0.0 {continue;}
-            for g in 0..NG { if eout[i][g]>0.0 {prod[g]+=eout[i][g]*f;} if ein[i][g]>0.0 {cons[g]+=ein[i][g]*f;} } }
+        for i in 0..n { let f=frac[i]; if f<=0.0 {continue;} let b=&self.bt[ty[i]];
+            for &g in &b.out_idx { prod[g]+=b.out[g]*m[i]*f; }
+            for &g in &b.in_idx  { cons[g]+=b.inp[g]*hr[i]*f; } }
         let mut sur=[0.0;NG]; for g in 0..NG { sur[g]=prod[g]-cons[g]-l[g]; }
         let life_met = prod[FOOD]>=l[FOOD]-1e-6 && prod[WATER]>=l[WATER]-1e-6 && prod[POWER]>=l[POWER]-1e-6;
         (sur, life_met, ratio)
     }
 
     fn place(&self, s:&mut State, t:usize, id:usize) {
-        let idx=s.bld.len(); s.bld.push(Building{ty:t as u8, tile:id as u16});
+        let idx=s.nb; s.bld[idx]=Building{ty:t as u8, tile:id as u16}; s.nb+=1;
         s.occ[id]=idx as i32; s.placed[self.bt[t].bt]+=1;
     }
     // dismantle the building on `tile` (swap_remove keeps bld dense; fix occ for the moved building)
     fn demolish_at(&self, s:&mut State, tile:usize) {
         let bi=s.occ[tile]; if bi<0 {return;} let bi=bi as usize;
         s.occ[tile]=-1;
-        s.bld.swap_remove(bi);
-        if bi < s.bld.len() { let moved_tile=s.bld[bi].tile as usize; s.occ[moved_tile]=bi as i32; }
+        s.nb-=1; let last=s.bld[s.nb];           // manual swap_remove on the fixed array
+        if bi<s.nb { s.bld[bi]=last; s.occ[last.tile as usize]=bi as i32; }
         s.demolished+=1;
     }
 
@@ -433,7 +452,7 @@ impl Eng {
     // search-placement (balance.js bestTileByMult) with reclaimer-adjacency tiebreak
     fn best_tile_mult(&self, s:&State, t:usize) -> i32 {
         let b=&self.bt[t]; let mut best=-1i32; let mut bm=-1e9; let mut bsec=-1i32;
-        for id in 0..NT { if !self.eligible(s,t,id) {continue;}
+        for &id in &self.elig[t] { if s.occ[id]>=0 {continue;}   // static-eligible tiles, skip occupied
             let tile=&self.map.tiles[id];
             let mut m = self.adj_mult(s,t,id)*self.heat_ratio(s,t,id);
             if b.cap>0.0 { m = if tile.lava {1.4} else if self.radiated(s,id){0.4} else {1.0}; }
@@ -448,7 +467,7 @@ impl Eng {
     }
 
     fn new_state(&self, econ:&Econ) -> State {
-        let mut s=State{ bld:vec![], occ:[-1;NT], placed:[0;4], build_rate:econ.build_rate, unlocked:[false;NB],
+        let mut s=State{ bld:[Building::default();BCAP], nb:0, occ:[-1;NT], placed:[0;4], build_rate:econ.build_rate, unlocked:[false;NB],
             done:[false;16], failed:[false;16], progress:[0;16], prestige:0.0, pop:econ.start_pop, immig:econ.immig, turn:1,
             demolish_max:econ.demolish_rate, demolished:0, over:false,
             eval_sur:[0.0;NG], eval_life:false };
@@ -464,7 +483,7 @@ fn short_goods(eng:&Eng, s:&State, sc:&[Directive], sur:&[f64;NG], ratio:&[f64;N
     let mut need=[false;NG];
     for d in 0..sc.len() { if s.done[d]||s.failed[d] {continue;} if sur[sc[d].good] < sc[d].rate-0.05 { need[sc[d].good]=true; } }
     // inputs starving any running producer (ratio<1 for an input it consumes)
-    for b in &s.bld { let t=b.ty as usize; let bt=&eng.bt[t];
+    for b in &s.bld[..s.nb] { let t=b.ty as usize; let bt=&eng.bt[t];
         for g in 0..NG { if bt.inp[g]>0.0 && g!=WORKERS && ratio[g]<0.999 { need[g]=true; } } }
     if sur[POWER]<2.0 { need[POWER]=true; }
     need
@@ -484,7 +503,7 @@ fn demolish_candidates(eng:&Eng, s:&State, sc:&[Directive], sur:&[f64;NG]) -> Ve
     let mut maxrate=[0.0f64;NG];
     for d in 0..sc.len() { if s.done[d]||s.failed[d] {continue;} let g=sc[d].good; if sc[d].rate>maxrate[g]{maxrate[g]=sc[d].rate;} }
     let mut out=Vec::new();
-    for b in &s.bld {
+    for b in &s.bld[..s.nb] {
         let t=b.ty as usize; let bt=&eng.bt[t];
         if bt.inp[WORKERS]<=0.0 {continue;}                 // only worker-consuming buildings free workforce
         let id=b.tile as usize;
@@ -509,7 +528,7 @@ fn candidate_types(eng:&Eng, s:&State, sc:&[Directive], sur:&[f64;NG], ratio:&[f
     add(HABITAT,&mut set);
     // radiator if a heat producer of a needed good is throttled
     let mut want_rad=false;
-    for b in &s.bld { let t=b.ty as usize; let bt=&eng.bt[t]; if bt.heat>0.0 {
+    for b in &s.bld[..s.nb] { let t=b.ty as usize; let bt=&eng.bt[t]; if bt.heat>0.0 {
         let mut serves=false; for g in 0..NG { if bt.out[g]>0.0 && need[g] {serves=true;} }
         if serves && eng.heat_ratio(s,t,b.tile as usize)<0.999 { want_rad=true; break; } } }
     if want_rad { add(RADIATOR,&mut set); }
@@ -543,11 +562,17 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
     let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>,Option<usize>)>, Option<(usize,Vec<usize>,Option<usize>)>) {
         let mut children=Vec::new(); let mut term:Option<(usize,Vec<usize>,Option<usize>)>=None;
         if node.s.over { return (children,term); }
-        // demolish options: None, plus single redundant producers (if this turn's allowance permits)
+        // demolish options: None, plus the SINGLE best redundant producer (the one freeing the most
+        // workforce). Offering all of them just dilutes the beam; the one that matters frees most workers.
         let mut demo_opts: Vec<Option<usize>> = vec![None];
         if node.s.demolish_max - node.s.demolished > 0 {
             let (bsur,_,_)=eng.solve(&node.s);
-            for tile in demolish_candidates(eng,&node.s,sc,&bsur) { demo_opts.push(Some(tile)); }
+            let mut best:Option<usize>=None; let mut bestw=-1.0;
+            for tile in demolish_candidates(eng,&node.s,sc,&bsur) {
+                let bi=node.s.occ[tile] as usize; let w=eng.bt[node.s.bld[bi].ty as usize].inp[WORKERS];
+                if w>bestw { bestw=w; best=Some(tile); }
+            }
+            if let Some(tile)=best { demo_opts.push(Some(tile)); }
         }
         // build a combined plan list across demolish options, pre-scored, capped to plancap
         let mut combined: Vec<(f64, Option<usize>, Vec<usize>)> = Vec::new();
@@ -632,7 +657,7 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
         let mut kept: Vec<Node> = Vec::new();
         for (_,st,par,plan,demo) in children.into_iter() {
             if kept.len()>=beam {break;}
-            let mut sig: Vec<u32> = st.bld.iter().map(|b| (b.ty as u32)*100 + b.tile as u32).collect();
+            let mut sig: Vec<u32> = st.bld[..st.nb].iter().map(|b| (b.ty as u32)*100 + b.tile as u32).collect();
             sig.sort();
             if !seen.insert(sig) {continue;}
             kept.push(Node{s:st,parent:par,plan,demo});
@@ -694,9 +719,10 @@ fn main() {
     }
 
     // ---- search / gap / sweep ----  metric: number of directives passed (1/0 each)
-    let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(2000);
+    // defaults tuned for ~1s/run (bounded-optimal). Raise BEAM for a stronger but slower search.
+    let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(200);
     let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(TURNS);
-    let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
+    let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(100);
 
     // metric: STARS = optionals completed; required are mandatory (a required failure = DEFEAT = -1).
     let opt_tot = |sc2:&[Directive]| (0..sc2.len()).filter(|&d| !sc2[d].must).count();
@@ -738,7 +764,7 @@ fn main() {
         // env: GENN samples (60), GENK optionals (3), SEED, BEAM (250 for speed).
         let nsamp:usize = env::var("GENN").ok().and_then(|v|v.parse().ok()).unwrap_or(60);
         let kopt:usize  = env::var("GENK").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
-        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(250);
+        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(200);
         let rewards_on = env::var("REWARDS").map(|v| v=="1").unwrap_or(false); // sample build/immig rewards on optionals
         let mut seed:u64 = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x9e3779b97f4a7c15);
         let e = default_econ();
@@ -813,7 +839,7 @@ impl Eng {
     }
     fn cool_tiles_for(&self, s:&State, good:usize) -> Vec<usize> {
         let mut set=std::collections::BTreeSet::new();
-        for b in &s.bld { let t=b.ty as usize; let bt=&self.bt[t];
+        for b in &s.bld[..s.nb] { let t=b.ty as usize; let bt=&self.bt[t];
             if bt.heat<=0.0 || bt.out[good]<=0.0 {continue;}
             if self.heat_ratio(s,t,b.tile as usize)>=0.999 {continue;}
             for &nb in &self.map.tiles[b.tile as usize].nb { if self.eligible(s,RADIATOR,nb){set.insert(nb);} } }
@@ -821,7 +847,7 @@ impl Eng {
     }
     fn reclaim_tiles(&self, s:&State) -> Vec<usize> {
         let mut set=std::collections::BTreeSet::new();
-        for b in &s.bld { if !self.bt[b.ty as usize].is_hab {continue;}
+        for b in &s.bld[..s.nb] { if !self.bt[b.ty as usize].is_hab {continue;}
             for &nb in &self.map.tiles[b.tile as usize].nb { if self.eligible(s,RECLAIMER,nb){set.insert(nb);} } }
         set.into_iter().collect()
     }
