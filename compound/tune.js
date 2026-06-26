@@ -25,9 +25,12 @@ var CFG={
   buildRate:{1:1,2:1,3:0},   // base builds/turn per tier (T2 kept open for path choice)
   immig:2,                    // base population growth / turn
   startPop:5,
-  /* bonuses added as we iterate: directiveId -> {buildRate:{tier:+n}} or {immig:+n} */
+  /* LANDED CONFIG (now baked into engine.js scenario): greedy AI reaches 800 @T14.
+     bonuses: directiveId -> {buildRate:{tier:+n}} or {immig:+n} */
   bonus:{
-    D3:{buildRate:{3:1}},   // wall 3: assembler/lab are T3, base T3=0 -> D5/D7 unbuildable
+    D1:{buildRate:{1:1}},   // metal/food early ramp
+    D2:{buildRate:{2:1}},   // tier-2 throughput for electronics chain
+    D3:{buildRate:{3:1}},   // tier-3 so assembler/lab (D5/D7) are buildable
   }
 };
 
