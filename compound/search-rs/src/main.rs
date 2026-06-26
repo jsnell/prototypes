@@ -7,16 +7,19 @@
 // from this when a design settles; it was validated identical (greedy + a found
 // order reproduce the same directive turns / 800).
 //
-// Build order is the only "better": 800 is the prestige ceiling, so the search
-// minimizes the turn all 7 directives complete. On the current economy: greedy 800
-// @T14, search 800 @T12 (gap 2). Edit the rules below, then `cargo run --release gap`.
+// METRIC: number of directives passed (each 1/0). The search MAXIMIZES it; the gap we care about
+// is search_count - greedy_count (a directive set is "good" when the optimal passes all but the
+// greedy falls short). Setup-independent, unlike arbitrary prestige.
 //
-// modes:  search   -> beam search, print best all-7 turn + build order
-//         greedy   -> run the greedy heuristic, print its all-7 turn + per-directive
-//         gap      -> run both, print greedy turn, optimal turn, and the gap
+// modes:  search   -> beam search, print best #directives + build order
+//         greedy   -> run the greedy heuristic, print #directives + per-directive turns
+//         gap      -> run both on the built-in scenario, print greedy/search counts and the gap
+//         sweep    -> run greedy+search over variants() (hand-listed directive sets), tabulate gaps
+//         gen      -> GENERATE directive sets (fixed required spine + K sampled optionals); keep
+//                     those the optimal passes fully but greedy doesn't; rank by gap
 //         validate -> replay a fixed historical order (engine self-check)
 //         nobuild  -> start colony only, per-turn trace
-//   env:  BEAM (default 2000) PLANCAP (400) HORIZON (14); PARAMS=<file> loads economy from a file
+//   env:  BEAM (2000; gen 250) PLANCAP (400) HORIZON (=turns); GENN GENK SEED; PARAMS=<file>
 
 use std::env;
 
@@ -40,6 +43,11 @@ const GREENHOUSE:usize=12; const ALGAE:usize=13; const GLASSKILN:usize=14; const
 const EFAB:usize=16; const ASSEMBLER:usize=17; const LAB:usize=18;
 
 const ABBR: [&str; NB] = ["So","Rx","Ra","Hb","Or","Ic","Si","Re","Sc","Sm","Wa","Rc","Gh","Al","Gl","Fo","En","As","Lb"];
+const GOODNAME: [&str; NG] = ["pow","wrk","food","water","ore","ice","sil","rare","metal","glass","alloy","elec","comp","rsch"];
+
+// deterministic RNG (xorshift64) for reproducible directive sampling
+fn xs(s:&mut u64)->u64 { *s^=*s<<13; *s^=*s>>7; *s^=*s<<17; *s }
+fn rng_range(s:&mut u64, lo:i64, hi:i64)->i64 { lo + (xs(s)%(((hi-lo+1).max(1)) as u64)) as i64 }
 
 #[derive(Clone)]
 struct Btype {
@@ -228,7 +236,7 @@ struct State {
     placed: [u8;4],
     build_rate: [u8;4],
     unlocked: [bool; NB],
-    done: [bool;7], failed: [bool;7], progress: [u8;7],
+    done: [bool;16], failed: [bool;16], progress: [u8;16],
     prestige: f64, pop: f64, immig: u32, turn: u32,
     over: bool,
     eval_sur: [f64;NG], eval_life: bool,  // stashed from end_turn's solve, reused by score (avoids a 2nd solve)
@@ -427,7 +435,7 @@ impl Eng {
 
     fn new_state(&self, econ:&Econ) -> State {
         let mut s=State{ bld:vec![], occ:[-1;NT], placed:[0;4], build_rate:econ.build_rate, unlocked:[false;NB],
-            done:[false;7], failed:[false;7], progress:[0;7], prestige:0.0, pop:econ.start_pop, immig:econ.immig, turn:1, over:false,
+            done:[false;16], failed:[false;16], progress:[0;16], prestige:0.0, pop:econ.start_pop, immig:econ.immig, turn:1, over:false,
             eval_sur:[0.0;NG], eval_life:false };
         let start=[SOLAR,SOLAR,HABITAT,ICEX,WATERPLANT,GREENHOUSE];
         for &t in &start { let id=self.best_tile_start(&s,t); if id>=0 { self.place(&mut s,t,id as usize); } }
@@ -625,10 +633,10 @@ fn main() {
             for &ty in plan { let id=eng.best_tile_mult(&s,ty);
                 if id>=0 && s.placed[eng.bt[ty].bt] < s.build_rate[eng.bt[ty].bt] { eng.place(&mut s,ty,id as usize); } }
             eng.end_turn(&mut s,&sc);
-            let prog: Vec<String> = (0..7).map(|d| format!("D{}{}", d+1, if s.done[d]{"v"}else if s.failed[d]{"x"}else{"."})).collect();
+            let prog: Vec<String> = (0..sc.len()).map(|d| format!("D{}{}", d+1, if s.done[d]{"v"}else if s.failed[d]{"x"}else{"."})).collect();
             println!("after T{}: {} prestige={}", t+1, prog.join(" "), s.prestige as i32);
         }
-        let all7=(0..7).all(|d| s.done[d]);
+        let all7=(0..sc.len()).all(|d| s.done[d]);
         println!("RESULT all7={} turn={} prestige={}", all7, s.turn, s.prestige as i32);
         return;
     }
@@ -664,6 +672,49 @@ fn main() {
             println!("{:<24} {:>12} {:>12} {:>5}", name,
                 format!("{}/{} @T{}", gc, sc2.len(), gt), format!("{}/{} @T{}", sc_cnt, sc2.len(), st),
                 sc_cnt as i32 - gc as i32);
+        }
+        return;
+    }
+
+    if mode=="gen" {
+        // GENERATE good directive sets: fixed required spine (keeps the game sound) + K sampled
+        // optionals. Keep sets the OPTIMAL passes fully but greedy doesn't; rank by gap = #greedy fails.
+        // env: GENN samples (60), GENK optionals (3), SEED, BEAM (250 for speed).
+        let nsamp:usize = env::var("GENN").ok().and_then(|v|v.parse().ok()).unwrap_or(60);
+        let kopt:usize  = env::var("GENK").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
+        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(250);
+        let mut seed:u64 = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x9e3779b97f4a7c15);
+        let e = default_econ();
+        // candidate optional goods with sensible rate ranges
+        let cand:[(usize,i64,i64);8] = [(WATER,6,14),(FOOD,8,18),(METAL,6,12),(GLASS,4,10),(ALLOY,4,8),(ELEC,4,8),(COMP,3,6),(RESEARCH,3,6)];
+        let dz=[0,0,0,0];
+        let spine = || vec![
+            Directive{good:FOOD,rate:5.0,dur:2,deadline:5,req:vec![],must:true,rew_build:[0,1,0,0],rew_immig:0,rew_unlock:false,rp:40.0},
+            Directive{good:METAL,rate:5.0,dur:2,deadline:9,req:vec![0],must:true,rew_build:[0,0,1,0],rew_immig:0,rew_unlock:false,rp:70.0},
+            Directive{good:ELEC,rate:4.0,dur:2,deadline:13,req:vec![1],must:true,rew_build:[0,0,0,1],rew_immig:0,rew_unlock:true,rp:120.0},
+            Directive{good:COMP,rate:3.0,dur:3,deadline:18,req:vec![2],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:160.0},
+            Directive{good:RESEARCH,rate:3.0,dur:2,deadline:23,req:vec![3],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:260.0},
+        ];
+        let mut results:Vec<(i32,usize,usize,String)>=Vec::new();
+        for _ in 0..nsamp {
+            let mut sc2=spine(); let mut desc=String::new();
+            for _ in 0..kopt {
+                let (g,lo,hi)=cand[(xs(&mut seed)%(cand.len() as u64)) as usize];
+                let rate=rng_range(&mut seed,lo,hi) as f64;
+                let dl=rng_range(&mut seed,7,18) as u32;
+                sc2.push(Directive{good:g,rate,dur:2,deadline:dl,req:vec![],must:false,rew_build:dz,rew_immig:0,rew_unlock:false,rp:50.0});
+                desc.push_str(&format!("{}{}@{} ", GOODNAME[g], rate as i32, dl));
+            }
+            let (gc,_)=greedy_outcome(&e,&sc2);
+            let (scn,_,_)=beam_search(&eng,&sc2,&e,gbeam,horizon,plancap);
+            let total=sc2.len();
+            if scn==total && (scn as i32 - gc as i32)>0 { results.push((scn as i32 - gc as i32, gc, total, desc)); }
+        }
+        results.sort_by(|a,b| b.0.cmp(&a.0));
+        println!("GEN: {} samples, {} optionals each, beam {} (kept: optimal=all, greedy<all)", nsamp, kopt, gbeam);
+        if results.is_empty() { println!("  (none — optimal couldn't pass all, or greedy passed all; widen ranges / change K)"); }
+        for (gap,gc,total,desc) in results.iter().take(15) {
+            println!("  gap {}  greedy {}/{}  | optionals: {}", gap, gc, total, desc.trim());
         }
         return;
     }
