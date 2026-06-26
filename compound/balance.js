@@ -150,7 +150,8 @@ function run(verbose){
         .map(function(g){return g.slice(0,4)+(Math.round(get(R.surplus,g)*10)/10);}).join(" ");
       var prog=S.sc.directives.map(function(d){return d.id+":"+get(S.progress,d.id)+"/"+d.dur+(S.done[d.id]?"✓":(S.failed[d.id]?"✗":""));}).join(" ");
       var decs=BLOG.filter(function(x){return x.t===t;}).map(function(x){return x.type+"["+x.goal+"]";}).join(" ");
-      log.push("T"+t+" b="+S.tilesUsed+" pop="+Math.round(S.pop)+"/"+Math.round(R.cap)+"(+"+S.immig+") pr="+Math.round(S.prestige)+" ["+sg+"]\n   builds: "+(decs||"-")+"\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
+      var ndone=S.sc.directives.filter(function(d){return S.done[d.id];}).length;
+      log.push("T"+t+" b="+S.tilesUsed+" pop="+Math.round(S.pop)+"/"+Math.round(R.cap)+"(+"+S.immig+") done="+ndone+"/"+S.sc.directives.length+" ["+sg+"]\n   builds: "+(decs||"-")+"\n   "+prog+(res.msgs.length?"  | "+res.msgs.join(", "):""));
     }
   }
   return {S:S,log:log};

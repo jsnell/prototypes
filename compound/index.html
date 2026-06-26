@@ -88,7 +88,7 @@
   <div class="sp"></div>
   <div class="stat">Turn <b id="hTurn">1</b>/<b id="hTurns">24</b></div>
   <div class="stat">Pop <b id="hPop">5</b>/<b id="hCap">5</b> <span class="small" id="hImmig"></span></div>
-  <div class="stat">Prestige <b id="hPres">0</b><span class="small" id="hMaj"></span></div>
+  <div class="stat">Directives <b id="hPres">0</b><span class="small" id="hMaj"></span></div>
 </header>
 
 <div id="banner"></div>
@@ -131,7 +131,8 @@
   <summary>How to play</summary>
   <div class="help" style="margin-top:6px">
    <b>Goal:</b> clear every <span style="color:var(--warn)">★ required</span> directive before its deadline.
-   Optional directives and a high prestige score earn a <b>MAJOR</b> win — but you can't do everything.<br><br>
+   Your score is the <b>number of directives completed</b> (required + optional) — you can't do everything,
+   so optionals are where skill shows.<br><br>
    <b>Place buildings</b> (free) from the palette: tap one, then tap a highlighted tile. Earth only delivers a
    few per tier each turn (the <b>T1/T2/T3</b> counts). <b>Nothing is stockpiled</b> — every turn each building
    turns input flows into output flows; spare output feeds your active directives.<br><br>
@@ -176,7 +177,7 @@ function fxTags(t){var T=TYPES[t],a=[];
   return a.join(" · ");}
 
 /* ---------- undo (full-state history; survives End Turn) + move log ---------- */
-var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","prestige","tilesUsed","pop","immig","lifeShort","grew","over","result","lastMsgs"];
+var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","tilesUsed","pop","immig","lifeShort","grew","over","result","lastMsgs"];
 var hist=[], moveLog=[];
 function snapshot(){var o={};for(var i=0;i<SNAP.length;i++)o[SNAP[i]]=S[SNAP[i]];return JSON.stringify(o);}
 function pushUndo(){hist.push(snapshot());if(hist.length>400)hist.shift();}
@@ -210,7 +211,7 @@ function gameLogText(){
     return "T"+t+": "+(parts.join(" ")||"(no builds)")+(es.some(function(m){return m.a==="end";})?" | end":"");});
   var dirs=S.sc.directives.map(function(d){return d.id+(S.done[d.id]?"✓":S.failed[d.id]?"✗":"·"+get(S.progress,d.id)+"/"+d.dur);}).join(" ");
   var hdr="COMPOUND log — result="+(S.result||"in progress")+"; turn "+S.turn+"/"+S.sc.turns
-    +" · pop "+Math.round(S.pop)+"/"+Math.round(C.capacityOf(S))+" · immig "+S.immig+"/turn · prestige "+Math.round(S.prestige)
+    +" · pop "+Math.round(S.pop)+"/"+Math.round(C.capacityOf(S))+" · immig "+S.immig+"/turn"
     +"\ndirectives: "+dirs+"\nbuildRate "+JSON.stringify(S.buildRate)+" · tiles used "+S.tilesUsed+"\n----";
   return hdr+"\n"+lines.join("\n");
 }
@@ -397,7 +398,7 @@ function NAME_OF(id){for(var i=0;i<S.sc.directives.length;i++)if(S.sc.directives
 function rewardStr(d){var r=d.reward||{},a=[];
   if(r.unlock)a.push("unlock "+r.unlock.map(function(u){return NAME[u];}).join("/"));
   if(r.buildRate)for(var bt in r.buildRate)a.push("+"+r.buildRate[bt]+" T"+bt+"/turn");
-  if(d.rp)a.push(d.rp+" prestige");return a.join(", ")||"—";}
+  return a.join(", ")||"—";}
 
 /* ---------- legend ---------- */
 function renderLegend(){
@@ -418,11 +419,12 @@ function render(){
   document.getElementById("hPop").textContent=Math.round(S.pop);
   document.getElementById("hCap").textContent=Math.round(R.cap);
   document.getElementById("hImmig").innerHTML=S.lifeShort?'<span class="neg">⚠ paused</span>':"+"+S.immig+"/turn";
-  document.getElementById("hPres").textContent=Math.round(S.prestige);
-  document.getElementById("hMaj").textContent=" (MAJOR ≥"+S.sc.majorThreshold+")";
+  var passed=S.sc.directives.filter(function(d){return S.done[d.id];}).length;
+  document.getElementById("hPres").textContent=passed;
+  document.getElementById("hMaj").textContent="/"+S.sc.directives.length;
   var bn=document.getElementById("banner");
   if(S.over){bn.style.display="block";bn.textContent=S.result;
-    var win=S.result.indexOf("VICTORY")>=0;bn.style.background=win?"#16341f":"#341616";bn.style.color=win?"#9af0b4":"#ff9b9b";}
+    var win=S.result.indexOf("DEFEAT")<0;bn.style.background=win?"#16341f":"#341616";bn.style.color=win?"#9af0b4":"#ff9b9b";}
   else if(S.lastMsgs&&S.lastMsgs.length){bn.style.display="block";bn.style.background="#15233a";bn.style.color="#bcd6ff";bn.textContent=S.lastMsgs.join("  ·  ");}
   else bn.style.display="none";
 
