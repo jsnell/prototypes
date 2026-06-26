@@ -29,7 +29,7 @@ function producersFor(good){return ALT[good]||(E.PRODUCER[good]?[E.PRODUCER[good
 /* placement: tile with the best effective multiplier (clustering/sun/lava), keeping reactors off
    housing and housing off radiation, and not needlessly squatting a deposit or lava tube. */
 function bestTileByMult(S,type){
-  var T=TYPES[type],best=-1,bm=-1e9;
+  var T=TYPES[type],best=-1,bm=-1e9,bsec=-1;
   for(var id=0;id<S.map.tiles.length;id++){
     if(!E.eligible(S,type,id))continue;
     var t=S.map.tiles[id],m=E.adjMult(S,type,id)*E.heatRatio(S,type,id);
@@ -38,7 +38,10 @@ function bestTileByMult(S,type){
     if(T.cap)m-=0.6*E.countAdj(S,id,function(x){return TYPES[x].radiation;});
     if(!T.deposit&&!T.requiresWreck&&t.dep)m-=0.25;
     if(!T.lavaBonus&&t.lava)m-=0.4;
-    if(m>bm){bm=m;best=id;}
+    /* tiebreaker only: a habitat born next to a reclaimer is serviced (recycles ~0.6 water/turn).
+       Break ties of (near-)equal capacity toward that — never trade capacity for it. */
+    var sec=T.cap&&E.countAdj(S,id,function(x){return !!TYPES[x].recycles;})>0?1:0;
+    if(m>bm+1e-9||(Math.abs(m-bm)<=1e-9&&sec>bsec)){bm=m;best=id;bsec=sec;}
   }
   return best;
 }
