@@ -155,13 +155,14 @@ fn scenario() -> Vec<Directive> {
     let mk = |good,rate,dur,deadline,req:Vec<usize>,must,rb:[i32;4],immig,unlock,rp|
         Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rp};
     vec![
-        mk(FOOD,5.0,2,5,vec![],true,[0,1,0,0],0,false,40.0),      // D1
-        mk(METAL,5.0,2,9,vec![0],true,[0,0,1,0],0,false,70.0),    // D2
-        mk(ELEC,4.0,2,13,vec![1],true,[0,0,0,1],0,true,120.0),    // D3 (unlock + T3)
-        mk(WATER,9.0,2,11,vec![0],false,[0,0,0,0],0,false,60.0),  // D4
-        mk(COMP,3.0,3,18,vec![2],true,[0,0,0,0],0,false,160.0),   // D5
-        mk(FOOD,14.0,2,18,vec![2],false,[0,0,0,0],0,false,90.0),  // D6
-        mk(RESEARCH,3.0,2,23,vec![4],true,[0,0,0,0],0,false,260.0)// D7
+        mk(FOOD,5.0,2,5,vec![],true,[0,1,0,0],0,false,40.0),       // D1
+        mk(METAL,5.0,2,9,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
+        mk(ELEC,4.0,2,13,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
+        mk(COMP,3.0,3,18,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
+        mk(RESEARCH,3.0,2,23,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
+        mk(GLASS,7.0,2,16,vec![],false,[0,0,0,0],0,false,50.0),    // D6 opt glass
+        mk(FOOD,12.0,2,12,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt food
+        mk(ELEC,8.0,2,9,vec![],false,[0,0,0,0],0,false,50.0),      // D8 opt elec
     ]
 }
 const TURNS: u32 = 24;
@@ -705,10 +706,12 @@ fn main() {
                 sc2.push(Directive{good:g,rate,dur:2,deadline:dl,req:vec![],must:false,rew_build:dz,rew_immig:0,rew_unlock:false,rp:50.0});
                 desc.push_str(&format!("{}{}@{} ", GOODNAME[g], rate as i32, dl));
             }
-            let (gc,_)=greedy_outcome(&e,&sc2);
+            let (gs,_gdt)=eng.greedy_run(&e,&sc2);
+            let gc=(0..sc2.len()).filter(|&d| gs.done[d]).count();
+            let greedy_req=(0..sc2.len()).all(|d| !sc2[d].must || gs.done[d]); // required = greedy can do it
             let (scn,_,_)=beam_search(&eng,&sc2,&e,gbeam,horizon,plancap);
             let total=sc2.len();
-            if scn==total && (scn as i32 - gc as i32)>0 { results.push((scn as i32 - gc as i32, gc, total, desc)); }
+            if greedy_req && scn==total && (scn as i32 - gc as i32)>0 { results.push((scn as i32 - gc as i32, gc, total, desc)); }
         }
         results.sort_by(|a,b| b.0.cmp(&a.0));
         println!("GEN: {} samples, {} optionals each, beam {} (kept: optimal=all, greedy<all)", nsamp, kopt, gbeam);
