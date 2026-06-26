@@ -296,7 +296,7 @@ impl Eng {
         let mut np=[false;NG];
         for &nb in &self.map.tiles[id].nb { let bi=s.occ[nb]; if bi<0{continue;}
             let ob=&self.bt[s.bld[bi as usize].ty as usize];
-            for g in 0..NG { if ob.out[g]>0.0 { np[g]=true; } } }
+            for &g in &ob.out_idx { np[g]=true; } }   // sparse: only goods this neighbor produces
         let mut mt=0; for g in 0..NG { if g==POWER||g==WORKERS {continue;} if b.inp[g]>0.0 && np[g] { mt+=1; } }
         if mt>3 {3.0} else {mt as f64}
     }
