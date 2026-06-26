@@ -156,16 +156,16 @@ fn scenario() -> Vec<Directive> {
         Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rp};
     vec![
         mk(FOOD,5.0,2,5,vec![],true,[0,1,0,0],0,false,40.0),       // D1
-        mk(METAL,5.0,2,9,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
-        mk(ELEC,4.0,2,13,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
-        mk(COMP,3.0,3,18,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
-        mk(RESEARCH,3.0,2,23,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
+        mk(METAL,5.0,2,7,vec![0],true,[0,0,1,0],0,false,70.0),     // D2 (tightened deadline)
+        mk(ELEC,4.0,2,10,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
+        mk(COMP,3.0,3,15,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
+        mk(RESEARCH,3.0,2,17,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
         mk(GLASS,7.0,2,16,vec![],false,[0,0,0,0],0,false,50.0),    // D6 opt glass
         mk(FOOD,12.0,2,12,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt food
         mk(ELEC,8.0,2,9,vec![],false,[0,0,0,0],0,false,50.0),      // D8 opt elec
     ]
 }
-const TURNS: u32 = 24;
+const TURNS: u32 = 18;
 
 // Directive-set variants to sweep (mechanics held constant). Each returns (name, economy, directives).
 // Index map: D1=0 D2=1 D3=2 D4=3(opt water) D5=4 D6=5(opt food) D7=6. Edit/extend freely.
@@ -699,10 +699,10 @@ fn main() {
         let dz=[0,0,0,0];
         let spine = || vec![
             Directive{good:FOOD,rate:5.0,dur:2,deadline:5,req:vec![],must:true,rew_build:[0,1,0,0],rew_immig:0,rew_unlock:false,rp:40.0},
-            Directive{good:METAL,rate:5.0,dur:2,deadline:9,req:vec![0],must:true,rew_build:[0,0,1,0],rew_immig:0,rew_unlock:false,rp:70.0},
-            Directive{good:ELEC,rate:4.0,dur:2,deadline:13,req:vec![1],must:true,rew_build:[0,0,0,1],rew_immig:0,rew_unlock:true,rp:120.0},
-            Directive{good:COMP,rate:3.0,dur:3,deadline:18,req:vec![2],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:160.0},
-            Directive{good:RESEARCH,rate:3.0,dur:2,deadline:23,req:vec![3],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:260.0},
+            Directive{good:METAL,rate:5.0,dur:2,deadline:7,req:vec![0],must:true,rew_build:[0,0,1,0],rew_immig:0,rew_unlock:false,rp:70.0},
+            Directive{good:ELEC,rate:4.0,dur:2,deadline:10,req:vec![1],must:true,rew_build:[0,0,0,1],rew_immig:0,rew_unlock:true,rp:120.0},
+            Directive{good:COMP,rate:3.0,dur:3,deadline:15,req:vec![2],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:160.0},
+            Directive{good:RESEARCH,rate:3.0,dur:2,deadline:17,req:vec![3],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:260.0},
         ];
         let mut results:Vec<(i32,i32,i32,String)>=Vec::new(); // (gap, greedy_stars, opt_total, desc)
         for _ in 0..nsamp {

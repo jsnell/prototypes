@@ -177,7 +177,7 @@ function fxTags(t){var T=TYPES[t],a=[];
   return a.join(" · ");}
 
 /* ---------- undo (full-state history; survives End Turn) + move log ---------- */
-var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","tilesUsed","pop","immig","lifeShort","grew","over","result","lastMsgs"];
+var SNAP=["turn","buildings","occ","buildRate","unlocked","placed","done","failed","progress","metNow","tilesUsed","demolishMax","demolished","pop","immig","lifeShort","grew","over","result","lastMsgs"];
 var hist=[], moveLog=[];
 function snapshot(){var o={};for(var i=0;i<SNAP.length;i++)o[SNAP[i]]=S[SNAP[i]];return JSON.stringify(o);}
 function pushUndo(){hist.push(snapshot());if(hist.length>400)hist.shift();}
@@ -196,9 +196,13 @@ function onTile(id){
   S.selTile=(S.selTile===id?-1:id);render();      /* otherwise inspect the tile */
 }
 function doDemolish(){
-  if(S.selTile<0)return;var bi=S.occ[S.selTile];if(bi==null||bi<0)return;pushUndo();
-  var b=S.buildings[bi],t=S.map.tiles[b.tile];moveLog.push({t:S.turn,a:"-",b:b.type,q:t.q,r:t.r});
-  if(b.turn===S.turn)S.placed[TYPES[b.type].bt]=Math.max(0,get(S.placed,TYPES[b.type].bt)-1);
+  if(S.selTile<0)return;var bi=S.occ[S.selTile];if(bi==null||bi<0)return;
+  if(!C.canDemolish(S,S.selTile))return;          /* out of dismantles this turn */
+  pushUndo();
+  var b=S.buildings[bi],t=S.map.tiles[b.tile],sameTurn=(b.turn===S.turn);
+  moveLog.push({t:S.turn,a:"-",b:b.type,q:t.q,r:t.r});
+  if(sameTurn)S.placed[TYPES[b.type].bt]=Math.max(0,get(S.placed,TYPES[b.type].bt)-1);
+  else S.demolished++;                              /* dismantling old infra costs a per-turn demolish */
   S.occ[b.tile]=-1;S.buildings[bi]=null;S.tilesUsed--;S.selTile=-1;render();
 }
 function endTurn(){if(S.over){newGame();return;}pushUndo();moveLog.push({t:S.turn,a:"end"});C.processEndTurn(S);render();turnAnim();}
@@ -325,6 +329,10 @@ function inspector(R){
     var mods=modifierLines(bi);if(mods.length)h+='<br><span class="small">'+mods.join(" · ")+'</span>';
     var ter=tileDesc(t);if(ter)h+='<br><span class="small">tile: '+ter+'</span>';
     si.innerHTML=h;act.style.display="flex";
+    var demo=document.getElementById("demo"),ok=C.canDemolish(S,S.selTile),sameTurn=(b.turn===S.turn);
+    demo.disabled=!ok; demo.style.opacity=ok?"1":"0.45";
+    demo.textContent = sameTurn ? "Demolish (free this turn)"
+      : "Demolish ("+Math.max(0,S.demolishMax-S.demolished)+"/"+S.demolishMax+" left)";
   } else {
     si.innerHTML='<b>Empty tile</b> ('+t.q+','+t.r+')<br><span class="small">'+(tileDesc(t)||"plain ground")+'</span>';
   }
@@ -431,7 +439,8 @@ function render(){
 
   renderMap(R);
   document.getElementById("rates").innerHTML=[1,2,3].map(function(bt){
-    return "T"+bt+" <b>"+(get(S.buildRate,bt)-get(S.placed,bt))+"</b>/"+get(S.buildRate,bt);}).join(" &nbsp; ");
+    return "T"+bt+" <b>"+(get(S.buildRate,bt)-get(S.placed,bt))+"</b>/"+get(S.buildRate,bt);}).join(" &nbsp; ")
+    +(S.demolishMax>0?" &nbsp; demo <b>"+Math.max(0,S.demolishMax-S.demolished)+"</b>/"+S.demolishMax:"");
   inspector(R);
   renderFlows(R);
   renderPalette();
