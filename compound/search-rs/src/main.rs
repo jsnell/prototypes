@@ -149,12 +149,12 @@ fn sun_factor(q:i32) -> f64 { 1.0 - 0.6*(q as f64)/((W-1) as f64) }
 // ---- directives / scenario ----
 #[derive(Clone)]
 struct Directive { good:usize, rate:f64, dur:u32, deadline:u32, req:Vec<usize>, must:bool,
-    rew_build:[i32;4], rew_immig:u32, rew_unlock:bool, rp:f64 }
+    rew_build:[i32;4], rew_immig:u32, rew_unlock:bool, rew_demolish:i32, rp:f64 }
 fn scenario() -> Vec<Directive> {
-    // rewards: D3 unlocks assembler+lab and grants +1 T3; D1->+1T1, D2->+1T2.
+    // rewards: D3 unlocks assembler+lab and grants +1 T3; D1->+1T1, D2->+1T2 and +1 demolish/turn.
     let mk = |good,rate,dur,deadline,req:Vec<usize>,must,rb:[i32;4],immig,unlock,rp|
-        Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rp};
-    vec![
+        Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rew_demolish:0,rp};
+    let mut v = vec![
         mk(FOOD,5.0,2,5,vec![],true,[0,1,0,0],0,false,40.0),       // D1
         mk(METAL,5.0,2,7,vec![0],true,[0,0,1,0],0,false,70.0),     // D2 (tightened deadline)
         mk(ELEC,4.0,2,10,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
@@ -163,7 +163,9 @@ fn scenario() -> Vec<Directive> {
         mk(GLASS,7.0,2,16,vec![],false,[0,0,0,0],0,false,50.0),    // D6 opt glass
         mk(FOOD,12.0,2,12,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt food
         mk(ELEC,8.0,2,9,vec![],false,[0,0,0,0],0,false,50.0),      // D8 opt elec
-    ]
+    ];
+    v[1].rew_demolish = 1;  // Metalworks grants +1 demolish/turn (matches engine.js)
+    v
 }
 const TURNS: u32 = 18;
 
@@ -194,8 +196,8 @@ fn variants() -> Vec<(String, Econ, Vec<Directive>)> {
 // economy knobs (the things we iterate on). Loaded from params.txt when present so engine.js stays
 // the single source of truth; falls back to these defaults otherwise.
 #[derive(Clone)]
-struct Econ { build_rate:[u8;4], immig:u32, start_pop:f64 }
-fn default_econ() -> Econ { Econ{ build_rate:[0,1,1,0], immig:2, start_pop:5.0 } }
+struct Econ { build_rate:[u8;4], immig:u32, start_pop:f64, demolish_rate:i32 }
+fn default_econ() -> Econ { Econ{ build_rate:[0,1,1,0], immig:2, start_pop:5.0, demolish_rate:0 } }
 
 // params.txt format (good = GOODORDER index, matching the good consts above):
 //   buildRate <t1> <t2> <t3>
@@ -218,7 +220,7 @@ fn load_params(path:&str) -> Option<(Econ, Vec<Directive>)> {
                 let req:Vec<usize> = t[12..].iter().map(|x| x.parse().unwrap()).collect();
                 dirs.push(Directive{ good:g, rate:t[2].parse().unwrap(), dur:t[3].parse().unwrap(),
                     deadline:t[4].parse().unwrap(), req, must:t[5]=="1", rew_build:rb,
-                    rew_immig:t[9].parse().unwrap(), rew_unlock:t[10]=="1", rp:t[11].parse().unwrap() });
+                    rew_immig:t[9].parse().unwrap(), rew_unlock:t[10]=="1", rew_demolish:0, rp:t[11].parse().unwrap() });
             }
             _ => {}
         }
@@ -239,6 +241,7 @@ struct State {
     unlocked: [bool; NB],
     done: [bool;16], failed: [bool;16], progress: [u8;16],
     prestige: f64, pop: f64, immig: u32, turn: u32,
+    demolish_max: i32, demolished: i32,   // per-turn dismantle allowance (of OLD buildings)
     over: bool,
     eval_sur: [f64;NG], eval_life: bool,  // stashed from end_turn's solve, reused by score (avoids a 2nd solve)
 }
@@ -355,6 +358,14 @@ impl Eng {
         let idx=s.bld.len(); s.bld.push(Building{ty:t as u8, tile:id as u16});
         s.occ[id]=idx as i32; s.placed[self.bt[t].bt]+=1;
     }
+    // dismantle the building on `tile` (swap_remove keeps bld dense; fix occ for the moved building)
+    fn demolish_at(&self, s:&mut State, tile:usize) {
+        let bi=s.occ[tile]; if bi<0 {return;} let bi=bi as usize;
+        s.occ[tile]=-1;
+        s.bld.swap_remove(bi);
+        if bi < s.bld.len() { let moved_tile=s.bld[bi].tile as usize; s.occ[moved_tile]=bi as i32; }
+        s.demolished+=1;
+    }
 
     fn prereqs_done(&self, s:&State, sc:&[Directive], d:usize) -> bool {
         for &r in &sc[d].req { if !s.done[r] {return false;} } true
@@ -387,6 +398,7 @@ impl Eng {
                     if sc[d].rew_unlock { s.unlocked[ASSEMBLER]=true; s.unlocked[LAB]=true; }
                     for t in 1..4 { s.build_rate[t]+= sc[d].rew_build[t] as u8; }
                     s.immig += sc[d].rew_immig;
+                    s.demolish_max += sc[d].rew_demolish;
                     s.prestige += sc[d].rp;
                 }
             }
@@ -399,7 +411,7 @@ impl Eng {
         if lost { s.over=true; return; }
         if all_done { s.over=true; return; }
         // continue
-        s.turn += 1; s.placed=[0;4];
+        s.turn += 1; s.placed=[0;4]; s.demolished=0;
         if life_met { let room=self.capacity(s)-s.pop; if room>0.0 { let g=(s.immig as f64).min(room); s.pop+=g; } }
         if s.turn > TURNS { s.over=true; if !all_must { /* defeat */ } }
     }
@@ -436,7 +448,8 @@ impl Eng {
 
     fn new_state(&self, econ:&Econ) -> State {
         let mut s=State{ bld:vec![], occ:[-1;NT], placed:[0;4], build_rate:econ.build_rate, unlocked:[false;NB],
-            done:[false;16], failed:[false;16], progress:[0;16], prestige:0.0, pop:econ.start_pop, immig:econ.immig, turn:1, over:false,
+            done:[false;16], failed:[false;16], progress:[0;16], prestige:0.0, pop:econ.start_pop, immig:econ.immig, turn:1,
+            demolish_max:econ.demolish_rate, demolished:0, over:false,
             eval_sur:[0.0;NG], eval_life:false };
         let start=[SOLAR,SOLAR,HABITAT,ICEX,WATERPLANT,GREENHOUSE];
         for &t in &start { let id=self.best_tile_start(&s,t); if id>=0 { self.place(&mut s,t,id as usize); } }
@@ -462,6 +475,25 @@ fn producers_for(g:usize) -> &'static [usize] {
         GLASS => &[GLASSKILN], ALLOY => &[FOUNDRY], ELEC => &[EFAB], COMP => &[ASSEMBLER], RESEARCH => &[LAB],
         _ => &[],
     }
+}
+// tiles of OLD buildings worth dismantling: worker-consuming producers whose every output is in
+// large enough surplus that removing them still meets life support + every live directive's rate.
+// Freeing their workforce can let more useful buildings run.
+fn demolish_candidates(eng:&Eng, s:&State, sc:&[Directive], sur:&[f64;NG]) -> Vec<usize> {
+    let mut maxrate=[0.0f64;NG];
+    for d in 0..sc.len() { if s.done[d]||s.failed[d] {continue;} let g=sc[d].good; if sc[d].rate>maxrate[g]{maxrate[g]=sc[d].rate;} }
+    let mut out=Vec::new();
+    for b in &s.bld {
+        let t=b.ty as usize; let bt=&eng.bt[t];
+        if bt.inp[WORKERS]<=0.0 {continue;}                 // only worker-consuming buildings free workforce
+        let id=b.tile as usize;
+        let m=eng.adj_mult(s,t,id)*eng.heat_ratio(s,t,id);
+        let mut has_out=false; let mut redundant=true;
+        for g in 0..NG { if bt.out[g]>0.0 { has_out=true;
+            if sur[g] < bt.out[g]*m + maxrate[g] - 1e-9 { redundant=false; break; } } }
+        if has_out && redundant { out.push(id); }
+    }
+    out
 }
 fn candidate_types(eng:&Eng, s:&State, sc:&[Directive], sur:&[f64;NG], ratio:&[f64;NG]) -> Vec<usize> {
     let need=short_goods(eng,s,sc,sur,ratio);
@@ -493,66 +525,81 @@ fn multisets(items:&[usize], k:usize) -> Vec<Vec<usize>> {
     let mut cur=vec![]; rec(items,k,0,&mut cur,&mut out); out
 }
 
-struct Node { s:State, parent:i32, plan:Vec<usize> }
+struct Node { s:State, parent:i32, plan:Vec<usize>, demo:Option<usize> }
+type Step = (Option<usize>, Vec<usize>);   // (tile demolished this turn, building types placed)
 
-// parallel beam search: MAXIMIZE the number of directives completed (tie: earliest end turn).
-// returns (count, end_turn, build order). Each playout runs to game end; we track the best terminal.
-fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (i32, u32, Vec<Vec<usize>>) {
+// parallel beam search: MAXIMIZE stars (optionals) among all-required-complete runs. The per-turn
+// action is (optionally demolish one redundant building) then (place a build plan).
+// returns (stars, end_turn, per-turn steps).
+fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, plancap:usize) -> (i32, u32, Vec<Step>) {
     let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
     let root = eng.new_state(econ);
-    let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![]}]];
+    let mut levels: Vec<Vec<Node>> = vec![vec![Node{s:root,parent:-1,plan:vec![],demo:None}]];
     let ndir = sc.len();
     let opt_total = (0..ndir).filter(|&d| !sc[d].must).count();  // stars available
     let (mut best_count, mut best_turn, mut best_chain, mut best_found) = (0usize, u32::MAX, Vec::new(), false);
-    // each node -> (live children, best terminal from this node as (count, plan))
-    let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>)>, Option<(usize,Vec<usize>)>) {
-        let mut children=Vec::new(); let mut term:Option<(usize,Vec<usize>)>=None;
+    // node -> (live children (score,state,parent,plan,demo), best terminal (stars,plan,demo))
+    let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>,Option<usize>)>, Option<(usize,Vec<usize>,Option<usize>)>) {
+        let mut children=Vec::new(); let mut term:Option<(usize,Vec<usize>,Option<usize>)>=None;
         if node.s.over { return (children,term); }
-        let (sur,_life,ratio)=eng.solve(&node.s);
-        let cands=candidate_types(eng,&node.s,sc,&sur,&ratio);
-        let mut by:[Vec<usize>;4]=[vec![],vec![],vec![],vec![]];
-        for &t in &cands { by[eng.bt[t].bt].push(t); }
-        let m1=multisets(&by[1], node.s.build_rate[1] as usize);
-        let m2=multisets(&by[2], node.s.build_rate[2] as usize);
-        let m3=multisets(&by[3], node.s.build_rate[3] as usize);
-        let need=short_goods(eng,&node.s,sc,&sur,&ratio);
-        let mut plans: Vec<(f64,Vec<usize>)> = Vec::new();
-        for a in &m1 { for b in &m2 { for c in &m3 {
-            let mut p=Vec::with_capacity(a.len()+b.len()+c.len());
-            p.extend_from_slice(a); p.extend_from_slice(b); p.extend_from_slice(c);
-            let mut hit=[false;NG]; let mut score=0.0;
-            for &t in &p { let bt=&eng.bt[t];
-                for g in 0..NG { if bt.out[g]>0.0 && need[g] && !hit[g] {hit[g]=true; score+=10.0;} }
-                if t==HABITAT { score += if eng.capacity(&node.s)-node.s.pop < node.s.immig as f64 {6.0} else {1.0}; }
-                if t==RADIATOR { score+=4.0; }
-            }
-            score -= 0.3*(p.len() as f64);
-            plans.push((score,p));
-        }}}
-        plans.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
-        plans.truncate(plancap);
-        for (_,plan) in plans {
+        // demolish options: None, plus single redundant producers (if this turn's allowance permits)
+        let mut demo_opts: Vec<Option<usize>> = vec![None];
+        if node.s.demolish_max - node.s.demolished > 0 {
+            let (bsur,_,_)=eng.solve(&node.s);
+            for tile in demolish_candidates(eng,&node.s,sc,&bsur) { demo_opts.push(Some(tile)); }
+        }
+        // build a combined plan list across demolish options, pre-scored, capped to plancap
+        let mut combined: Vec<(f64, Option<usize>, Vec<usize>)> = Vec::new();
+        for &dopt in &demo_opts {
+            let mut tmp=node.s.clone();
+            if let Some(tile)=dopt { eng.demolish_at(&mut tmp, tile); }
+            let (sur,_life,ratio)=eng.solve(&tmp);
+            let cands=candidate_types(eng,&tmp,sc,&sur,&ratio);
+            let mut by:[Vec<usize>;4]=[vec![],vec![],vec![],vec![]];
+            for &t in &cands { by[eng.bt[t].bt].push(t); }
+            let m1=multisets(&by[1], tmp.build_rate[1] as usize);
+            let m2=multisets(&by[2], tmp.build_rate[2] as usize);
+            let m3=multisets(&by[3], tmp.build_rate[3] as usize);
+            let need=short_goods(eng,&tmp,sc,&sur,&ratio);
+            for a in &m1 { for b in &m2 { for c in &m3 {
+                let mut p=Vec::with_capacity(a.len()+b.len()+c.len());
+                p.extend_from_slice(a); p.extend_from_slice(b); p.extend_from_slice(c);
+                let mut hit=[false;NG]; let mut score=0.0;
+                for &t in &p { let bt=&eng.bt[t];
+                    for g in 0..NG { if bt.out[g]>0.0 && need[g] && !hit[g] {hit[g]=true; score+=10.0;} }
+                    if t==HABITAT { score += if eng.capacity(&tmp)-tmp.pop < tmp.immig as f64 {6.0} else {1.0}; }
+                    if t==RADIATOR { score+=4.0; }
+                }
+                score -= 0.3*(p.len() as f64);
+                if dopt.is_some() { score -= 1.0; }   // mild bias: demolish only if it earns its keep
+                combined.push((score, dopt, p));
+            }}}
+        }
+        combined.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
+        combined.truncate(plancap);
+        for (_,dopt,plan) in combined {
             let mut c=node.s.clone();
+            if let Some(tile)=dopt { eng.demolish_at(&mut c, tile); }
             for &ty in &plan { let id=eng.best_tile_mult(&c,ty);
                 if id>=0 && c.placed[eng.bt[ty].bt] < c.build_rate[eng.bt[ty].bt] { eng.place(&mut c,ty,id as usize); } }
             eng.end_turn(&mut c,sc);
-            if c.over {  // terminal: valid only if all REQUIRED done; score = optionals completed (stars)
+            if c.over {
                 if (0..ndir).all(|d| !sc[d].must || c.done[d]) {
                     let opt=(0..ndir).filter(|&d| !sc[d].must && c.done[d]).count();
-                    if term.as_ref().map_or(true,|t| opt>t.0) { term=Some((opt,plan)); }
+                    if term.as_ref().map_or(true,|t| opt>t.0) { term=Some((opt,plan,dopt)); }
                 }
                 continue;
             }
             let sf=eng.score(&c,sc);
-            children.push((sf, c, pi as i32, plan));
+            children.push((sf, c, pi as i32, plan, dopt));
         }
         (children, term)
     };
     for turn in 1..=horizon {
         let prev = levels.last().unwrap();
         let np = prev.len();
-        let mut children: Vec<(f64, State, i32, Vec<usize>)> = Vec::new();
-        let mut term: Option<(usize,i32,Vec<usize>)> = None;  // (count, parent_pi, plan)
+        let mut children: Vec<(f64, State, i32, Vec<usize>, Option<usize>)> = Vec::new();
+        let mut term: Option<(usize,i32,Vec<usize>,Option<usize>)> = None;  // (stars, parent_pi, plan, demo)
         std::thread::scope(|scope| {
             let chunk = (np + nthreads - 1)/nthreads.max(1);
             let mut handles=Vec::new();
@@ -560,20 +607,20 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
                 let lo=c*chunk; let hi=((c+1)*chunk).min(np); if lo>=hi {continue;}
                 let exp=&expand_node; let prev=&prev;
                 handles.push(scope.spawn(move || {
-                    let mut ch=Vec::new(); let mut tm:Option<(usize,i32,Vec<usize>)>=None;
+                    let mut ch=Vec::new(); let mut tm:Option<(usize,i32,Vec<usize>,Option<usize>)>=None;
                     for pi in lo..hi { let (mut c2,t2)=exp(pi,&prev[pi]); ch.append(&mut c2);
-                        if let Some((cnt,plan))=t2 { if tm.as_ref().map_or(true,|x| cnt>x.0){tm=Some((cnt,pi as i32,plan));} } }
+                        if let Some((cnt,plan,d))=t2 { if tm.as_ref().map_or(true,|x| cnt>x.0){tm=Some((cnt,pi as i32,plan,d));} } }
                     (ch,tm)
                 }));
             }
             for h in handles { let (mut ch,tm)=h.join().unwrap(); children.append(&mut ch);
                 if let Some(x)=tm { if term.as_ref().map_or(true,|y| x.0>y.0){term=Some(x);} } }
         });
-        if let Some((cnt,pi,plan)) = term {
+        if let Some((cnt,pi,plan,demo)) = term {
             if !best_found || cnt>best_count || (cnt==best_count && turn<best_turn) {
-                let mut chain=vec![plan];
+                let mut chain:Vec<Step>=vec![(demo,plan)];
                 let mut p=pi; let mut lvl=levels.len()-1;
-                while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push(nd.plan.clone()); p=nd.parent; lvl-=1; }
+                while p>=0 && lvl>0 { let nd=&levels[lvl][p as usize]; chain.push((nd.demo,nd.plan.clone())); p=nd.parent; lvl-=1; }
                 chain.reverse();
                 best_count=cnt; best_turn=turn; best_chain=chain; best_found=true;
             }
@@ -582,12 +629,12 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
         children.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
         let mut seen=std::collections::HashSet::new();
         let mut kept: Vec<Node> = Vec::new();
-        for (_,st,par,plan) in children.into_iter() {
+        for (_,st,par,plan,demo) in children.into_iter() {
             if kept.len()>=beam {break;}
             let mut sig: Vec<u32> = st.bld.iter().map(|b| (b.ty as u32)*100 + b.tile as u32).collect();
             sig.sort();
             if !seen.insert(sig) {continue;}
-            kept.push(Node{s:st,parent:par,plan});
+            kept.push(Node{s:st,parent:par,plan,demo});
         }
         if kept.is_empty() { break; }
         levels.push(kept);
@@ -698,11 +745,11 @@ fn main() {
         let cand:[(usize,i64,i64);8] = [(WATER,6,14),(FOOD,8,18),(METAL,6,12),(GLASS,4,10),(ALLOY,4,8),(ELEC,4,8),(COMP,3,6),(RESEARCH,3,6)];
         let dz=[0,0,0,0];
         let spine = || vec![
-            Directive{good:FOOD,rate:5.0,dur:2,deadline:5,req:vec![],must:true,rew_build:[0,1,0,0],rew_immig:0,rew_unlock:false,rp:40.0},
-            Directive{good:METAL,rate:5.0,dur:2,deadline:7,req:vec![0],must:true,rew_build:[0,0,1,0],rew_immig:0,rew_unlock:false,rp:70.0},
-            Directive{good:ELEC,rate:4.0,dur:2,deadline:10,req:vec![1],must:true,rew_build:[0,0,0,1],rew_immig:0,rew_unlock:true,rp:120.0},
-            Directive{good:COMP,rate:3.0,dur:3,deadline:15,req:vec![2],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:160.0},
-            Directive{good:RESEARCH,rate:3.0,dur:2,deadline:17,req:vec![3],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rp:260.0},
+            Directive{good:FOOD,rate:5.0,dur:2,deadline:5,req:vec![],must:true,rew_build:[0,1,0,0],rew_immig:0,rew_unlock:false,rew_demolish:0,rp:40.0},
+            Directive{good:METAL,rate:5.0,dur:2,deadline:7,req:vec![0],must:true,rew_build:[0,0,1,0],rew_immig:0,rew_unlock:false,rew_demolish:1,rp:70.0},
+            Directive{good:ELEC,rate:4.0,dur:2,deadline:10,req:vec![1],must:true,rew_build:[0,0,0,1],rew_immig:0,rew_unlock:true,rew_demolish:0,rp:120.0},
+            Directive{good:COMP,rate:3.0,dur:3,deadline:15,req:vec![2],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rew_demolish:0,rp:160.0},
+            Directive{good:RESEARCH,rate:3.0,dur:2,deadline:17,req:vec![3],must:true,rew_build:dz,rew_immig:0,rew_unlock:false,rew_demolish:0,rp:260.0},
         ];
         let mut results:Vec<(i32,i32,i32,String)>=Vec::new(); // (gap, greedy_stars, opt_total, desc)
         for _ in 0..nsamp {
@@ -713,7 +760,7 @@ fn main() {
                 let dl=rng_range(&mut seed,7,18) as u32;
                 let mut rb=dz; let mut rimm=0; let mut rtag="";
                 if rewards_on { match xs(&mut seed)%5 { 0=>{rb[1]=1;rtag="+T1";} 1=>{rb[2]=1;rtag="+T2";} 2=>{rb[3]=1;rtag="+T3";} 3=>{rimm=1;rtag="+im";} _=>{} } }
-                sc2.push(Directive{good:g,rate,dur:2,deadline:dl,req:vec![],must:false,rew_build:rb,rew_immig:rimm,rew_unlock:false,rp:50.0});
+                sc2.push(Directive{good:g,rate,dur:2,deadline:dl,req:vec![],must:false,rew_build:rb,rew_immig:rimm,rew_unlock:false,rew_demolish:0,rp:50.0});
                 desc.push_str(&format!("{}{}@{}{} ", GOODNAME[g], rate as i32, dl, rtag));
             }
             let (gs,_gdt)=eng.greedy_run(&e,&sc2);
@@ -741,15 +788,18 @@ fn main() {
         println!("greedy: {}", if gstar<0 {"DEFEAT".to_string()} else {format!("{}/{} stars @T{}", gstar, ot, gt)});
         println!("search: {}", if sstar<0 {"DEFEAT".to_string()} else {format!("{}/{} stars @T{}", sstar, ot, st)});
         println!("gap:    {} stars", if gstar>=0 && sstar>=0 {sstar-gstar} else {0});
-        for (i,plan) in sol_chain.iter().enumerate() { let a:Vec<&str>=plan.iter().map(|&t|ABBR[t]).collect();
-            println!("  search T{}: {}", i+1, if a.is_empty(){"-".to_string()}else{a.join(" ")}); }
+        for (i,step) in sol_chain.iter().enumerate() { println!("  search T{}: {}", i+1, step_str(step)); }
         return;
     }
     println!("BEST {}/{} stars @T{}  (beam={}, horizon={})", sstar, ot, st, beam, horizon);
-    for (i,plan) in sol_chain.iter().enumerate() {
-        let abbr: Vec<&str> = plan.iter().map(|&t| ABBR[t]).collect();
-        println!("  T{}: {}", i+1, if abbr.is_empty(){"-".to_string()}else{abbr.join(" ")});
-    }
+    for (i,step) in sol_chain.iter().enumerate() { println!("  T{}: {}", i+1, step_str(step)); }
+}
+// format one turn's step: demolished tile (if any) then placed buildings
+fn step_str(s:&Step) -> String {
+    let mut parts:Vec<String>=Vec::new();
+    if let Some(tile)=s.0 { parts.push(format!("-@{}", tile)); }
+    for &t in &s.1 { parts.push(ABBR[t].to_string()); }
+    if parts.is_empty() { "-".to_string() } else { parts.join(" ") }
 }
 
 // ---- greedy heuristic (faithful port of balance.js) -----------------------
