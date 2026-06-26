@@ -207,14 +207,19 @@ function processEndTurn(S){
     if(S.turn>=dd.deadline&&get(S.progress,dd.id)<dd.dur){S.failed[dd.id]="fail";if(dd.must)msgs.push("✗ "+dd.id+" "+dd.name+" FAILED");}}
   var lost=false;for(i=0;i<S.sc.directives.length;i++){if(S.sc.directives[i].must&&S.failed[S.sc.directives[i].id])lost=true;}
   var allMust=true;for(i=0;i<S.sc.directives.length;i++){var x=S.sc.directives[i];if(x.must&&S.done[x.id]!=="done")allMust=false;}
+  /* the run is OVER only when every directive is resolved (done, or failed past its deadline) — NOT
+     the instant the required ones are met. That lets optionals still be completed afterwards, up to
+     their own deadlines: finishing required no longer forfeits the optionals you could still earn. */
+  var allDone=true;for(i=0;i<S.sc.directives.length;i++){var y=S.sc.directives[i];if(!S.done[y.id]&&!S.failed[y.id])allDone=false;}
   /* population: immigration fills housing if life support held; otherwise paused (pop holds) */
   S.lifeShort=!R.lifeMet; S.grew=0;
+  var verdict=(S.prestige>=S.sc.majorThreshold?"MAJOR VICTORY":"MINOR VICTORY")+" — prestige "+Math.round(S.prestige);
   if(lost){S.over=true;S.result="DEFEAT — "+(msgs.filter(function(m){return m.indexOf("FAILED")>=0;})[0]||"required directive failed");}
-  else if(allMust){S.over=true;S.result=(S.prestige>=S.sc.majorThreshold?"MAJOR VICTORY":"MINOR VICTORY")+" — prestige "+Math.round(S.prestige);}
+  else if(allDone){S.over=true;S.result=verdict;}  /* not lost + all resolved => all required done */
   else { S.turn++; S.placed={}; S.sel=null; S.selTile=-1;
     if(R.lifeMet){var room=R.cap-S.pop;if(room>0){S.grew=Math.min(S.immig,room);S.pop+=S.grew;}}
     else msgs.push("⚠ life support short — immigration paused");
-    if(S.turn>S.sc.turns){S.over=true;S.result="DEFEAT — ran out of turns";} }
+    if(S.turn>S.sc.turns){S.over=true;S.result=allMust?verdict:"DEFEAT — ran out of turns";} }
   S.lastMsgs=msgs;
   return {msgs:msgs,over:S.over,result:S.result};
 }
