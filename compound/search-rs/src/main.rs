@@ -562,17 +562,12 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
     let expand_node = |pi:usize, node:&Node| -> (Vec<(f64,State,i32,Vec<usize>,Option<usize>)>, Option<(usize,Vec<usize>,Option<usize>)>) {
         let mut children=Vec::new(); let mut term:Option<(usize,Vec<usize>,Option<usize>)>=None;
         if node.s.over { return (children,term); }
-        // demolish options: None, plus the SINGLE best redundant producer (the one freeing the most
-        // workforce). Offering all of them just dilutes the beam; the one that matters frees most workers.
+        // demolish options: None, plus each redundant producer (restored — quality over the small
+        // beam-dilution; coarse dedup below keeps the beam from filling with near-duplicates).
         let mut demo_opts: Vec<Option<usize>> = vec![None];
         if node.s.demolish_max - node.s.demolished > 0 {
             let (bsur,_,_)=eng.solve(&node.s);
-            let mut best:Option<usize>=None; let mut bestw=-1.0;
-            for tile in demolish_candidates(eng,&node.s,sc,&bsur) {
-                let bi=node.s.occ[tile] as usize; let w=eng.bt[node.s.bld[bi].ty as usize].inp[WORKERS];
-                if w>bestw { bestw=w; best=Some(tile); }
-            }
-            if let Some(tile)=best { demo_opts.push(Some(tile)); }
+            for tile in demolish_candidates(eng,&node.s,sc,&bsur) { demo_opts.push(Some(tile)); }
         }
         // build a combined plan list across demolish options, pre-scored, capped to plancap
         let mut combined: Vec<(f64, Option<usize>, Vec<usize>)> = Vec::new();
@@ -653,13 +648,16 @@ fn beam_search(eng:&Eng, sc:&[Directive], econ:&Econ, beam:usize, horizon:u32, p
         }
         if best_found && best_count==opt_total { break; }   // got all stars; can't do better
         children.sort_by(|x,y| y.0.partial_cmp(&x.0).unwrap());
-        let mut seen=std::collections::HashSet::new();
+        let mut seen=std::collections::HashSet::<u64>::new();
         let mut kept: Vec<Node> = Vec::new();
         for (_,st,par,plan,demo) in children.into_iter() {
             if kept.len()>=beam {break;}
-            let mut sig: Vec<u32> = st.bld[..st.nb].iter().map(|b| (b.ty as u32)*100 + b.tile as u32).collect();
-            sig.sort();
-            if !seen.insert(sig) {continue;}
+            // exact dedup by building layout (FNV hash of sorted ty*100+tile) — cheap, no Vec alloc
+            let mut ids=[0u32;BCAP]; for i in 0..st.nb { ids[i]=(st.bld[i].ty as u32)*100+st.bld[i].tile as u32; }
+            ids[..st.nb].sort_unstable();
+            let mut h:u64=1469598103934665603;
+            for i in 0..st.nb { h^=ids[i] as u64; h=h.wrapping_mul(1099511628211); }
+            if !seen.insert(h) {continue;}
             kept.push(Node{s:st,parent:par,plan,demo});
         }
         if kept.is_empty() { break; }
@@ -719,10 +717,10 @@ fn main() {
     }
 
     // ---- search / gap / sweep ----  metric: number of directives passed (1/0 each)
-    // defaults tuned for ~1s/run (bounded-optimal). Raise BEAM for a stronger but slower search.
-    let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(160);
+    // defaults tuned for ~1s/run: low beam + high plancap finds the true optimum (plancap is the lever).
+    let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(64);
     let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(TURNS);
-    let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(100);
+    let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
 
     // metric: STARS = optionals completed; required are mandatory (a required failure = DEFEAT = -1).
     let opt_tot = |sc2:&[Directive]| (0..sc2.len()).filter(|&d| !sc2[d].must).count();
@@ -764,7 +762,7 @@ fn main() {
         // env: GENN samples (60), GENK optionals (3), SEED, BEAM (250 for speed).
         let nsamp:usize = env::var("GENN").ok().and_then(|v|v.parse().ok()).unwrap_or(60);
         let kopt:usize  = env::var("GENK").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
-        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(160);
+        let gbeam:usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(64);
         let rewards_on = env::var("REWARDS").map(|v| v=="1").unwrap_or(false); // sample build/immig rewards on optionals
         let mut seed:u64 = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x9e3779b97f4a7c15);
         let e = default_econ();
