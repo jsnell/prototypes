@@ -864,7 +864,7 @@ impl Eng {
         false
     }
     fn build_step(&self, s:&mut State, sc:&[Directive]) -> bool {
-        let (sur,_life,_)=self.solve(s);
+        let (sur,life,ratio)=self.solve(s);
         // 0. survival: life-support good in deficit, most negative first
         let mut neg:Vec<usize>=[FOOD,WATER,POWER].iter().cloned().filter(|&g| sur[g] < -1e-6).collect();
         neg.sort_by(|&a,&b| sur[a].partial_cmp(&sur[b]).unwrap());
@@ -881,6 +881,13 @@ impl Eng {
         let mut req_up:Vec<usize>=(0..sc.len()).filter(|&d| sc[d].must && !s.done[d] && !s.failed[d] && !self.deliverable(s,sc,d)).collect();
         req_up.sort_by(|&a,&b| self.start_by(s,sc,a).cmp(&self.start_by(s,sc,b)));
         for d in req_up { let c=self.choose_for_good(s,sc[d].good,&sur,0); if self.g_place_ahead(s,sc,c){return true;} }
+        // 3.5 reclaim workforce: if worker-limited and a demolish allowance remains, dismantle a
+        //     REDUNDANT producer (its output stays above life + every live directive rate without it —
+        //     i.e. "won't need it again"). Frees workforce for buildings we do need.
+        let _ = life;
+        if s.demolished < s.demolish_max && ratio[WORKERS] < 0.999 {
+            if let Some(&tile)=demolish_candidates(self,s,sc,&sur).first() { self.demolish_at(s,tile); return true; }
+        }
         // 4. optionals (open or upcoming) below rate, no-compromise verify
         let mut opt:Vec<usize>=(0..sc.len()).filter(|&d| !sc[d].must && !s.done[d] && !s.failed[d] && sur[sc[d].good]<sc[d].rate-0.05).collect();
         opt.sort_by(|&a,&b| self.start_by(s,sc,a).cmp(&self.start_by(s,sc,b)));
