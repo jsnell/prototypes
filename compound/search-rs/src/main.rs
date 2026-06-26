@@ -1,14 +1,22 @@
-// COMPOUND — high-perf search AI (Rust port of engine.js + beam search).
-// Goal: complete all 7 directives (800 pts) in the fewest turns, beating the
-// greedy heuristic. The engine here is a faithful port of compound/engine.js
-// (deterministic map, same flow solver, same processEndTurn incl. the
-// run-to-deadlines end rule, same tightened scenario). Placement mirrors
-// balance.js bestTileByMult. Any build order found is emitted as types-per-turn
-// and re-verified in the JS engine (ground truth).
+// COMPOUND — CANONICAL mechanics + greedy AI + search (Rust).
+// This is the design/balancing lab and the source of truth for the rules: the
+// deterministic map, the flow solver, processEndTurn (run-to-deadlines end rule),
+// the scenario/economy, the greedy heuristic (port of balance.js), and a parallel
+// beam search. Iterate on ANYTHING here (recipes, map, life-support, economy) and
+// both AIs reflect it immediately. compound/engine.js (the playable game) is synced
+// from this when a design settles; it was validated identical (greedy + a found
+// order reproduce the same directive turns / 800).
 //
-// modes:  cargo run --release search        -> beam search, print best + order
-//         cargo run --release validate       -> replay the JS search's T12 order
-//         cargo run --release nobuild        -> start colony only, per-turn trace (engine validation)
+// Build order is the only "better": 800 is the prestige ceiling, so the search
+// minimizes the turn all 7 directives complete. On the current economy: greedy 800
+// @T14, search 800 @T12 (gap 2). Edit the rules below, then `cargo run --release gap`.
+//
+// modes:  search   -> beam search, print best all-7 turn + build order
+//         greedy   -> run the greedy heuristic, print its all-7 turn + per-directive
+//         gap      -> run both, print greedy turn, optimal turn, and the gap
+//         validate -> replay a fixed historical order (engine self-check)
+//         nobuild  -> start colony only, per-turn trace
+//   env:  BEAM (default 2000) PLANCAP (400) HORIZON (14); PARAMS=<file> loads economy from a file
 
 use std::env;
 
@@ -457,8 +465,11 @@ struct Node { s:State, parent:i32, plan:Vec<usize> }
 fn main() {
     let mode = env::args().nth(1).unwrap_or("search".to_string());
     let eng = Eng::new();
-    let params_path = env::var("PARAMS").unwrap_or_else(|_| "params.txt".to_string());
-    let (econ, sc) = load_params(&params_path).unwrap_or_else(|| (default_econ(), scenario()));
+    // Rust is canonical: use the built-in scenario by default. PARAMS=<file> opts into the JS bridge.
+    let (econ, sc) = match env::var("PARAMS") {
+        Ok(p) => load_params(&p).unwrap_or_else(|| (default_econ(), scenario())),
+        Err(_) => (default_econ(), scenario()),
+    };
 
     if mode=="nobuild" {
         let mut s=eng.new_state(&econ);
@@ -505,6 +516,15 @@ fn main() {
     let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(2000);
     let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(14);
     let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
+
+    if mode=="greedy" {
+        let (s, dt) = eng.greedy_run(&econ,&sc);
+        let all7=(0..sc.len()).all(|d| s.done[d]);
+        let turn = if all7 { (0..sc.len()).map(|d| dt[d]).max().unwrap() } else {-1};
+        println!("GREEDY: {} prestige={}", if all7 {format!("800 @T{}",turn)} else {"NOT 800".to_string()}, s.prestige as i32);
+        for d in 0..sc.len() { println!("  D{} {}", d+1, if s.done[d]{format!("@T{}",dt[d])} else {"x".to_string()}); }
+        return;
+    }
 
     let nthreads: usize = std::thread::available_parallelism().map(|n|n.get()).unwrap_or(4);
     let root = eng.new_state(&econ);
@@ -597,6 +617,19 @@ fn main() {
         levels.push(kept);
     }
 
+    let s_turn = solution.map(|t| t as i32).unwrap_or(-1);
+    if mode=="gap" {
+        let (gs, gdt) = eng.greedy_run(&econ,&sc);
+        let g_all7=(0..sc.len()).all(|d| gs.done[d]);
+        let g_turn = if g_all7 { (0..sc.len()).map(|d| gdt[d]).max().unwrap() } else {-1};
+        println!("==== GAP (Rust canonical) ====");
+        println!("greedy: {}", if g_all7 {format!("800 @T{}",g_turn)} else {format!("NOT 800 (prestige {})",gs.prestige as i32)});
+        println!("search: {}", if s_turn>0 {format!("800 @T{}",s_turn)} else {"no 800 found".to_string()});
+        println!("gap:    {}", if g_all7 && s_turn>0 {format!("{} turns", g_turn - s_turn)} else {"n/a".to_string()});
+        for (i,plan) in sol_chain.iter().enumerate() { let a:Vec<&str>=plan.iter().map(|&t|ABBR[t]).collect();
+            println!("  search T{}: {}", i+1, if a.is_empty(){"-".to_string()}else{a.join(" ")}); }
+        return;
+    }
     match solution {
         None => println!("no all-7 within horizon={} (beam={})", horizon, beam),
         Some(turn) => {
@@ -606,6 +639,107 @@ fn main() {
                 println!("  T{}: {}", i+1, if abbr.is_empty(){"-".to_string()}else{abbr.join(" ")});
             }
         }
+    }
+}
+
+// ---- greedy heuristic (faithful port of balance.js) -----------------------
+impl Eng {
+    fn slots_left(&self, s:&State, tier:usize) -> i32 { s.build_rate[tier] as i32 - s.placed[tier] as i32 }
+    fn has_slot(&self, s:&State, t:usize) -> bool { self.slots_left(s, self.bt[t].bt) > 0 }
+    // marginal extra `good` from placing (t,id): tentatively place on a clone, re-solve, measure delta
+    fn gain(&self, s:&State, t:usize, id:usize, good:usize, base:f64) -> f64 {
+        let mut c=s.clone(); self.place(&mut c,t,id); let (sur,_,_)=self.solve(&c); sur[good]-base
+    }
+    fn cool_tiles_for(&self, s:&State, good:usize) -> Vec<usize> {
+        let mut set=std::collections::BTreeSet::new();
+        for b in &s.bld { let t=b.ty as usize; let bt=&self.bt[t];
+            if bt.heat<=0.0 || bt.out[good]<=0.0 {continue;}
+            if self.heat_ratio(s,t,b.tile as usize)>=0.999 {continue;}
+            for &nb in &self.map.tiles[b.tile as usize].nb { if self.eligible(s,RADIATOR,nb){set.insert(nb);} } }
+        set.into_iter().collect()
+    }
+    fn reclaim_tiles(&self, s:&State) -> Vec<usize> {
+        let mut set=std::collections::BTreeSet::new();
+        for b in &s.bld { if !self.bt[b.ty as usize].is_hab {continue;}
+            for &nb in &self.map.tiles[b.tile as usize].nb { if self.eligible(s,RECLAIMER,nb){set.insert(nb);} } }
+        set.into_iter().collect()
+    }
+    // chooseForGood: every action that could raise `good` (producers, cooling, reclaimer, upstream
+    // input drill), evaluated by marginal output; pick max (tie -> least-contested tier); cold-start drill.
+    fn choose_for_good(&self, s:&State, good:usize, sur:&[f64;NG], depth:i32) -> Option<(usize,usize)> {
+        if depth>10 {return None;}
+        let base=sur[good];
+        let mut cands:Vec<(usize,usize)>=Vec::new();
+        for &t in producers_for(good) { if self.unlocked(s,t) && self.has_slot(s,t) { let id=self.best_tile_mult(s,t); if id>=0 {cands.push((t,id as usize));} } }
+        if self.has_slot(s,RADIATOR) { for id in self.cool_tiles_for(s,good){cands.push((RADIATOR,id));} }
+        if good==WATER && self.has_slot(s,RECLAIMER) { for id in self.reclaim_tiles(s){cands.push((RECLAIMER,id));} }
+        for &t in producers_for(good) { if !self.unlocked(s,t){continue;} let bt=&self.bt[t];
+            for g in 0..NG { if bt.inp[g]>0.0 && g!=WORKERS && sur[g]<bt.inp[g]-1e-6 { if let Some(sub)=self.choose_for_good(s,g,sur,depth+1){cands.push(sub);} } } }
+        let mut best:Option<(usize,usize)>=None; let mut bestd=1e-6;
+        for &(t,id) in &cands { let d=self.gain(s,t,id,good,base);
+            let better = d>bestd+1e-9 || (best.is_some() && d>bestd-1e-9 && self.slots_left(s,self.bt[t].bt) > self.slots_left(s,self.bt[best.unwrap().0].bt));
+            if better { bestd=d; best=Some((t,id)); } }
+        if best.is_some(){return best;}
+        for &t in producers_for(good) { if !self.unlocked(s,t){continue;} let bt=&self.bt[t];
+            for g in 0..NG { if bt.inp[g]>0.0 && g!=WORKERS && sur[g]<bt.inp[g]-1e-6 { if let Some(sub)=self.choose_for_good(s,g,sur,depth+1){return Some(sub);} } } }
+        None
+    }
+    fn start_by(&self, s:&State, sc:&[Directive], d:usize) -> i32 { sc[d].deadline as i32 - (sc[d].dur as i32 - s.progress[d] as i32) + 1 }
+    fn g_place(&self, s:&mut State, c:Option<(usize,usize)>) -> bool {
+        if let Some((t,id))=c { if self.has_slot(s,t) { self.place(s,t,id); return true; } } false
+    }
+    // speculative place: keep only if it doesn't drop a directive already being satisfied
+    fn g_place_ahead(&self, s:&mut State, sc:&[Directive], c:Option<(usize,usize)>) -> bool {
+        if let Some((t,id))=c { if !self.has_slot(s,t){return false;}
+            let (sur,life,_)=self.solve(s);
+            let mut before=Vec::new();
+            for d in 0..sc.len(){ if self.deliverable(s,sc,d) && sur[sc[d].good]>=sc[d].rate-0.05 {before.push(d);} }
+            let snap=s.clone(); self.place(s,t,id);
+            let (sur2,life2,_)=self.solve(s);
+            let mut bad = life && !life2;
+            if !bad { for &d in &before { if sur2[sc[d].good] < sc[d].rate-0.05 {bad=true;break;} } }
+            if bad { *s=snap; return false; }
+            return true;
+        }
+        false
+    }
+    fn build_step(&self, s:&mut State, sc:&[Directive]) -> bool {
+        let (sur,_life,_)=self.solve(s);
+        // 0. survival: life-support good in deficit, most negative first
+        let mut neg:Vec<usize>=[FOOD,WATER,POWER].iter().cloned().filter(|&g| sur[g] < -1e-6).collect();
+        neg.sort_by(|&a,&b| sur[a].partial_cmp(&sur[b]).unwrap());
+        for g in neg { let c=self.choose_for_good(s,g,&sur,0); if self.g_place(s,c){return true;} }
+        // 1. required, open & below rate, by urgency
+        let mut req_open:Vec<usize>=(0..sc.len()).filter(|&d| sc[d].must && self.deliverable(s,sc,d) && sur[sc[d].good]<sc[d].rate-0.05).collect();
+        req_open.sort_by(|&a,&b| self.start_by(s,sc,a).cmp(&self.start_by(s,sc,b)));
+        for d in req_open { let c=self.choose_for_good(s,sc[d].good,&sur,0); if self.g_place(s,c){return true;} }
+        // 2. housing ahead of next immigration batch
+        if self.capacity(s)-s.pop < s.immig as f64 && self.has_slot(s,HABITAT) {
+            let id=self.best_tile_mult(s,HABITAT); if id>=0 && self.g_place_ahead(s,sc,Some((HABITAT,id as usize))){return true;}
+        }
+        // 3. pre-build upcoming required
+        let mut req_up:Vec<usize>=(0..sc.len()).filter(|&d| sc[d].must && !s.done[d] && !s.failed[d] && !self.deliverable(s,sc,d)).collect();
+        req_up.sort_by(|&a,&b| self.start_by(s,sc,a).cmp(&self.start_by(s,sc,b)));
+        for d in req_up { let c=self.choose_for_good(s,sc[d].good,&sur,0); if self.g_place_ahead(s,sc,c){return true;} }
+        // 4. optionals (open or upcoming) below rate, no-compromise verify
+        let mut opt:Vec<usize>=(0..sc.len()).filter(|&d| !sc[d].must && !s.done[d] && !s.failed[d] && sur[sc[d].good]<sc[d].rate-0.05).collect();
+        opt.sort_by(|&a,&b| self.start_by(s,sc,a).cmp(&self.start_by(s,sc,b)));
+        for d in opt { let c=self.choose_for_good(s,sc[d].good,&sur,0); if self.g_place_ahead(s,sc,c){return true;} }
+        // 5. top up power/food/water headroom for next batch
+        let mut low=[FOOD,WATER,POWER]; low.sort_by(|&a,&b| sur[a].partial_cmp(&sur[b]).unwrap());
+        for g in low { if sur[g] < s.immig as f64 * LIFE[g] { let c=self.choose_for_good(s,g,&sur,0); if self.g_place_ahead(s,sc,c){return true;} } }
+        false
+    }
+    fn greedy_run(&self, econ:&Econ, sc:&[Directive]) -> (State, [i32;16]) {
+        let mut s=self.new_state(econ);
+        let mut dt=[-1i32;16];
+        while !s.over {
+            let t=s.turn; let mut guard=0;
+            while guard<200 { if !self.build_step(&mut s,sc){break;} guard+=1; }
+            self.end_turn(&mut s,sc);
+            for d in 0..sc.len(){ if s.done[d] && dt[d]<0 {dt[d]=t as i32;} }
+        }
+        (s,dt)
     }
 }
 
