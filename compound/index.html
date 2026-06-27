@@ -44,6 +44,10 @@
   table.bal td.sp{ color:var(--dim); }                 /* spend columns: dim, blank when zero */
   table.bal tr td.bcell{ font-weight:600; border-left:1px solid var(--line); }
   .pal{ display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:6px; }
+  .tierhdr{ font-size:11px; color:var(--dim); margin:9px 0 5px; text-transform:uppercase; letter-spacing:.5px; }
+  .tierhdr:first-child{ margin-top:0; }
+  .tierhdr span{ text-transform:none; letter-spacing:0; color:var(--ink); margin-left:4px; }
+  .tierhdr span.zero{ color:var(--dim); }
   .pbtn{ background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:6px 7px; text-align:left;
     color:var(--ink); font-size:12px; position:relative; cursor:pointer; }
   .pbtn.dim{ opacity:.5; }
@@ -120,7 +124,7 @@
 
 <div class="panel">
   <div class="ttl">Build — free, but limited per tier each turn</div>
-  <div id="palette" class="pal"></div>
+  <div id="palette"></div>
 </div>
 
 <div class="panel">
@@ -432,15 +436,19 @@ function renderFlows(R){
 
 /* ---------- palette ---------- */
 function renderPalette(){
-  document.getElementById("palette").innerHTML=C.ORDER.map(function(t){
-    var T=TYPES[t],lk=!C.unlocked(S,t),rem=get(S.buildRate,T.bt)-get(S.placed,T.bt),dim=lk||rem<=0||S.over;
-    var fx=fxTags(t);
+  function btn(t){var T=TYPES[t],lk=!C.unlocked(S,t),rem=get(S.buildRate,T.bt)-get(S.placed,T.bt),dim=lk||rem<=0||S.over,fx=fxTags(t);
     return '<div class="pbtn'+(S.sel===t?" sel":"")+(dim?" dim":"")+'" onclick="selectType(\''+t+'\')">'
       +'<span class="nm" style="color:'+CATCOL[T.cat]+'">'+(lk?"🔒 ":"")+NAME[t]+'</span>'
       +'<span class="io">'+insStr(t)+' <span class="out">→ '+outsStr(t)+'</span></span>'
-      +(fx?'<span class="fx">'+fx+'</span>':'')
-      +'<span class="badge">'+(lk?"T"+T.bt:rem+"·T"+T.bt)+'</span></div>';
-  }).join("");
+      +(fx?'<span class="fx">'+fx+'</span>':'')+'</div>';}
+  var html="";
+  [1,2,3].forEach(function(bt){
+    var types=C.ORDER.filter(function(t){return TYPES[t].bt===bt;}); if(!types.length)return;
+    var rate=get(S.buildRate,bt),rem=Math.max(0,rate-get(S.placed,bt));
+    var cnt=rate>0?'<span>'+rem+' of '+rate+' build'+(rate===1?"":"s")+' left</span>':'<span class="zero">locked</span>';
+    html+='<div class="tierhdr">Tier '+bt+cnt+'</div><div class="pal">'+types.map(btn).join("")+'</div>';
+  });
+  document.getElementById("palette").innerHTML=html;
 }
 
 /* ---------- directives ---------- */
