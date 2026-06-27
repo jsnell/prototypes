@@ -924,6 +924,43 @@ fn main() {
         return;
     }
 
+    if mode=="tighten" {
+        // Deterministically remove wasted slack from the current scenario: pull every deadline as
+        // early as it will go and push every rate as high as it will go, jointly, while keeping
+        // greedy at 0 optionals (still clears requireds) and the optimum at full-clear.
+        let e=econ.clone();
+        let opt=(0..sc.len()).filter(|&d| !sc[d].must).count() as i32;
+        let feasible=|sc2:&[Directive]| -> bool {
+            let (gs,_)=eng.greedy_run(&e,sc2);
+            if !(0..sc2.len()).all(|d| !sc2[d].must || gs.done[d]) { return false; }       // greedy clears requireds
+            if (0..sc2.len()).any(|d| !sc2[d].must && gs.done[d]) { return false; }         // greedy stays 0/opt (gap = opt)
+            let (ss,_,_)=beam_search(&eng,sc2,&e,beam,TURNS,plancap);
+            ss==opt                                                                          // optimum full-clears
+        };
+        let mut cur=sc.clone();
+        if !feasible(&cur) { println!("base scenario not feasible at beam {}", beam); return; }
+        for _pass in 0..4 {
+            let mut changed=false;
+            for d in 0..cur.len() {                          // pull deadline earlier
+                while cur[d].deadline>2 { let mut t=cur.clone(); t[d].deadline-=1;
+                    if feasible(&t) { cur=t; changed=true; } else { break; } } }
+            for d in 0..cur.len() {                          // push rate higher (cap 30)
+                while cur[d].rate<30.0 { let mut t=cur.clone(); t[d].rate+=1.0;
+                    if feasible(&t) { cur=t; changed=true; } else { break; } } }
+            if !changed { break; }
+        }
+        println!("tightened scenario:");
+        for d in 0..cur.len() { let b=&sc[d]; let c=&cur[d];
+            println!("  D{} {} {}@{}{} dur{} dl{}{}", d+1, if c.must{"REQ"}else{"opt"}, GOODNAME[c.good],
+                c.rate as i32, if c.rate!=b.rate {format!("(was {})",b.rate as i32)} else {String::new()},
+                c.dur, c.deadline, if c.deadline!=b.deadline {format!("(was {})",b.deadline)} else {String::new()}); }
+        let (gs,_)=eng.greedy_run(&e,&cur);
+        let gstar=(0..cur.len()).filter(|&d| !cur[d].must && gs.done[d]).count();
+        let (ss,st,_)=beam_search(&eng,&cur,&e,beam,TURNS,plancap);
+        println!("verify (beam {}): greedy {}/{}, search {}/{} @T{}", beam, gstar, opt, ss, opt, st);
+        return;
+    }
+
     if mode=="slack" {
         // For each directive, how early can its deadline go (others held fixed) while keeping
         // greedy's required-pass AND the optimum's full-clear? Reveals which deadlines are loose.
