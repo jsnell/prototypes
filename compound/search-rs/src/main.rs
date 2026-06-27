@@ -840,6 +840,89 @@ fn main() {
         return;
     }
 
+    if mode=="hill" {
+        // Hill-climb a scenario toward maximum GAP (search stars - greedy stars), subject to two
+        // hard constraints: greedy must clear every required, and the optimum must still be able to
+        // full-clear every optional. Plain integer gap is a flat plateau, so the continuous gradient
+        // is -Σ(greedy's peak surplus margin on the optionals): it drives difficulty up smoothly
+        // (greedy gets squeezed) until just before the optimum would break, then the constraint bites.
+        // env: ITERS (per restart, 120), RESTARTS (3), HBEAM (inner-loop beam, 32), SEED.
+        let iters:usize    = env::var("ITERS").ok().and_then(|v|v.parse().ok()).unwrap_or(120);
+        let restarts:usize = env::var("RESTARTS").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
+        let hbeam:usize    = env::var("HBEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(32);
+        let mut seed:u64   = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x1234_5678_9abc_def1);
+        // Objective is gap = search_stars - greedy_stars, which already rewards a high optimum, so a
+        // full-clearable peak emerges on its own. Requiring full-clear at EVERY step (FULLCLEAR=1)
+        // walls off the valleys the climb must cross and traps it at a low gap, so default is off.
+        let full_clear = env::var("FULLCLEAR").map(|v| v=="1").unwrap_or(false);
+        let e = econ.clone();
+        let cand_goods:[(usize,i64,i64);8] = [(WATER,6,14),(FOOD,8,18),(METAL,6,12),(GLASS,4,10),(ALLOY,4,8),(ELEC,4,8),(COMP,3,6),(RESEARCH,3,6)];
+        let fitness = |sc:&[Directive]| -> Option<(i32,f64)> {
+            let nd=sc.len();
+            // greedy run, recording each directive's peak (surplus - rate) over the game
+            let mut s=eng.new_state(&e); let mut peak=vec![f64::NEG_INFINITY; nd]; let mut guard=0;
+            while !s.over && guard<60 {
+                let mut g2=0; while g2<200 { if !eng.build_step(&mut s, sc){break;} g2+=1; }
+                eng.end_turn(&mut s, sc);
+                for d in 0..nd { let m=s.eval_sur[sc[d].good]-sc[d].rate; if m>peak[d]{peak[d]=m;} }
+                guard+=1;
+            }
+            if !(0..nd).all(|d| !sc[d].must || s.done[d]) { return None; }   // greedy must clear requireds
+            let greedy_stars=(0..nd).filter(|&d| !sc[d].must && s.done[d]).count() as i32;
+            let opt=(0..nd).filter(|&d| !sc[d].must).count() as i32;
+            let tension:f64=(0..nd).filter(|&d| !sc[d].must).map(|d| -peak[d].clamp(-6.0,6.0)).sum();
+            if greedy_stars>=opt { return Some((0, tension)); }   // greedy got all -> gap 0, no search needed
+            let (sstar,_,_)=beam_search(&eng, sc, &e, hbeam, TURNS, plancap);
+            if full_clear { if sstar < opt { return None; } }       // optimum must full-clear
+            else if sstar < 0 { return None; }                      // optimum must at least clear requireds
+            Some((sstar-greedy_stars, tension))
+        };
+        let mutate = |sc:&[Directive], seed:&mut u64| -> Vec<Directive> {
+            let mut v=sc.to_vec(); let nd=v.len();
+            let d=(xs(seed)%nd as u64) as usize; let is_opt=!v[d].must;
+            match xs(seed)%(if is_opt {4} else {3}) {
+                0 => { let dir=if xs(seed)%2==0 {1.0} else {-1.0}; v[d].rate=(v[d].rate+dir).max(1.0); }
+                1 => { let dir=if xs(seed)%2==0 {1i64} else {-1}; v[d].deadline=(v[d].deadline as i64+dir).clamp(2,18) as u32; }
+                2 => { let dir=if xs(seed)%2==0 {1i64} else {-1}; v[d].dur=(v[d].dur as i64+dir).clamp(1,4) as u32; }
+                _ => { let (g,lo,hi)=cand_goods[(xs(seed)%8) as usize]; v[d].good=g; v[d].rate=rng_range(seed,lo,hi) as f64; }
+            }
+            v
+        };
+        let print_sc = |sc:&[Directive]| { for d in 0..sc.len() {
+            println!("  D{} {} {}@{} dur{} dl{}{}", d+1, if sc[d].must{"REQ"}else{"opt"},
+                GOODNAME[sc[d].good], sc[d].rate as i32, sc[d].dur, sc[d].deadline,
+                if sc[d].req.is_empty(){String::new()}else{format!(" req{:?}",sc[d].req.iter().map(|r|r+1).collect::<Vec<_>>())}); } };
+        let mut global:Option<(i32,f64,Vec<Directive>)>=None;
+        for r in 0..restarts {
+            let mut cur=scenario();
+            for _ in 0..(r*4) { cur=mutate(&cur,&mut seed); }   // diversify later restarts
+            let mut curfit=fitness(&cur);
+            for _ in 0..iters {
+                let cand=mutate(&cur,&mut seed);
+                if let Some(cf)=fitness(&cand) {
+                    let better=match curfit { None=>true, Some((g,t))=> cf.0>g || (cf.0==g && cf.1>=t) };
+                    if better { cur=cand; curfit=Some(cf); }
+                }
+            }
+            match curfit {
+                Some((g,t))=>{ println!("restart {}: gap {} tension {:.2}", r, g, t);
+                    if global.as_ref().map_or(true,|(bg,bt,_)| g>*bg||(g==*bg&&t>*bt)) { global=Some((g,t,cur.clone())); } }
+                None=>println!("restart {}: (no valid scenario)", r),
+            }
+        }
+        match global {
+            Some((g,t,sc2))=>{ println!("\nBEST: gap {} tension {:.2}", g, t); print_sc(&sc2);
+                let (gs,_)=eng.greedy_run(&e,&sc2);
+                let greq=(0..sc2.len()).all(|d| !sc2[d].must || gs.done[d]);
+                let gstar=(0..sc2.len()).filter(|&d| !sc2[d].must && gs.done[d]).count();
+                let (ss,st,_)=beam_search(&eng,&sc2,&e,beam,TURNS,plancap);
+                println!("verify (beam {}): greedy {}/{} stars{}, search {} stars @T{}",
+                    beam, gstar, opt_tot(&sc2), if greq{""}else{" (REQ FAIL!)"}, ss, st); }
+            None=>println!("no valid scenario found across {} restarts", restarts),
+        }
+        return;
+    }
+
     let (sstar, st, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
     let ot=opt_tot(&sc);
     if mode=="gap" {
