@@ -118,10 +118,16 @@ function lifeDemand(S){var pop=S.pop||0,L={food:pop*LIFE.food,power:pop*LIFE.pow
   return L;}
 function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=eff[i]?1:0;
   var pop=S.pop||0, L=lifeDemand(S);                         /* life-support demand (tier-0), minus reclaimer recycling */
+  /* Workers: uniform throttle on NOMINAL (full-capacity) demand, frozen — every consumer is cut by the
+     same ratio, and labor is never reclaimed if a building turns out material-throttled. Makes worker
+     scarcity legible (one colony-wide ratio) and penalizes overbuilding (idle buildings still reserve labor). */
+  var wd=0;for(i=0;i<n;i++){if(eff[i])wd+=get(eff[i].in,"workers");}
+  var wr=(wd<=1e-12)?1:Math.min(1,pop/wd);
   var prod,cons,ratio={};
   for(var it=0;it<200;it++){prod={workers:pop};cons={};        /* colonists supply labor */
     for(i=0;i<n;i++){if(!eff[i])continue;var f=frac[i];if(f<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f;}
     ratio={};for(var gi=0;gi<GOODS.length;gi++){g=GOODS[gi];var avail=Math.max(0,get(prod,g)-get(L,g)),d=get(cons,g);ratio[g]=(d<=1e-12)?1:Math.min(1,avail/d);}
+    ratio.workers=wr;
     var md=0;for(i=0;i<n;i++){if(!eff[i])continue;var r=1;for(g in eff[i].in)r=Math.min(r,ratio[g]==null?0:ratio[g]);var nf=0.5*frac[i]+0.5*r;md=Math.max(md,Math.abs(nf-frac[i]));frac[i]=nf;}
     if(md<1e-7)break;}
   prod={workers:pop};cons={};for(i=0;i<n;i++){if(!eff[i])continue;var f2=frac[i];if(f2<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f2;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f2;}
@@ -143,10 +149,10 @@ function scenario(){return {
     {id:"D3",name:"Electronics",good:"electronics",rate:4,dur:2,deadline:10,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{3:1}},rp:120},
     {id:"D4",name:"Assembly",good:"components",rate:3,dur:3,deadline:15,req:["D3"],must:true,reward:{},rp:160},
     {id:"D5",name:"Datacore",good:"research",rate:3,dur:2,deadline:17,req:["D4"],must:true,reward:{},rp:260},
-    {id:"D6",name:"Breakthrough",good:"research",rate:3,dur:2,deadline:10,req:[],must:false,reward:{},rp:50},
-    {id:"D7",name:"Glassworks",good:"glass",rate:5,dur:2,deadline:8,req:[],must:false,reward:{},rp:50},
-    {id:"D8",name:"Foodbelt",good:"food",rate:12,dur:2,deadline:10,req:[],must:false,reward:{},rp:50},
-    {id:"D9",name:"Circuits",good:"electronics",rate:7,dur:2,deadline:17,req:[],must:false,reward:{},rp:50}
+    {id:"D6",name:"Breakthrough",good:"research",rate:4,dur:2,deadline:10,req:[],must:false,reward:{},rp:50},
+    {id:"D7",name:"Hydroworks",good:"water",rate:8,dur:2,deadline:12,req:[],must:false,reward:{},rp:50},
+    {id:"D8",name:"Circuits",good:"electronics",rate:4,dur:2,deadline:14,req:[],must:false,reward:{},rp:50},
+    {id:"D9",name:"Alloyworks",good:"alloy",rate:4,dur:2,deadline:15,req:[],must:false,reward:{},rp:50}
   ]};}
 
 /* ---- placement helpers ---- */

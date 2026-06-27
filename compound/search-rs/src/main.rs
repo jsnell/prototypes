@@ -22,9 +22,6 @@
 //   env:  BEAM (2000; gen 250) PLANCAP (400) HORIZON (=turns); GENN GENK SEED; PARAMS=<file>
 
 use std::env;
-use std::sync::atomic::{AtomicU64,Ordering};
-static SOLVE_CALLS:AtomicU64=AtomicU64::new(0);
-static SOLVE_ITERS:AtomicU64=AtomicU64::new(0);
 
 const W: i32 = 9;
 const H: i32 = 7;
@@ -170,10 +167,10 @@ fn scenario() -> Vec<Directive> {
         mk(ELEC,4.0,2,10,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
         mk(COMP,3.0,3,15,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
         mk(RESEARCH,3.0,2,17,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
-        mk(RESEARCH,3.0,2,10,vec![],false,[0,0,0,0],0,false,50.0), // D6 opt research@10
-        mk(GLASS,5.0,2,8,vec![],false,[0,0,0,0],0,false,50.0),     // D7 opt glass@8
-        mk(FOOD,12.0,2,10,vec![],false,[0,0,0,0],0,false,50.0),    // D8 opt food@10
-        mk(ELEC,7.0,2,17,vec![],false,[0,0,0,0],0,false,50.0),     // D9 opt elec@17
+        mk(RESEARCH,4.0,2,10,vec![],false,[0,0,0,0],0,false,50.0), // D6 opt research@10
+        mk(WATER,8.0,2,12,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt water@12
+        mk(ELEC,4.0,2,14,vec![],false,[0,0,0,0],0,false,50.0),     // D8 opt elec@14
+        mk(ALLOY,4.0,2,15,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy@15
     ];
     v[1].rew_demolish = 1;  // Metalworks grants +1 demolish/turn (matches engine.js)
     v
@@ -258,12 +255,11 @@ struct State {
     eval_sur: [f64;NG], eval_life: bool,  // stashed from end_turn's solve, reused by score (avoids a 2nd solve)
 }
 
-struct Eng { bt: Vec<Btype>, map: Map, elig: Vec<Vec<usize>>, uwork: bool }
+struct Eng { bt: Vec<Btype>, map: Map, elig: Vec<Vec<usize>> }
 
 impl Eng {
     fn new() -> Eng {
         let bt=btypes(); let map=build_map();
-        let uwork = std::env::var("UWORK").ok().map_or(false, |v| v=="1");
         // precompute, per type, the tiles that are statically eligible (deposit/wreck constraints,
         // ignoring occupancy) — so best_tile_mult scans 3-5 tiles for extractors instead of all 63.
         let mut elig=vec![Vec::new(); NB];
@@ -274,7 +270,7 @@ impl Eng {
                     else if b.deposit>=0 { tile.dep==b.deposit }
                     else { true };
                 if ok { elig[t].push(id); } } }
-        Eng{ bt, map, elig, uwork }
+        Eng{ bt, map, elig }
     }
 
     fn unlocked(&self, s:&State, t:usize) -> bool { !self.bt[t].locked || s.unlocked[t] }
@@ -354,31 +350,28 @@ impl Eng {
         for i in 0..n { let t=s.bld[i].ty as usize; let id=s.bld[i].tile as usize;
             let h=self.heat_ratio(s,t,id); ty[i]=t; hr[i]=h; m[i]=self.adj_mult(s,t,id)*h; }
         let l=self.life_demand(s);
-        // UWORK: allocate workers by uniform single-pass throttle on *nominal* (full-capacity)
-        // demand, frozen — never reclaimed if a building turns out to be material-throttled.
-        let wr = if self.uwork {
-            let mut wd=0.0; for i in 0..n { wd += self.bt[ty[i]].inp[WORKERS]*hr[i]; }
-            if wd<=1e-12 {1.0} else {(s.pop/wd).min(1.0)}
-        } else {1.0};
+        // Workers are allocated by a uniform throttle on *nominal* (full-capacity) demand, frozen:
+        // every consumer is cut by the same ratio, and labor is never reclaimed if a building turns
+        // out to be material-throttled. This makes worker scarcity legible (one ratio for the whole
+        // colony) and penalizes overbuilding (idle buildings still reserve their share of labor).
+        let wr = { let mut wd=0.0; for i in 0..n { wd += self.bt[ty[i]].inp[WORKERS]*hr[i]; }
+            if wd<=1e-12 {1.0} else {(s.pop/wd).min(1.0)} };
         let mut frac=vec![1.0f64; n];
         let mut ratio=[1.0f64;NG];
-        let mut iters=0u64;
         for _ in 0..200 {
-            iters+=1;
             let mut prod=[0.0f64;NG]; prod[WORKERS]=s.pop; let mut cons=[0.0f64;NG];
             for i in 0..n { let f=frac[i]; if f<=0.0 {continue;} let b=&self.bt[ty[i]];
                 for &g in &b.out_idx { prod[g]+=b.out[g]*m[i]*f; }
                 for &g in &b.in_idx  { cons[g]+=b.inp[g]*hr[i]*f; } }
             for g in 0..NG { let avail=(prod[g]-l[g]).max(0.0); let d=cons[g];
                 ratio[g]= if d<=1e-12 {1.0} else {(avail/d).min(1.0)}; }
-            if self.uwork { ratio[WORKERS]=wr; }
+            ratio[WORKERS]=wr;
             let mut md=0.0;
             for i in 0..n { let b=&self.bt[ty[i]]; let mut r=1.0f64;
                 for &g in &b.in_idx { if ratio[g]<r {r=ratio[g];} }
                 let nf=0.5*frac[i]+0.5*r; let d=(nf-frac[i]).abs(); if d>md {md=d;} frac[i]=nf; }
             if md<1e-7 { break; }
         }
-        SOLVE_CALLS.fetch_add(1,Ordering::Relaxed); SOLVE_ITERS.fetch_add(iters,Ordering::Relaxed);
         let mut prod=[0.0f64;NG]; prod[WORKERS]=s.pop; let mut cons=[0.0f64;NG];
         for i in 0..n { let f=frac[i]; if f<=0.0 {continue;} let b=&self.bt[ty[i]];
             for &g in &b.out_idx { prod[g]+=b.out[g]*m[i]*f; }
@@ -752,6 +745,28 @@ fn main() {
         (if req_all {opt} else {-1}, turn)
     };
 
+    if mode=="export" {
+        // emit both AI solutions as explicit per-turn (demolish tiles, [(typeName,tile)]) moves +
+        // expected stars, for faithful replay through the JS engine (Rust<->JS parity check).
+        let names:[&str;NB]=["solar","reactor","radiator","habitat","oreMine","iceExtractor","silicaQuarry","rareMine","scrapper","smelter","waterPlant","reclaimer","greenhouse","algaeVat","glassKiln","foundry","electronicsFab","assembler","lab"];
+        // search: re-simulate the winning chain (deterministic) to recover the actual tiles
+        let (sstar,_,chain)=beam_search(&eng,&sc,&econ,beam,horizon,plancap);
+        let mut s=eng.new_state(&econ); let mut ssn=vec![snapshot(&s)];
+        for step in &chain { if s.over {break;}
+            if let Some(t)=step.0 { eng.demolish_at(&mut s,t); }
+            for &ty in &step.1 { let id=eng.best_tile_mult(&s,ty);
+                if id>=0 && s.placed[eng.bt[ty].bt] < s.build_rate[eng.bt[ty].bt] { eng.place(&mut s,ty,id as usize); } }
+            ssn.push(snapshot(&s)); eng.end_turn(&mut s,&sc); }
+        // greedy: same turn loop as greedy_run, snapshotting per turn
+        let mut g=eng.new_state(&econ); let mut gsn=vec![snapshot(&g)];
+        while !g.over { let mut guard=0; while guard<200 { if !eng.build_step(&mut g,&sc){break;} guard+=1; }
+            gsn.push(snapshot(&g)); eng.end_turn(&mut g,&sc); }
+        let greq=(0..sc.len()).all(|d| !sc[d].must || g.done[d]);
+        let gstar=if greq {(0..sc.len()).filter(|&d| !sc[d].must && g.done[d]).count() as i32} else {-1};
+        println!("{{\"seed\":{},\"search\":{{\"stars\":{},\"turns\":{}}},\"greedy\":{{\"stars\":{},\"turns\":{}}}}}",
+            seed_json(&ssn[0],&names), sstar, moves_json(&ssn,&names), gstar, moves_json(&gsn,&names));
+        return;
+    }
     if mode=="greedy" {
         let (gs, dt) = eng.greedy_run(&econ,&sc);
         let req_all=(0..sc.len()).all(|d| !sc[d].must || gs.done[d]);
@@ -838,10 +853,6 @@ fn main() {
     }
     println!("BEST {}/{} stars @T{}  (beam={}, horizon={})", sstar, ot, st, beam, horizon);
     for (i,step) in sol_chain.iter().enumerate() { println!("  T{}: {}", i+1, step_str(step)); }
-    if env::var("ITERS").is_ok() {
-        let c=SOLVE_CALLS.load(Ordering::Relaxed); let it=SOLVE_ITERS.load(Ordering::Relaxed);
-        println!("SOLVE: {} calls, {} iters, {:.2} iters/call", c, it, it as f64/c.max(1) as f64);
-    }
 }
 // format one turn's step: demolished tile (if any) then placed buildings
 fn step_str(s:&Step) -> String {
@@ -849,6 +860,31 @@ fn step_str(s:&Step) -> String {
     if let Some(tile)=s.0 { parts.push(format!("-@{}", tile)); }
     for &t in &s.1 { parts.push(ABBR[t].to_string()); }
     if parts.is_empty() { "-".to_string() } else { parts.join(" ") }
+}
+
+// snapshot a state's buildings as a sorted (tile,type) list, for diffing turn-to-turn
+fn snapshot(s:&State) -> Vec<(usize,usize)> {
+    let mut v:Vec<(usize,usize)>=(0..s.nb).map(|i| (s.bld[i].tile as usize, s.bld[i].ty as usize)).collect();
+    v.sort(); v
+}
+fn seed_json(snap:&[(usize,usize)], names:&[&str]) -> String {
+    let p:Vec<String>=snap.iter().map(|&(tile,ty)| format!("[\"{}\",{}]", names[ty], tile)).collect();
+    format!("[{}]", p.join(","))
+}
+// turn-by-turn diff of building snapshots -> JSON moves [{demolish:[tiles], place:[[name,tile]]}]
+fn moves_json(snaps:&[Vec<(usize,usize)>], names:&[&str]) -> String {
+    let mut turns:Vec<String>=Vec::new();
+    for w in 1..snaps.len() {
+        let prev:std::collections::HashMap<usize,usize>=snaps[w-1].iter().cloned().collect();
+        let cur:std::collections::HashMap<usize,usize>=snaps[w].iter().cloned().collect();
+        let mut demo:Vec<usize>=prev.iter().filter(|(t,ty)| cur.get(t)!=Some(ty)).map(|(&t,_)| t).collect();
+        demo.sort();
+        let plc:Vec<String>=cur.iter().filter(|(t,ty)| prev.get(t)!=Some(ty))
+            .map(|(&t,&ty)| format!("[\"{}\",{}]", names[ty], t)).collect();
+        let ds:Vec<String>=demo.iter().map(|t| t.to_string()).collect();
+        turns.push(format!("{{\"demolish\":[{}],\"place\":[{}]}}", ds.join(","), plc.join(",")));
+    }
+    format!("[{}]", turns.join(","))
 }
 
 // ---- greedy heuristic (faithful port of balance.js) -----------------------
