@@ -22,6 +22,9 @@
 //   env:  BEAM (2000; gen 250) PLANCAP (400) HORIZON (=turns); GENN GENK SEED; PARAMS=<file>
 
 use std::env;
+use std::sync::atomic::{AtomicU64,Ordering};
+static SOLVE_CALLS:AtomicU64=AtomicU64::new(0);
+static SOLVE_ITERS:AtomicU64=AtomicU64::new(0);
 
 const W: i32 = 9;
 const H: i32 = 7;
@@ -255,11 +258,12 @@ struct State {
     eval_sur: [f64;NG], eval_life: bool,  // stashed from end_turn's solve, reused by score (avoids a 2nd solve)
 }
 
-struct Eng { bt: Vec<Btype>, map: Map, elig: Vec<Vec<usize>> }
+struct Eng { bt: Vec<Btype>, map: Map, elig: Vec<Vec<usize>>, uwork: bool }
 
 impl Eng {
     fn new() -> Eng {
         let bt=btypes(); let map=build_map();
+        let uwork = std::env::var("UWORK").ok().map_or(false, |v| v=="1");
         // precompute, per type, the tiles that are statically eligible (deposit/wreck constraints,
         // ignoring occupancy) — so best_tile_mult scans 3-5 tiles for extractors instead of all 63.
         let mut elig=vec![Vec::new(); NB];
@@ -270,7 +274,7 @@ impl Eng {
                     else if b.deposit>=0 { tile.dep==b.deposit }
                     else { true };
                 if ok { elig[t].push(id); } } }
-        Eng{ bt, map, elig }
+        Eng{ bt, map, elig, uwork }
     }
 
     fn unlocked(&self, s:&State, t:usize) -> bool { !self.bt[t].locked || s.unlocked[t] }
@@ -350,21 +354,31 @@ impl Eng {
         for i in 0..n { let t=s.bld[i].ty as usize; let id=s.bld[i].tile as usize;
             let h=self.heat_ratio(s,t,id); ty[i]=t; hr[i]=h; m[i]=self.adj_mult(s,t,id)*h; }
         let l=self.life_demand(s);
+        // UWORK: allocate workers by uniform single-pass throttle on *nominal* (full-capacity)
+        // demand, frozen — never reclaimed if a building turns out to be material-throttled.
+        let wr = if self.uwork {
+            let mut wd=0.0; for i in 0..n { wd += self.bt[ty[i]].inp[WORKERS]*hr[i]; }
+            if wd<=1e-12 {1.0} else {(s.pop/wd).min(1.0)}
+        } else {1.0};
         let mut frac=vec![1.0f64; n];
         let mut ratio=[1.0f64;NG];
+        let mut iters=0u64;
         for _ in 0..200 {
+            iters+=1;
             let mut prod=[0.0f64;NG]; prod[WORKERS]=s.pop; let mut cons=[0.0f64;NG];
             for i in 0..n { let f=frac[i]; if f<=0.0 {continue;} let b=&self.bt[ty[i]];
                 for &g in &b.out_idx { prod[g]+=b.out[g]*m[i]*f; }
                 for &g in &b.in_idx  { cons[g]+=b.inp[g]*hr[i]*f; } }
             for g in 0..NG { let avail=(prod[g]-l[g]).max(0.0); let d=cons[g];
                 ratio[g]= if d<=1e-12 {1.0} else {(avail/d).min(1.0)}; }
+            if self.uwork { ratio[WORKERS]=wr; }
             let mut md=0.0;
             for i in 0..n { let b=&self.bt[ty[i]]; let mut r=1.0f64;
                 for &g in &b.in_idx { if ratio[g]<r {r=ratio[g];} }
                 let nf=0.5*frac[i]+0.5*r; let d=(nf-frac[i]).abs(); if d>md {md=d;} frac[i]=nf; }
             if md<1e-7 { break; }
         }
+        SOLVE_CALLS.fetch_add(1,Ordering::Relaxed); SOLVE_ITERS.fetch_add(iters,Ordering::Relaxed);
         let mut prod=[0.0f64;NG]; prod[WORKERS]=s.pop; let mut cons=[0.0f64;NG];
         for i in 0..n { let f=frac[i]; if f<=0.0 {continue;} let b=&self.bt[ty[i]];
             for &g in &b.out_idx { prod[g]+=b.out[g]*m[i]*f; }
@@ -824,6 +838,10 @@ fn main() {
     }
     println!("BEST {}/{} stars @T{}  (beam={}, horizon={})", sstar, ot, st, beam, horizon);
     for (i,step) in sol_chain.iter().enumerate() { println!("  T{}: {}", i+1, step_str(step)); }
+    if env::var("ITERS").is_ok() {
+        let c=SOLVE_CALLS.load(Ordering::Relaxed); let it=SOLVE_ITERS.load(Ordering::Relaxed);
+        println!("SOLVE: {} calls, {} iters, {:.2} iters/call", c, it, it as f64/c.max(1) as f64);
+    }
 }
 // format one turn's step: demolished tile (if any) then placed buildings
 fn step_str(s:&Step) -> String {
