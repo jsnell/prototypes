@@ -850,14 +850,13 @@ fn main() {
         // env: ITERS (per restart, 120), RESTARTS (3), HBEAM (inner-loop beam, 32), SEED.
         let iters:usize    = env::var("ITERS").ok().and_then(|v|v.parse().ok()).unwrap_or(120);
         let restarts:usize = env::var("RESTARTS").ok().and_then(|v|v.parse().ok()).unwrap_or(3);
-        let hbeam:usize    = env::var("HBEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(32);
+        let hbeam:usize    = env::var("HBEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(beam); // match production beam (fitness==verify)
         let mut seed:u64   = env::var("SEED").ok().and_then(|v|v.parse().ok()).unwrap_or(0x1234_5678_9abc_def1);
         // Objective is gap = search_stars - greedy_stars, which already rewards a high optimum, so a
         // full-clearable peak emerges on its own. Requiring full-clear at EVERY step (FULLCLEAR=1)
         // walls off the valleys the climb must cross and traps it at a low gap, so default is off.
         let full_clear = env::var("FULLCLEAR").map(|v| v=="1").unwrap_or(false);
         let e = econ.clone();
-        let cand_goods:[(usize,i64,i64);8] = [(WATER,6,14),(FOOD,8,18),(METAL,6,12),(GLASS,4,10),(ALLOY,4,8),(ELEC,4,8),(COMP,3,6),(RESEARCH,3,6)];
         let fitness = |sc:&[Directive]| -> Option<(i32,f64)> {
             let nd=sc.len();
             // greedy run, recording each directive's peak (surplus - rate) over the game
@@ -878,14 +877,14 @@ fn main() {
             else if sstar < 0 { return None; }                      // optimum must at least clear requireds
             Some((sstar-greedy_stars, tension))
         };
+        // goods are a fixed property of the seed scenario; only rate/deadline/duration mutate
         let mutate = |sc:&[Directive], seed:&mut u64| -> Vec<Directive> {
             let mut v=sc.to_vec(); let nd=v.len();
-            let d=(xs(seed)%nd as u64) as usize; let is_opt=!v[d].must;
-            match xs(seed)%(if is_opt {4} else {3}) {
+            let d=(xs(seed)%nd as u64) as usize;
+            match xs(seed)%3 {
                 0 => { let dir=if xs(seed)%2==0 {1.0} else {-1.0}; v[d].rate=(v[d].rate+dir).max(1.0); }
                 1 => { let dir=if xs(seed)%2==0 {1i64} else {-1}; v[d].deadline=(v[d].deadline as i64+dir).clamp(2,18) as u32; }
-                2 => { let dir=if xs(seed)%2==0 {1i64} else {-1}; v[d].dur=(v[d].dur as i64+dir).clamp(1,4) as u32; }
-                _ => { let (g,lo,hi)=cand_goods[(xs(seed)%8) as usize]; v[d].good=g; v[d].rate=rng_range(seed,lo,hi) as f64; }
+                _ => { let dir=if xs(seed)%2==0 {1i64} else {-1}; v[d].dur=(v[d].dur as i64+dir).clamp(1,4) as u32; }
             }
             v
         };
