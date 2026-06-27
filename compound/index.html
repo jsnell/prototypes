@@ -162,6 +162,7 @@
 <div id="bigbtn">
   <button id="undo" onclick="doUndo()">↶ Undo</button>
   <button id="copy" onclick="copyGame()" title="Copy full game log to clipboard">⧉ Copy</button>
+  <button id="paste" onclick="pasteGame()" title="Paste a game log to replay the state">⎘ Paste</button>
   <button id="endturn" onclick="endTurn()">End Turn ▶</button>
 </div>
 
@@ -235,6 +236,42 @@ function copyText(text){
 function fallbackCopy(text){var ta=document.createElement("textarea");ta.value=text;ta.style.position="fixed";ta.style.opacity="0";document.body.appendChild(ta);ta.focus();ta.select();
   try{document.execCommand("copy");flashCopy();}catch(e){console.log(text);alert("Copy not available — game log printed to console.");}document.body.removeChild(ta);}
 function flashCopy(){var b=document.getElementById("copy");if(!b)return;var o=b.textContent;b.textContent="✓ copied";setTimeout(function(){b.textContent=o;},1200);}
+
+/* ---------- paste a game log to replay the state ---------- */
+function pasteGame(){var t=prompt("Paste a COMPOUND game log to replay it (header lines are ignored):");if(t)replayLog(t);}
+function replayLog(text){
+  /* parse only the "T<n>: <ops> | end" lines; ops are +type@q,r / -type@q,r in play order */
+  var turns=[],lines=text.split(/\r?\n/);
+  for(var i=0;i<lines.length;i++){
+    var m=lines[i].match(/^\s*T(\d+):\s*(.*?)\s*$/); if(!m)continue;
+    var rest=m[2], ended=/\|\s*end$/.test(rest); rest=rest.replace(/\|\s*end$/,"").trim();
+    var ops=[];
+    if(rest&&rest!=="(no builds)"){var toks=rest.split(/\s+/);
+      for(var j=0;j<toks.length;j++){var o=toks[j].match(/^([+\-])([A-Za-z]+)@(\d+),(\d+)$/);
+        if(!o){alert("Can't parse token: "+toks[j]);return;}
+        if(!TYPES[o[2]]){alert("Unknown building: "+o[2]);return;}
+        ops.push({sign:o[1],type:o[2],q:+o[3],r:+o[4]});}}
+    turns.push({ops:ops,ended:ended});
+  }
+  if(!turns.length){alert("No 'T<n>:' lines found in the pasted log.");return;}
+  newGame();
+  for(var t=0;t<turns.length;t++){ if(S.over)break; var tn=turns[t];
+    for(var a=0;a<tn.ops.length;a++){var op=tn.ops[a],id=S.map.idOf[op.q+","+op.r];
+      if(id==null){alert("T"+(t+1)+": invalid tile "+op.q+","+op.r);newGame();render();return;}
+      if(op.sign==="+"){
+        if(S.occ[id]!=null&&S.occ[id]>=0){alert("T"+(t+1)+": tile "+op.q+","+op.r+" already occupied");newGame();render();return;}
+        moveLog.push({t:S.turn,a:"+",b:op.type,q:op.q,r:op.r}); C.placeAt(S,op.type,id);
+      } else {
+        var bi=S.occ[id]; if(bi==null||bi<0){alert("T"+(t+1)+": nothing to demolish at "+op.q+","+op.r);newGame();render();return;}
+        var b=S.buildings[bi];
+        if(b.turn===S.turn)S.placed[TYPES[b.type].bt]=Math.max(0,get(S.placed,TYPES[b.type].bt)-1); else S.demolished++;
+        moveLog.push({t:S.turn,a:"-",b:b.type,q:op.q,r:op.r}); S.occ[id]=-1;S.buildings[bi]=null;S.tilesUsed--;
+      }
+    }
+    if(tn.ended&&!S.over){moveLog.push({t:S.turn,a:"end"});C.processEndTurn(S);}
+  }
+  S.sel=null;S.selTile=-1;render();
+}
 
 /* ---------- directive preview (mirror of engine allocation, for live display) ---------- */
 function previewDirectives(R){
