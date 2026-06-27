@@ -37,6 +37,12 @@
   .chip{ background:var(--panel2); border:1px solid var(--line); border-radius:6px; padding:3px 7px; font-size:12px; }
   .chip b{ font-variant-numeric:tabular-nums; }
   .pos{ color:var(--good); } .neg{ color:var(--bad); } .zero{ color:var(--dim); }
+  table.bal{ border-collapse:collapse; width:100%; font-size:12px; font-variant-numeric:tabular-nums; }
+  table.bal th, table.bal td{ padding:2px 6px; text-align:right; }
+  table.bal th{ color:var(--dim); font-weight:500; font-size:10px; text-transform:uppercase; letter-spacing:.5px; border-bottom:1px solid var(--line); }
+  table.bal td:first-child, table.bal th:first-child{ text-align:left; color:var(--ink); }
+  table.bal td.sp{ color:var(--dim); }                 /* spend columns: dim, blank when zero */
+  table.bal tr td.bcell{ font-weight:600; border-left:1px solid var(--line); }
   .pal{ display:grid; grid-template-columns:repeat(auto-fill,minmax(104px,1fr)); gap:6px; }
   .pbtn{ background:var(--panel2); border:1px solid var(--line); border-radius:8px; padding:6px 7px; text-align:left;
     color:var(--ink); font-size:12px; position:relative; cursor:pointer; }
@@ -107,8 +113,8 @@
 </div>
 
 <div class="panel">
-  <div class="ttl">Flows — surplus per turn (fed to directives, or lost)</div>
-  <div id="flows" class="chips"></div>
+  <div class="ttl">Resource balance — per turn</div>
+  <div id="flows"></div>
   <div id="short" class="small" style="margin-top:6px"></div>
 </div>
 
@@ -193,7 +199,9 @@ function onTile(id){
   if(S.over)return;
   if(S.sel&&C.canPlace(S,S.sel,id)){pushUndo();var t=S.map.tiles[id];moveLog.push({t:S.turn,a:"+",b:S.sel,q:t.q,r:t.r});C.placeAt(S,S.sel,id);
     if(get(S.placed,TYPES[S.sel].bt)>=get(S.buildRate,TYPES[S.sel].bt))S.sel=null;render();return;}
-  S.selTile=(S.selTile===id?-1:id);render();      /* otherwise inspect the tile */
+  if(S.occ[id]!=null&&S.occ[id]>=0){S.sel=null;S.selTile=id;}  /* a building: always open its inspector, dropping any build selection */
+  else S.selTile=(S.selTile===id?-1:id);                       /* empty tile: toggle inspect */
+  render();
 }
 function doDemolish(){
   if(S.selTile<0)return;var bi=S.occ[S.selTile];if(bi==null||bi<0)return;
@@ -336,7 +344,7 @@ function inspector(R){
     si.innerHTML=h;act.style.display="flex";
     var demo=document.getElementById("demo"),ok=C.canDemolish(S,S.selTile),sameTurn=(b.turn===S.turn);
     demo.disabled=!ok; demo.style.opacity=ok?"1":"0.45";
-    demo.textContent = sameTurn ? "Demolish (free this turn)"
+    demo.textContent = sameTurn ? "undo"
       : "Demolish ("+Math.max(0,S.demolishMax-S.demolished)+"/"+S.demolishMax+" left)";
   } else {
     si.innerHTML='<b>Empty tile</b> ('+t.q+','+t.r+')<br><span class="small">'+(tileDesc(t)||"plain ground")+'</span>';
@@ -352,20 +360,28 @@ function tileDesc(t){
 }
 
 /* ---------- flows ---------- */
+/* how much of each good this turn's deliverable directives would consume (same allocation order
+   as processEndTurn: required first, then by deadline). */
+function directiveSpend(R){
+  var avail=Object.assign({},R.surplus),spend={};
+  var act=C.deliverable(S).slice().sort(function(a,b){if(a.must!==b.must)return a.must?-1:1;return a.deadline-b.deadline;});
+  for(var i=0;i<act.length;i++){var d=act[i];if(C.meetsRate(get(avail,d.good),d.rate)){avail[d.good]=get(avail,d.good)-d.rate;spend[d.good]=get(spend,d.good)+d.rate;}}
+  return spend;
+}
 function renderFlows(R){
-  var UND=0.99;
-  var html=C.GOODORDER.filter(function(g){return get(R.prod,g)>0.01||get(R.cons,g)>0.01;}).map(function(g){
-    var ratio=R.ratio[g]==null?1:R.ratio[g], v, cl;
-    if(g==="workers"){
-      /* labor balance = colonists − labor demanded at full capacity. Goes negative exactly when
-         over-subscribed (every building throttled), unlike the throttled-consumption "surplus". */
-      v=Math.round((R.pop-(R.workerDemand||0))*10)/10; cl=v<-0.05?"neg":(v>0.05?"pos":"zero");
-    } else {
-      v=Math.round(get(R.surplus,g)*10)/10; cl=ratio<UND?"neg":(v>0.05?"pos":"zero");
-    }
-    return '<span class="chip">'+gn(g)+' <b class="'+cl+'">'+v+'</b>'+(ratio<UND?' ⚠':'')+'</span>';
+  var UND=0.99, f1=function(x){return Math.round(x*10)/10;}, spend=directiveSpend(R);
+  var sp=function(x){return Math.abs(x)<0.05?'<td class="sp"></td>':'<td class="sp">'+f1(x)+'</td>';};
+  var rows=C.GOODORDER.filter(function(g){return get(R.prod,g)>0.01||get(R.cons,g)>0.01;}).map(function(g){
+    var ratio=R.ratio[g]==null?1:R.ratio[g];
+    /* workers are reserved at NOMINAL (full-capacity) demand under no-reclaim, so the input column
+       and balance use that, not the throttled consumption — matches the labor-limit semantics. */
+    var prod=get(R.prod,g), life=get(R.life,g), inp=(g==="workers")?(R.workerDemand||0):get(R.cons,g), dir=get(spend,g);
+    var bal=prod-life-inp-dir, cl=bal<-0.05?"neg":(bal>0.05?"pos":"zero");
+    return '<tr><td>'+gn(g)+(ratio<UND?' <span class="neg">⚠</span>':'')+'</td><td>'+f1(prod)+'</td>'
+      +sp(life)+sp(inp)+sp(dir)+'<td class="bcell '+cl+'">'+f1(bal)+'</td></tr>';
   }).join("");
-  document.getElementById("flows").innerHTML=html||'<span class="small">no production yet</span>';
+  var head='<tr><th>resource</th><th>prod</th><th>life</th><th>inputs</th><th>directives</th><th>balance</th></tr>';
+  document.getElementById("flows").innerHTML=rows?'<table class="bal">'+head+rows+'</table>':'<span class="small">no production yet</span>';
   /* shortfalls — same threshold as the chips and the throttle count */
   var shorts=C.GOODS.filter(function(g){return get(R.cons,g)>0.01&&(R.ratio[g]==null?1:R.ratio[g])<UND;});
   var throttled=0;for(var i=0;i<R.frac.length;i++)if(R.eff[i]&&R.frac[i]<UND)throttled++;
