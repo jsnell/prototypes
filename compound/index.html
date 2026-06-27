@@ -326,6 +326,11 @@ function inspector(R){
     if(!passive){h+='<br>'+(frac>0.999?'<span class="pos">running at 100%</span>'
         :'<span class="neg">running at '+Math.round(frac*100)+'%</span>'+(lim?' <span class="small neg">— short on '+gn(lim)+'</span>':''));
       if(eo.length)h+=' <span class="small">· output now: '+eo.join(", ")+'</span>';}
+    if(eff.in&&eff.in.workers>0){
+      /* labor: claim on the colony pool = demand × the uniform worker throttle (allocated even if
+         this building is then capped lower by a material shortage — that labor isn't reclaimed). */
+      var wdem=Math.round(eff.in.workers*10)/10, walloc=Math.round(eff.in.workers*(R.workerRatio==null?1:R.workerRatio)*10)/10;
+      h+='<br><span class="small">workers: <b>'+walloc+'</b> / '+wdem+' allocated'+(R.workerRatio<0.999?' (colony labor-limited)':'')+'</span>';}
     var mods=modifierLines(bi);if(mods.length)h+='<br><span class="small">'+mods.join(" · ")+'</span>';
     var ter=tileDesc(t);if(ter)h+='<br><span class="small">tile: '+ter+'</span>';
     si.innerHTML=h;act.style.display="flex";
@@ -350,8 +355,14 @@ function tileDesc(t){
 function renderFlows(R){
   var UND=0.99;
   var html=C.GOODORDER.filter(function(g){return get(R.prod,g)>0.01||get(R.cons,g)>0.01;}).map(function(g){
-    var v=Math.round(get(R.surplus,g)*10)/10, ratio=R.ratio[g]==null?1:R.ratio[g];
-    var cl=ratio<UND?"neg":(v>0.05?"pos":"zero");
+    var ratio=R.ratio[g]==null?1:R.ratio[g], v, cl;
+    if(g==="workers"){
+      /* labor balance = colonists − labor demanded at full capacity. Goes negative exactly when
+         over-subscribed (every building throttled), unlike the throttled-consumption "surplus". */
+      v=Math.round((R.pop-(R.workerDemand||0))*10)/10; cl=v<-0.05?"neg":(v>0.05?"pos":"zero");
+    } else {
+      v=Math.round(get(R.surplus,g)*10)/10; cl=ratio<UND?"neg":(v>0.05?"pos":"zero");
+    }
     return '<span class="chip">'+gn(g)+' <b class="'+cl+'">'+v+'</b>'+(ratio<UND?' ⚠':'')+'</span>';
   }).join("");
   document.getElementById("flows").innerHTML=html||'<span class="small">no production yet</span>';

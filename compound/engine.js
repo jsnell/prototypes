@@ -133,7 +133,7 @@ function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;
   prod={workers:pop};cons={};for(i=0;i<n;i++){if(!eff[i])continue;var f2=frac[i];if(f2<=0)continue;for(g in eff[i].out)prod[g]=get(prod,g)+eff[i].out[g]*f2;for(g in eff[i].in)cons[g]=get(cons,g)+eff[i].in[g]*f2;}
   var sur={};for(var gj=0;gj<GOODS.length;gj++){g=GOODS[gj];sur[g]=get(prod,g)-get(cons,g)-get(L,g);}
   var lifeMet=get(prod,"food")>=get(L,"food")-1e-6&&get(prod,"water")>=get(L,"water")-1e-6&&get(prod,"power")>=get(L,"power")-1e-6;
-  return {prod:prod,cons:cons,surplus:sur,frac:frac,ratio:ratio,eff:eff,life:L,lifeMet:lifeMet,pop:pop,cap:capacityOf(S)};}
+  return {prod:prod,cons:cons,surplus:sur,frac:frac,ratio:ratio,eff:eff,life:L,lifeMet:lifeMet,pop:pop,cap:capacityOf(S),workerDemand:wd,workerRatio:wr};}
 function limitingInput(S,R,i){var eff=R.eff[i];if(!eff||R.frac[i]>0.999)return null;var best=null,bv=2;
   for(var g in eff.in){var r=R.ratio[g]==null?0:R.ratio[g];if(r<bv){bv=r;best=g;}}return bv<0.999?best:null;}
 
