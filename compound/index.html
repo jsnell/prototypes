@@ -170,7 +170,7 @@
   <button id="endturn" onclick="endTurn()">End Turn ▶</button>
 </div>
 
-<script src="engine.js?v=gap4t"></script>
+<script src="engine.js?v=wfix"></script>
 <script>
 "use strict";
 var C=window.COMPOUND, TYPES=C.TYPES, NAME=C.NAME, ABBR=C.ABBR, CATCOL=C.CATCOL, get=C.get;
@@ -375,10 +375,10 @@ function inspector(R){
     if(!passive){h+='<br>'+(frac>0.999?'<span class="pos">running at 100%</span>'
         :'<span class="neg">running at '+Math.round(frac*100)+'%</span>'+(lim?' <span class="small neg">— short on '+gn(lim)+'</span>':''));
       if(eo.length)h+=' <span class="small">· output now: '+eo.join(", ")+'</span>';}
-    if(eff.in&&eff.in.workers>0){
-      /* labor: claim on the colony pool = demand × the uniform worker throttle (allocated even if
-         this building is then capped lower by a material shortage — that labor isn't reclaimed). */
-      var wdem=Math.round(eff.in.workers*10)/10, walloc=Math.round(eff.in.workers*(R.workerRatio==null?1:R.workerRatio)*10)/10;
+    if(T.in&&T.in.workers>0){
+      /* labor: claim on the colony pool = RAW demand × the uniform worker throttle (reserved in full
+         regardless of heat/material throttling — that labor isn't reclaimed). */
+      var wdem=T.in.workers, walloc=Math.round(wdem*(R.workerRatio==null?1:R.workerRatio)*10)/10;
       h+='<br><span class="small">workers: <b>'+walloc+'</b> / '+wdem+' allocated'+(R.workerRatio<0.999?' (colony labor-limited)':'')+'</span>';}
     var mods=modifierLines(bi);if(mods.length)h+='<br><span class="small">'+mods.join(" · ")+'</span>';
     var ter=tileDesc(t);if(ter)h+='<br><span class="small">tile: '+ter+'</span>';

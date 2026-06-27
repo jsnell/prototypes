@@ -161,17 +161,17 @@ fn scenario() -> Vec<Directive> {
     // rewards: D3 unlocks assembler+lab and grants +1 T3; D1->+1T1, D2->+1T2 and +1 demolish/turn.
     let mk = |good,rate,dur,deadline,req:Vec<usize>,must,rb:[i32;4],immig,unlock,rp|
         Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rew_demolish:0,rp};
-    // hill-climbed for max gap then tightened: greedy 0/4, optimum 4/4 @T16, no wasted deadline/rate slack.
+    // loose feasible baseline (re-derive gap-4 via `hill` + `tighten` under the corrected worker model)
     let mut v = vec![
-        mk(FOOD,5.0,2,2,vec![],true,[0,1,0,0],0,false,40.0),       // D1
-        mk(METAL,5.0,2,4,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
-        mk(ELEC,4.0,2,7,vec![1],true,[0,0,0,1],0,true,120.0),      // D3 (unlock + T3)
-        mk(COMP,3.0,2,12,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
-        mk(RESEARCH,7.0,4,16,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
-        mk(RESEARCH,4.0,1,9,vec![],false,[0,0,0,0],0,false,50.0),  // D6 opt research@9
-        mk(WATER,12.0,1,13,vec![],false,[0,0,0,0],0,false,50.0),   // D7 opt water@13
-        mk(ELEC,6.0,1,14,vec![],false,[0,0,0,0],0,false,50.0),     // D8 opt elec@14
-        mk(ALLOY,4.0,3,15,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy@15
+        mk(FOOD,4.0,2,6,vec![],true,[0,1,0,0],0,false,40.0),       // D1
+        mk(METAL,4.0,2,9,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
+        mk(ELEC,3.0,2,12,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
+        mk(COMP,3.0,2,16,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
+        mk(RESEARCH,3.0,2,18,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
+        mk(RESEARCH,3.0,2,12,vec![],false,[0,0,0,0],0,false,50.0), // D6 opt research
+        mk(WATER,6.0,2,14,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt water
+        mk(ELEC,4.0,2,16,vec![],false,[0,0,0,0],0,false,50.0),     // D8 opt elec
+        mk(ALLOY,3.0,2,16,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy
     ];
     v[1].rew_demolish = 1;  // Metalworks grants +1 demolish/turn (matches engine.js)
     v
@@ -351,11 +351,11 @@ impl Eng {
         for i in 0..n { let t=s.bld[i].ty as usize; let id=s.bld[i].tile as usize;
             let h=self.heat_ratio(s,t,id); ty[i]=t; hr[i]=h; m[i]=self.adj_mult(s,t,id)*h; }
         let l=self.life_demand(s);
-        // Workers are allocated by a uniform throttle on *nominal* (full-capacity) demand, frozen:
-        // every consumer is cut by the same ratio, and labor is never reclaimed if a building turns
-        // out to be material-throttled. This makes worker scarcity legible (one ratio for the whole
-        // colony) and penalizes overbuilding (idle buildings still reserve their share of labor).
-        let wr = { let mut wd=0.0; for i in 0..n { wd += self.bt[ty[i]].inp[WORKERS]*hr[i]; }
+        // Workers are allocated by a uniform throttle on *nominal* demand, frozen: every consumer is
+        // cut by the same ratio, and labor is never reclaimed when a building turns out throttled.
+        // Demand is the RAW worker requirement (not scaled by heat) — a building reserves its full
+        // labor regardless of any throttle, so heat-capped buildings still tie up their workers.
+        let wr = { let mut wd=0.0; for i in 0..n { wd += self.bt[ty[i]].inp[WORKERS]; }
             if wd<=1e-12 {1.0} else {(s.pop/wd).min(1.0)} };
         let mut frac=vec![1.0f64; n];
         let mut ratio=[1.0f64;NG];

@@ -118,10 +118,11 @@ function lifeDemand(S){var pop=S.pop||0,L={food:pop*LIFE.food,power:pop*LIFE.pow
   return L;}
 function solveFlows(S){var eff=effRates(S),n=eff.length,frac=[],i,g;for(i=0;i<n;i++)frac[i]=eff[i]?1:0;
   var pop=S.pop||0, L=lifeDemand(S);                         /* life-support demand (tier-0), minus reclaimer recycling */
-  /* Workers: uniform throttle on NOMINAL (full-capacity) demand, frozen — every consumer is cut by the
-     same ratio, and labor is never reclaimed if a building turns out material-throttled. Makes worker
-     scarcity legible (one colony-wide ratio) and penalizes overbuilding (idle buildings still reserve labor). */
-  var wd=0;for(i=0;i<n;i++){if(eff[i])wd+=get(eff[i].in,"workers");}
+  /* Workers: uniform throttle on NOMINAL demand, frozen — every consumer is cut by the same ratio, and
+     labor is never reclaimed when a building turns out throttled. Demand is the RAW worker requirement
+     (not heat-scaled): a building reserves its full labor regardless of any throttle, so heat-capped
+     buildings still tie up their workers. Legible (one colony ratio) and penalizes overbuilding. */
+  var wd=0;for(i=0;i<n;i++){var wb=S.buildings[i];if(wb&&TYPES[wb.type].in)wd+=get(TYPES[wb.type].in,"workers");}
   var wr=(wd<=1e-12)?1:Math.min(1,pop/wd);
   var prod,cons,ratio={};
   for(var it=0;it<200;it++){prod={workers:pop};cons={};        /* colonists supply labor */
@@ -144,15 +145,15 @@ function scenario(){return {
   /* score = optionals completed (stars). Required deadlines tightened to just-past the greedy's
      actual completion turns (was loose 24-turn slack); Metalworks grants +1 demolish/turn. */
   directives:[
-    {id:"D1",name:"Provision",good:"food",rate:5,dur:2,deadline:2,req:[],must:true,reward:{buildRate:{1:1}},rp:40},
-    {id:"D2",name:"Metalworks",good:"metal",rate:5,dur:2,deadline:4,req:["D1"],must:true,reward:{buildRate:{2:1},demolish:1},rp:70},
-    {id:"D3",name:"Electronics",good:"electronics",rate:4,dur:2,deadline:7,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{3:1}},rp:120},
-    {id:"D4",name:"Assembly",good:"components",rate:3,dur:2,deadline:12,req:["D3"],must:true,reward:{},rp:160},
-    {id:"D5",name:"Datacore",good:"research",rate:7,dur:4,deadline:16,req:["D4"],must:true,reward:{},rp:260},
-    {id:"D6",name:"Breakthrough",good:"research",rate:4,dur:1,deadline:9,req:[],must:false,reward:{},rp:50},
-    {id:"D7",name:"Hydroworks",good:"water",rate:12,dur:1,deadline:13,req:[],must:false,reward:{},rp:50},
-    {id:"D8",name:"Circuits",good:"electronics",rate:6,dur:1,deadline:14,req:[],must:false,reward:{},rp:50},
-    {id:"D9",name:"Alloyworks",good:"alloy",rate:4,dur:3,deadline:15,req:[],must:false,reward:{},rp:50}
+    {id:"D1",name:"Provision",good:"food",rate:4,dur:2,deadline:6,req:[],must:true,reward:{buildRate:{1:1}},rp:40},
+    {id:"D2",name:"Metalworks",good:"metal",rate:4,dur:2,deadline:9,req:["D1"],must:true,reward:{buildRate:{2:1},demolish:1},rp:70},
+    {id:"D3",name:"Electronics",good:"electronics",rate:3,dur:2,deadline:12,req:["D2"],must:true,reward:{unlock:["assembler","lab"],buildRate:{3:1}},rp:120},
+    {id:"D4",name:"Assembly",good:"components",rate:3,dur:2,deadline:16,req:["D3"],must:true,reward:{},rp:160},
+    {id:"D5",name:"Datacore",good:"research",rate:3,dur:2,deadline:18,req:["D4"],must:true,reward:{},rp:260},
+    {id:"D6",name:"Breakthrough",good:"research",rate:3,dur:2,deadline:12,req:[],must:false,reward:{},rp:50},
+    {id:"D7",name:"Hydroworks",good:"water",rate:6,dur:2,deadline:14,req:[],must:false,reward:{},rp:50},
+    {id:"D8",name:"Circuits",good:"electronics",rate:4,dur:2,deadline:16,req:[],must:false,reward:{},rp:50},
+    {id:"D9",name:"Alloyworks",good:"alloy",rate:3,dur:2,deadline:16,req:[],must:false,reward:{},rp:50}
   ]};}
 
 /* ---- placement helpers ---- */
