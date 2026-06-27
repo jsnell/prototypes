@@ -924,6 +924,28 @@ fn main() {
         return;
     }
 
+    if mode=="slack" {
+        // For each directive, how early can its deadline go (others held fixed) while keeping
+        // greedy's required-pass AND the optimum's full-clear? Reveals which deadlines are loose.
+        let e=econ.clone(); let base=sc.clone();
+        let opt=(0..base.len()).filter(|&d| !base[d].must).count() as i32;
+        let feasible=|sc2:&[Directive]| -> bool {
+            let (gs,_)=eng.greedy_run(&e,sc2);
+            if !(0..sc2.len()).all(|d| !sc2[d].must || gs.done[d]) { return false; }
+            let (ss,_,_)=beam_search(&eng,sc2,&e,beam,TURNS,plancap);
+            ss==opt
+        };
+        println!("deadline slack (earliest dl keeping greedy req-pass + search {}/{}; beam {}):", opt, opt, beam);
+        for d in 0..base.len() {
+            let cur=base[d].deadline; let mut earliest=cur; let mut dl=cur;
+            while dl>2 { let mut sc2=base.clone(); sc2[d].deadline=dl-1;
+                if feasible(&sc2) { earliest=dl-1; dl-=1; } else { break; } }
+            println!("  D{} {} {}@{} dur{}  dl{} -> earliest dl{}  (slack {})",
+                d+1, if base[d].must{"REQ"}else{"opt"}, GOODNAME[base[d].good], base[d].rate as i32, base[d].dur, cur, earliest, cur-earliest);
+        }
+        return;
+    }
+
     let (sstar, st, sol_chain) = beam_search(&eng, &sc, &econ, beam, horizon, plancap);
     let ot=opt_tot(&sc);
     if mode=="gap" {
