@@ -161,16 +161,17 @@ fn scenario() -> Vec<Directive> {
     // rewards: D3 unlocks assembler+lab and grants +1 T3; D1->+1T1, D2->+1T2 and +1 demolish/turn.
     let mk = |good,rate,dur,deadline,req:Vec<usize>,must,rb:[i32;4],immig,unlock,rp|
         Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rew_demolish:0,rp};
+    // hill-climbed for max gap: greedy 0/4, optimum 4/4 (every optional needs non-greedy play).
     let mut v = vec![
-        mk(FOOD,5.0,2,5,vec![],true,[0,1,0,0],0,false,40.0),       // D1
-        mk(METAL,5.0,2,7,vec![0],true,[0,0,1,0],0,false,70.0),     // D2 (tightened deadline)
-        mk(ELEC,4.0,2,10,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
-        mk(COMP,3.0,3,15,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
-        mk(RESEARCH,3.0,2,17,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
-        mk(RESEARCH,4.0,2,10,vec![],false,[0,0,0,0],0,false,50.0), // D6 opt research@10
-        mk(WATER,8.0,2,12,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt water@12
-        mk(ELEC,4.0,2,14,vec![],false,[0,0,0,0],0,false,50.0),     // D8 opt elec@14
-        mk(ALLOY,4.0,2,15,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy@15
+        mk(FOOD,4.0,2,2,vec![],true,[0,1,0,0],0,false,40.0),       // D1
+        mk(METAL,5.0,2,8,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
+        mk(ELEC,4.0,2,8,vec![1],true,[0,0,0,1],0,true,120.0),      // D3 (unlock + T3)
+        mk(COMP,3.0,2,16,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
+        mk(RESEARCH,3.0,4,16,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
+        mk(RESEARCH,4.0,1,9,vec![],false,[0,0,0,0],0,false,50.0),  // D6 opt research@9
+        mk(WATER,12.0,1,13,vec![],false,[0,0,0,0],0,false,50.0),   // D7 opt water@13
+        mk(ELEC,6.0,1,15,vec![],false,[0,0,0,0],0,false,50.0),     // D8 opt elec@15
+        mk(ALLOY,4.0,3,15,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy@15
     ];
     v[1].rew_demolish = 1;  // Metalworks grants +1 demolish/turn (matches engine.js)
     v
