@@ -734,7 +734,7 @@ fn main() {
     // defaults tuned for ~1s/run: low beam + high plancap finds the true optimum (plancap is the lever).
     let beam: usize = env::var("BEAM").ok().and_then(|v|v.parse().ok()).unwrap_or(64);
     let horizon: u32 = env::var("HORIZON").ok().and_then(|v|v.parse().ok()).unwrap_or(TURNS);
-    let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(400);
+    let plancap: usize = env::var("PLANCAP").ok().and_then(|v|v.parse().ok()).unwrap_or(800); // 400 truncated the winning plan composition -> non-monotonic stars
 
     // metric: STARS = optionals completed; required are mandatory (a required failure = DEFEAT = -1).
     let opt_tot = |sc2:&[Directive]| (0..sc2.len()).filter(|&d| !sc2[d].must).count();
