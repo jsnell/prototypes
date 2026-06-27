@@ -161,7 +161,7 @@ fn scenario() -> Vec<Directive> {
     // rewards: D3 unlocks assembler+lab and grants +1 T3; D1->+1T1, D2->+1T2 and +1 demolish/turn.
     let mk = |good,rate,dur,deadline,req:Vec<usize>,must,rb:[i32;4],immig,unlock,rp|
         Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rew_demolish:0,rp};
-    // loose feasible baseline (re-derive gap-4 via `hill` + `tighten` under the corrected worker model)
+    // loose feasible baseline (re-derive gap via `hill` + `tighten` under the corrected worker model)
     let mut v = vec![
         mk(FOOD,4.0,2,6,vec![],true,[0,1,0,0],0,false,40.0),       // D1
         mk(METAL,4.0,2,9,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
@@ -870,7 +870,13 @@ fn main() {
             if !(0..nd).all(|d| !sc[d].must || s.done[d]) { return None; }   // greedy must clear requireds
             let greedy_stars=(0..nd).filter(|&d| !sc[d].must && s.done[d]).count() as i32;
             let opt=(0..nd).filter(|&d| !sc[d].must).count() as i32;
-            let tension:f64=(0..nd).filter(|&d| !sc[d].must).map(|d| -peak[d].clamp(-6.0,6.0)).sum();
+            // tension (timing/contention-aware): greedy's PROGRESS shortfall on optionals (progress is
+            // deadline- and contention-sensitive, unlike a peak surplus), plus the surplus margin as a
+            // fine tiebreak so completed optionals near greedy's edge still pull the climb forward.
+            let tension:f64=(0..nd).filter(|&d| !sc[d].must).map(|d| {
+                let prog=(s.progress[d] as f64).min(sc[d].dur as f64);
+                (sc[d].dur as f64 - prog)*4.0 - peak[d].clamp(-6.0,6.0)*0.25
+            }).sum();
             if greedy_stars>=opt { return Some((0, tension)); }   // greedy got all -> gap 0, no search needed
             let (sstar,_,_)=beam_search(&eng, sc, &e, hbeam, TURNS, plancap);
             if full_clear { if sstar < opt { return None; } }       // optimum must full-clear
