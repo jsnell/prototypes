@@ -942,6 +942,7 @@ fn main() {
             let (ss,_,_)=beam_search(&eng,sc2,&e,beam,TURNS,plancap);
             ss==opt                                                                          // optimum full-clears
         };
+        let bump_rates = env::var("NORATE").map(|v| v!="1").unwrap_or(true); // NORATE=1 => deadlines only
         let mut cur=sc.clone();
         if !feasible(&cur) { println!("base scenario not feasible at beam {}", beam); return; }
         for _pass in 0..4 {
@@ -949,9 +950,9 @@ fn main() {
             for d in 0..cur.len() {                          // pull deadline earlier
                 while cur[d].deadline>2 { let mut t=cur.clone(); t[d].deadline-=1;
                     if feasible(&t) { cur=t; changed=true; } else { break; } } }
-            for d in 0..cur.len() {                          // push rate higher (cap 30)
+            if bump_rates { for d in 0..cur.len() {          // push rate higher (cap 30)
                 while cur[d].rate<30.0 { let mut t=cur.clone(); t[d].rate+=1.0;
-                    if feasible(&t) { cur=t; changed=true; } else { break; } } }
+                    if feasible(&t) { cur=t; changed=true; } else { break; } } } }
             if !changed { break; }
         }
         println!("tightened scenario:");
