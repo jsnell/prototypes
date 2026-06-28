@@ -161,17 +161,17 @@ fn scenario() -> Vec<Directive> {
     // rewards: D3 unlocks assembler+lab and grants +1 T3; D1->+1T1, D2->+1T2 and +1 demolish/turn.
     let mk = |good,rate,dur,deadline,req:Vec<usize>,must,rb:[i32;4],immig,unlock,rp|
         Directive{good,rate,dur,deadline,req,must,rew_build:rb,rew_immig:immig,rew_unlock:unlock,rew_demolish:0,rp};
-    // hill-climbed (timing-aware) under the corrected worker model: greedy 0/4, optimum 4/4 @T18.
+    // hill-climbed (timing-aware) then deadlines-only tightened: greedy 0/4, optimum 4/4 @T18.
     let mut v = vec![
-        mk(FOOD,4.0,3,9,vec![],true,[0,1,0,0],0,false,40.0),       // D1
-        mk(METAL,3.0,1,8,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
-        mk(ELEC,3.0,1,10,vec![1],true,[0,0,0,1],0,true,120.0),     // D3 (unlock + T3)
-        mk(COMP,5.0,4,17,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
+        mk(FOOD,4.0,3,3,vec![],true,[0,1,0,0],0,false,40.0),       // D1
+        mk(METAL,3.0,1,4,vec![0],true,[0,0,1,0],0,false,70.0),     // D2
+        mk(ELEC,3.0,1,5,vec![1],true,[0,0,0,1],0,true,120.0),      // D3 (unlock + T3)
+        mk(COMP,5.0,4,16,vec![2],true,[0,0,0,0],0,false,160.0),    // D4 components
         mk(RESEARCH,2.0,2,18,vec![3],true,[0,0,0,0],0,false,260.0),// D5 research
         mk(RESEARCH,5.0,3,11,vec![],false,[0,0,0,0],0,false,50.0), // D6 opt research
-        mk(WATER,6.0,3,14,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt water
-        mk(ELEC,4.0,2,11,vec![],false,[0,0,0,0],0,false,50.0),     // D8 opt elec
-        mk(ALLOY,4.0,4,15,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy
+        mk(WATER,6.0,3,10,vec![],false,[0,0,0,0],0,false,50.0),    // D7 opt water
+        mk(ELEC,4.0,2,7,vec![],false,[0,0,0,0],0,false,50.0),      // D8 opt elec
+        mk(ALLOY,4.0,4,11,vec![],false,[0,0,0,0],0,false,50.0),    // D9 opt alloy
     ];
     v[1].rew_demolish = 1;  // Metalworks grants +1 demolish/turn (matches engine.js)
     v
