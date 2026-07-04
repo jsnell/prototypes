@@ -17,8 +17,8 @@ speed boost. Score comes from air time, wall rides, drifts, stunts, and laps.
 
 | | Mobile | Desktop |
 |---|---|---|
-| Throttle | automatic | automatic |
-| Steer | drag on the left side of the screen | ←/→ or A/D |
+| Accelerate | hold the GAS button (release to coast) | ↑ or W |
+| Steer | touch anywhere else & drag left/right | ←/→ or A/D |
 | Brake / drift | hold the BRAKE button | SPACE or ↓/S |
 | Respawn | ↺ button | R |
 

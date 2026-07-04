@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 // bump together with the ?v= suffix in index.html on every change
-const BUILD = 4;
+const BUILD = 5;
 document.getElementById('buildTag').textContent =
   `build ${BUILD} · tap here to force-update`;
 
@@ -434,25 +434,29 @@ const AudioSys = {
 };
 
 // ============================================================ input
-const input = { steer: 0, brake: false, apBrake: false, kb: { l: false, r: false, b: false } };
+const input = { steer: 0, brake: false, gas: false, apBrake: false,
+  kb: { l: false, r: false, b: false, u: false } };
 addEventListener('keydown', e => {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.kb.l = true;
   if (e.code === 'ArrowRight' || e.code === 'KeyD') input.kb.r = true;
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') { input.kb.u = true; e.preventDefault(); }
   if (e.code === 'Space' || e.code === 'ArrowDown' || e.code === 'KeyS') { input.kb.b = true; e.preventDefault(); }
   if (e.code === 'KeyR') respawn();
 });
 addEventListener('keyup', e => {
   if (e.code === 'ArrowLeft' || e.code === 'KeyA') input.kb.l = false;
   if (e.code === 'ArrowRight' || e.code === 'KeyD') input.kb.r = false;
+  if (e.code === 'ArrowUp' || e.code === 'KeyW') input.kb.u = false;
   if (e.code === 'Space' || e.code === 'ArrowDown' || e.code === 'KeyS') input.kb.b = false;
 });
 
 const knob = document.getElementById('steerKnob');
 const dot = document.getElementById('steerDot');
 const brakeBtn = document.getElementById('brakeBtn');
+const gasBtn = document.getElementById('gasBtn');
 const STEER_RANGE = 48;                  // px of drag for full lock
 let touchSteer = 0;
-let brakeHeld = false;
+let brakeHeld = false, gasHeld = false;
 
 function steerStart(x, y) {
   touchSteer = 0;
@@ -472,17 +476,23 @@ if ('ontouchstart' in window) {
   // raw touch events: the most reliable path on mobile browsers.
   // Any touch that isn't on a button steers; drag horizontally.
   let steerId = null, steerAnchorX = 0;
-  const brakeIds = new Set();
+  const brakeIds = new Set(), gasIds = new Set();
+  const syncBtns = () => {
+    brakeHeld = brakeIds.size > 0;
+    gasHeld = gasIds.size > 0;
+    brakeBtn.classList.toggle('on', brakeHeld);
+    gasBtn.classList.toggle('on', gasHeld);
+  };
   addEventListener('touchstart', e => {
     for (const t of e.changedTouches) {
+      if (t.target.closest('#gasBtn')) { gasIds.add(t.identifier); continue; }
       if (t.target.closest('#brakeBtn')) { brakeIds.add(t.identifier); continue; }
       if (steerId === null && notControl(t.target)) {
         steerId = t.identifier; steerAnchorX = t.clientX;
         steerStart(t.clientX, t.clientY);
       }
     }
-    brakeHeld = brakeIds.size > 0;
-    brakeBtn.classList.toggle('on', brakeHeld);
+    syncBtns();
   }, { passive: true });
   addEventListener('touchmove', e => {
     e.preventDefault();
@@ -494,16 +504,16 @@ if ('ontouchstart' in window) {
     for (const t of e.changedTouches) {
       if (t.identifier === steerId) { steerId = null; steerEnd(); }
       brakeIds.delete(t.identifier);
+      gasIds.delete(t.identifier);
     }
-    brakeHeld = brakeIds.size > 0;
-    brakeBtn.classList.toggle('on', brakeHeld);
+    syncBtns();
   };
   addEventListener('touchend', endTouch);
   addEventListener('touchcancel', endTouch);
 } else {
   // mouse / pen path
   let steerPointer = null, steerAnchorX = 0;
-  const brakePointers = new Set();
+  const brakePointers = new Set(), gasPointers = new Set();
   addEventListener('pointerdown', e => {
     if (steerPointer === null && notControl(e.target)) {
       steerPointer = e.pointerId; steerAnchorX = e.clientX;
@@ -516,14 +526,21 @@ if ('ontouchstart' in window) {
   const endPointer = e => {
     if (e.pointerId === steerPointer) { steerPointer = null; steerEnd(); }
     brakePointers.delete(e.pointerId);
+    gasPointers.delete(e.pointerId);
     brakeHeld = brakePointers.size > 0;
+    gasHeld = gasPointers.size > 0;
     brakeBtn.classList.toggle('on', brakeHeld);
+    gasBtn.classList.toggle('on', gasHeld);
   };
   addEventListener('pointerup', endPointer);
   addEventListener('pointercancel', endPointer);
   brakeBtn.addEventListener('pointerdown', e => {
     brakePointers.add(e.pointerId); brakeHeld = true;
     brakeBtn.classList.add('on'); e.preventDefault();
+  });
+  gasBtn.addEventListener('pointerdown', e => {
+    gasPointers.add(e.pointerId); gasHeld = true;
+    gasBtn.classList.add('on'); e.preventDefault();
   });
 }
 document.getElementById('resetBtn').addEventListener('click', () => respawn());
@@ -677,11 +694,14 @@ function step(dt) {
 
   // -------- controls
   let speed = st.vel.dot(st.fwd);
-  if (AUTOPILOT) autopilotControls(speed);
+  if (AUTOPILOT) { autopilotControls(speed); input.gas = !input.apBrake; }
   else {
     const kb = (input.kb.l ? -1 : 0) + (input.kb.r ? 1 : 0);
-    input.steer = kb !== 0 ? kb : touchSteer;
+    // negated: raw right input must yaw clockwise around +Y (right-handed,
+    // Y-up world — positive rotation around up turns LEFT)
+    input.steer = -(kb !== 0 ? kb : touchSteer);
     input.brake = input.kb.b || brakeHeld;
+    input.gas = input.kb.u || gasHeld;
     input.apBrake = false;
   }
 
@@ -697,12 +717,14 @@ function step(dt) {
     const yaw = input.steer * steerRate * dt * (speed > 2 ? 1 : 0);
     st.fwd.applyAxisAngle(st.up, yaw).normalize();
 
-    // engine / brake / drag
+    // engine / brake / coast
     if (input.apBrake || (input.brake && !drifting)) speed -= BRAKE_DECEL * dt;
-    else {
+    else if (input.gas) {
       const cap = st.boostTimer > 0 ? BOOST_SPEED : MAX_SPEED;
       speed += (ACCEL - ACCEL * (speed / cap) * (speed / cap) * Math.sign(speed)) * dt;
       if (drifting) speed -= 16 * dt;   // drifting still sheds real speed
+    } else if (speed > 0) {
+      speed = Math.max(0, speed - (5 + speed * 0.10) * dt);   // coast
     }
     speed = Math.max(speed, -8);
 
