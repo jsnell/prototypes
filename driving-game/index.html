@@ -49,9 +49,9 @@
   #brakeBtn { right:calc(138px + env(safe-area-inset-right)); bottom:calc(86px + env(safe-area-inset-bottom));
     width:84px; height:84px; font-size:13px; color:#ffb0a0; border-color:rgba(255,120,90,.6); }
   #brakeBtn.on { background:rgba(255,90,60,.45); }
-  #resetBtn { right:calc(20px + env(safe-area-inset-right)); top:calc(52px + env(safe-area-inset-top));
+  #resetBtn { left:calc(150px + env(safe-area-inset-left)); top:calc(10px + env(safe-area-inset-top));
     width:44px; height:44px; font-size:20px; border-radius:12px; }
-  #muteBtn { right:calc(20px + env(safe-area-inset-right)); top:calc(104px + env(safe-area-inset-top));
+  #muteBtn { left:calc(202px + env(safe-area-inset-left)); top:calc(10px + env(safe-area-inset-top));
     width:44px; height:44px; font-size:19px; border-radius:12px; }
   #steerKnob { position:fixed; z-index:6; width:120px; height:120px; border-radius:50%;
     border:2px dashed rgba(255,255,255,.45); display:none; pointer-events:none; }
@@ -127,6 +127,6 @@
   })();
 </script>
 <script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
-<script type="module" src="./game.js?v=5"></script>
+<script type="module" src="./game.js?v=6"></script>
 </body>
 </html>

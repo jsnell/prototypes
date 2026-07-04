@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 // bump together with the ?v= suffix in index.html on every change
-const BUILD = 5;
+const BUILD = 6;
 document.getElementById('buildTag').textContent =
   `build ${BUILD} · tap here to force-update`;
 
@@ -963,7 +963,7 @@ const camLook = new THREE.Vector3();
 function updateCamera(dt) {
   const st = state;
   const speed = st.vel.length();
-  const back = 8.6 + speed * 0.025;
+  const back = 8.6;
   const desired = _v1.copy(st.pos)
     .addScaledVector(st.fwd, -back)
     .addScaledVector(st.up, 4.1);
@@ -974,7 +974,7 @@ function updateCamera(dt) {
   camera.position.copy(camPos);
   camera.up.copy(camUp);
   camera.lookAt(camLook);
-  const targetFov = 68 + (speed / BOOST_SPEED) * 22 + (state.boostTimer > 0 ? 4 : 0);
+  const targetFov = 68 + (speed / BOOST_SPEED) * 8 + (state.boostTimer > 0 ? 5 : 0);
   camera.fov += (targetFov - camera.fov) * (1 - Math.exp(-6 * dt));
   camera.updateProjectionMatrix();
 }
