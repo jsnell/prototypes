@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 
 // bump together with the ?v= suffix in index.html on every change
-const BUILD = 3;
+const BUILD = 4;
 document.getElementById('buildTag').textContent =
   `build ${BUILD} · tap here to force-update`;
 
@@ -449,44 +449,89 @@ addEventListener('keyup', e => {
 
 const knob = document.getElementById('steerKnob');
 const dot = document.getElementById('steerDot');
-let steerPointer = null, steerAnchorX = 0, touchSteer = 0;
 const brakeBtn = document.getElementById('brakeBtn');
-let brakePointers = new Set();
+const STEER_RANGE = 48;                  // px of drag for full lock
+let touchSteer = 0;
+let brakeHeld = false;
 
-addEventListener('pointerdown', e => {
-  if (e.target.closest('button') || e.target.closest('#overlay')) return;
-  if (steerPointer === null && e.clientX < innerWidth * 0.58) {
-    steerPointer = e.pointerId; steerAnchorX = e.clientX; touchSteer = 0;
-    try { e.target.setPointerCapture?.(e.pointerId); } catch { /* ok */ }
-    knob.style.display = 'block';
-    knob.style.left = (e.clientX - 60) + 'px';
-    knob.style.top = (e.clientY - 60) + 'px';
-    dot.style.transform = 'translate(-50%,-50%)';
-  }
-});
-addEventListener('pointermove', e => {
-  if (e.pointerId === steerPointer) {
-    touchSteer = THREE.MathUtils.clamp((e.clientX - steerAnchorX) / 60, -1, 1);
-    dot.style.transform = `translate(calc(-50% + ${touchSteer * 34}px),-50%)`;
-  }
-});
-function endPointer(e) {
-  if (e.pointerId === steerPointer) { steerPointer = null; touchSteer = 0; knob.style.display = 'none'; }
-  brakePointers.delete(e.pointerId);
-  brakeBtn.classList.toggle('on', brakePointers.size > 0);
+function steerStart(x, y) {
+  touchSteer = 0;
+  knob.style.display = 'block';
+  knob.style.left = (x - 60) + 'px';
+  knob.style.top = (y - 60) + 'px';
+  dot.style.transform = 'translate(-50%,-50%)';
 }
-addEventListener('pointerup', endPointer);
-addEventListener('pointercancel', endPointer);
-brakeBtn.addEventListener('pointerdown', e => {
-  brakePointers.add(e.pointerId); brakeBtn.classList.add('on'); e.preventDefault();
-});
+function steerMove(x, anchorX) {
+  touchSteer = THREE.MathUtils.clamp((x - anchorX) / STEER_RANGE, -1, 1);
+  dot.style.transform = `translate(calc(-50% + ${touchSteer * 34}px),-50%)`;
+}
+function steerEnd() { touchSteer = 0; knob.style.display = 'none'; }
+const notControl = t => !t.closest('button') && !t.closest('#overlay') && !t.closest('#pauseOverlay');
+
+if ('ontouchstart' in window) {
+  // raw touch events: the most reliable path on mobile browsers.
+  // Any touch that isn't on a button steers; drag horizontally.
+  let steerId = null, steerAnchorX = 0;
+  const brakeIds = new Set();
+  addEventListener('touchstart', e => {
+    for (const t of e.changedTouches) {
+      if (t.target.closest('#brakeBtn')) { brakeIds.add(t.identifier); continue; }
+      if (steerId === null && notControl(t.target)) {
+        steerId = t.identifier; steerAnchorX = t.clientX;
+        steerStart(t.clientX, t.clientY);
+      }
+    }
+    brakeHeld = brakeIds.size > 0;
+    brakeBtn.classList.toggle('on', brakeHeld);
+  }, { passive: true });
+  addEventListener('touchmove', e => {
+    e.preventDefault();
+    for (const t of e.changedTouches) {
+      if (t.identifier === steerId) steerMove(t.clientX, steerAnchorX);
+    }
+  }, { passive: false });
+  const endTouch = e => {
+    for (const t of e.changedTouches) {
+      if (t.identifier === steerId) { steerId = null; steerEnd(); }
+      brakeIds.delete(t.identifier);
+    }
+    brakeHeld = brakeIds.size > 0;
+    brakeBtn.classList.toggle('on', brakeHeld);
+  };
+  addEventListener('touchend', endTouch);
+  addEventListener('touchcancel', endTouch);
+} else {
+  // mouse / pen path
+  let steerPointer = null, steerAnchorX = 0;
+  const brakePointers = new Set();
+  addEventListener('pointerdown', e => {
+    if (steerPointer === null && notControl(e.target)) {
+      steerPointer = e.pointerId; steerAnchorX = e.clientX;
+      steerStart(e.clientX, e.clientY);
+    }
+  });
+  addEventListener('pointermove', e => {
+    if (e.pointerId === steerPointer) steerMove(e.clientX, steerAnchorX);
+  });
+  const endPointer = e => {
+    if (e.pointerId === steerPointer) { steerPointer = null; steerEnd(); }
+    brakePointers.delete(e.pointerId);
+    brakeHeld = brakePointers.size > 0;
+    brakeBtn.classList.toggle('on', brakeHeld);
+  };
+  addEventListener('pointerup', endPointer);
+  addEventListener('pointercancel', endPointer);
+  brakeBtn.addEventListener('pointerdown', e => {
+    brakePointers.add(e.pointerId); brakeHeld = true;
+    brakeBtn.classList.add('on'); e.preventDefault();
+  });
+}
 document.getElementById('resetBtn').addEventListener('click', () => respawn());
 const muteBtn = document.getElementById('muteBtn');
 muteBtn.addEventListener('click', () => {
   AudioSys.setMuted(!AudioSys.muted);
   muteBtn.innerHTML = AudioSys.muted ? '&#128263;' : '&#128266;';
 });
-addEventListener('touchmove', e => e.preventDefault(), { passive: false });
 addEventListener('contextmenu', e => e.preventDefault());
 
 // ============================================================ game state
@@ -577,6 +622,27 @@ function startGame() {
 overlay.addEventListener('pointerdown', startGame);
 if (AUTOPILOT) setTimeout(startGame, 300);
 
+// ---- pause when the page loses focus (skipped in headless autopilot runs)
+let paused = false;
+const pauseOverlay = $('pauseOverlay');
+function setPaused(p) {
+  if (p === paused) return;
+  if (p && state.mode !== 'racing') return;
+  paused = p;
+  pauseOverlay.style.display = p ? 'flex' : 'none';
+  if (AudioSys.ctx) { p ? AudioSys.ctx.suspend() : AudioSys.ctx.resume(); }
+}
+if (!AUTOPILOT) {
+  addEventListener('blur', () => setPaused(true));
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) setPaused(true);
+  });
+}
+pauseOverlay.addEventListener('pointerdown', e => {
+  e.stopPropagation();
+  setPaused(false);
+});
+
 // ============================================================ physics
 const ray = new THREE.Raycaster();
 ray.far = 9;
@@ -615,7 +681,7 @@ function step(dt) {
   else {
     const kb = (input.kb.l ? -1 : 0) + (input.kb.r ? 1 : 0);
     input.steer = kb !== 0 ? kb : touchSteer;
-    input.brake = input.kb.b || brakePointers.size > 0;
+    input.brake = input.kb.b || brakeHeld;
     input.apBrake = false;
   }
 
@@ -896,9 +962,10 @@ const _m = new THREE.Matrix4();
 function updateCarVisual(dt) {
   const st = state;
   car.position.copy(st.pos);
-  _v1.copy(st.fwd).cross(st.up).normalize();         // right... actually left/right axis
+  // right-handed basis (right, up, fwd) — car model faces +z.
+  // NB: up×fwd = right; fwd×up would mirror the matrix and break the quaternion
+  _v1.copy(st.up).cross(st.fwd).normalize();
   _m.makeBasis(_v1, st.up, st.fwd);
-  // makeBasis columns are x,y,z axes; car forward is +z
   car.quaternion.setFromRotationMatrix(_m);
 
   const speed = st.vel.length();
@@ -961,6 +1028,7 @@ function frame(now) {
   requestAnimationFrame(frame);
   let dt = Math.min((now - last) / 1000, 0.05);
   last = now;
+  if (paused) { renderer.render(scene, camera); return; }
   state.time += dt;
   step(dt);
   updateCamera(dt);
@@ -983,3 +1051,5 @@ addEventListener('resize', () => {
 window.GAME = { state, S, N, respawn, placeAt,
   get speed() { return state.vel.length(); },
   get checkpoint() { return lastCheckpoint; } };
+window.CAR_DEBUG = () => new THREE.Vector3(0, 0, 1).applyQuaternion(car.quaternion);
+window.TOUCH_STEER = () => touchSteer;
