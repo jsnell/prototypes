@@ -1,5 +1,10 @@
 import * as THREE from 'three';
 
+// bump together with the ?v= suffix in index.html on every change
+const BUILD = 3;
+document.getElementById('buildTag').textContent =
+  `build ${BUILD} · tap here to force-update`;
+
 // ============================================================ config
 const Q = new URLSearchParams(location.search);
 const AUTOPILOT = Q.get('auto') === '1';

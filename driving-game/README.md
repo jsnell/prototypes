@@ -35,6 +35,14 @@ python3 -m http.server 8000
 Also works as-is on GitHub Pages. Three.js is vendored in `vendor/`, so there
 are no external dependencies and no build step.
 
+## Updating
+
+Browsers cache `game.js` aggressively (and the game disables pull-to-refresh
+since touch gestures are used for steering). `index.html` loads
+`game.js?v=N` and the title screen shows the running build number with a
+"tap here to force-update" link. **When changing `game.js`, bump `BUILD` in
+`game.js` and the `?v=` suffix in `index.html` together.**
+
 ## Debug/test hooks
 
 - `?auto=1` — autopilot drives the track (used for automated playtesting)
