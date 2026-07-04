@@ -6,8 +6,8 @@ const AUTOPILOT = Q.get('auto') === '1';
 const FAST_START = Q.get('fast') === '1';
 
 const G = 30;                 // gravity
-const MAX_SPEED = 55;         // engine-limited speed
-const BOOST_SPEED = 70;       // cap while boosting
+const MAX_SPEED = 52;         // engine-limited speed
+const BOOST_SPEED = 66;       // cap while boosting
 const ACCEL = 26;
 const BRAKE_DECEL = 42;
 const RIDE = 0.15;            // ride height above surface
@@ -20,7 +20,7 @@ const WORLD_UP = new THREE.Vector3(0, 1, 0);
 // point: gap (no road), boost (speed pad), zone (announcement popup).
 const CP = [
   { p: [-118, 20, -262], w: 16,  roll: 0 },
-  { p: [ -60, 20, -258], w: 16,  roll: 0,   boost: true, zone: 'FULL THROTTLE' },
+  { p: [ -60, 20, -258], w: 16,  roll: 0,   zone: 'FULL THROTTLE' },
   { p: [   0, 20, -252], w: 15,  roll: 0 },
   { p: [  60, 19, -240], w: 13,  roll: 18 },
   { p: [ 105, 18, -205], w: 13,  roll: 30 },
@@ -107,12 +107,22 @@ const S = []; // {pos, tan, up, left, w, gap, boost, zone, cum}
     const a = S[i].up, b = S[(i + 3) % N].up;
     S[i].steep = a.angleTo(b) > THREE.MathUtils.degToRad(6) || a.y < 0.6;
   }
+  // samples where it's safe to respawn: near-flat, on solid road, and with
+  // enough run-up to rebuild speed before the next gap jump
+  for (let i = 0; i < N; i++) {
+    let ok = !S[i].gap && !S[i].steep && S[i].up.y > 0.85;
+    if (ok) for (let k = 1; k <= 80; k++) {
+      if (S[(i + k) % N].gap) { ok = false; break; }
+    }
+    S[i].cpOk = ok;
+  }
 }
 
 // ============================================================ renderer / scene
 const renderer = new THREE.WebGLRenderer({ antialias: true, powerPreference: 'high-performance' });
 renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
 renderer.setSize(innerWidth, innerHeight);
+renderer.domElement.style.touchAction = 'none';
 document.body.appendChild(renderer.domElement);
 
 const scene = new THREE.Scene();
@@ -442,6 +452,7 @@ addEventListener('pointerdown', e => {
   if (e.target.closest('button') || e.target.closest('#overlay')) return;
   if (steerPointer === null && e.clientX < innerWidth * 0.58) {
     steerPointer = e.pointerId; steerAnchorX = e.clientX; touchSteer = 0;
+    try { e.target.setPointerCapture?.(e.pointerId); } catch { /* ok */ }
     knob.style.display = 'block';
     knob.style.left = (e.clientX - 60) + 'px';
     knob.style.top = (e.clientY - 60) + 'px';
@@ -492,13 +503,23 @@ function placeAt(idx, speed) {
   state.pos.copy(s.pos).addScaledVector(s.up, RIDE + 0.4);
   state.fwd.copy(s.tan); state.up.copy(s.up);
   state.vel.copy(s.tan).multiplyScalar(speed);
-  state.grounded = true; state.idx = idx;
+  state.grounded = true; state.idx = idx; state._prevIdx = idx;
   state.airTime = 0; state.stuntRoll = 0; state.boostTimer = 0;
+  state.offTrackTime = 0;
+  // snap the camera behind the car so respawns aren't disorienting
+  camPos.copy(state.pos).addScaledVector(s.tan, -10).addScaledVector(s.up, 4.5);
+  camUp.copy(s.up);
+  camLook.copy(state.pos).addScaledVector(s.tan, 7);
 }
 let lastCheckpoint = SPAWN_IDX;
+let lastDeathTime = -99, deathStreak = 0;
 function respawn() {
   if (state.mode !== 'racing') return;
-  placeAt(lastCheckpoint, 14);
+  // repeated instant deaths mean the checkpoint itself is bad — fall back
+  deathStreak = (state.time - lastDeathTime < 4) ? deathStreak + 1 : 1;
+  lastDeathTime = state.time;
+  if (deathStreak >= 3) { lastCheckpoint = SPAWN_IDX; deathStreak = 0; }
+  placeAt(lastCheckpoint, 26);
   state.respawns++;
   AudioSys.blip(180, 0.25, 0.15);
 }
@@ -574,7 +595,7 @@ function autopilotControls(speed) {
   _v1.addScaledVector(state.up, -_v1.dot(state.up)).normalize();
   const cross = _v2.copy(state.fwd).cross(_v1).dot(state.up);
   const angle = Math.atan2(cross, state.fwd.dot(_v1));
-  input.steer = THREE.MathUtils.clamp(angle * 2.2, -1, 1);
+  input.steer = THREE.MathUtils.clamp(angle * 1.7, -1, 1);
   const noBrake = S[state.idx].boost || S[state.idx].gap;
   input.apBrake = !noBrake && Math.abs(angle) > 0.45 && speed > 22;
 }
@@ -599,9 +620,9 @@ function step(dt) {
 
   if (st.grounded) {
     // steering (speed-sensitive) around current up
-    const drifting = input.brake && Math.abs(input.steer) > 0.25 && speed > 18;
-    let steerRate = 2.3 * (0.42 + 0.58 / (1 + speed / 30));
-    if (drifting) steerRate *= 1.5;
+    const drifting = input.brake && Math.abs(input.steer) > 0.3 && speed > 24;
+    let steerRate = 2.6 * (0.48 + 0.52 / (1 + speed / 32));
+    if (drifting) steerRate *= 1.4;
     const yaw = input.steer * steerRate * dt * (speed > 2 ? 1 : 0);
     st.fwd.applyAxisAngle(st.up, yaw).normalize();
 
@@ -610,7 +631,7 @@ function step(dt) {
     else {
       const cap = st.boostTimer > 0 ? BOOST_SPEED : MAX_SPEED;
       speed += (ACCEL - ACCEL * (speed / cap) * (speed / cap) * Math.sign(speed)) * dt;
-      if (drifting) speed -= 6 * dt;
+      if (drifting) speed -= 16 * dt;   // drifting still sheds real speed
     }
     speed = Math.max(speed, -8);
 
@@ -624,7 +645,7 @@ function step(dt) {
     _v2.copy(st.vel).addScaledVector(st.fwd, -st.vel.dot(st.fwd));
     _v2.addScaledVector(st.up, -_v2.dot(st.up));         // lateral only
     _v2.addScaledVector(_v1, dt * ((samp.steep || st.up.y < 0.5) ? 0.22 : 1));
-    const grip = drifting ? 3.0 : 9;
+    const grip = drifting ? 5.0 : 9;
     _v2.multiplyScalar(Math.exp(-grip * dt));
     st.vel.copy(st.fwd).multiplyScalar(speed).add(_v2);
 
@@ -634,14 +655,27 @@ function step(dt) {
       const off = _v1.copy(st.pos).sub(samp.pos).dot(samp.left);
       // the twisting ribbon carries an off-center car outward — groove it back
       if (steep) st.vel.addScaledVector(samp.left, -off * 5.5 * dt);
-      const margin = samp.w / 2 - (steep ? 2.4 : 1.3);
-      if (Math.abs(off) > margin) {
-        const inward = -Math.sign(off);
-        const over = Math.abs(off) - margin;
-        st.vel.addScaledVector(samp.left, inward * Math.min(over * (steep ? 75 : 34), 95) * dt);
-        const vLat = st.vel.dot(samp.left);
-        if (Math.sign(vLat) === Math.sign(off)) {
-          st.vel.addScaledVector(samp.left, -vLat * Math.min(1, 7 * dt));
+      if (samp.w >= 8) {
+        // invisible guard rails on normal track: bump the edge and slide
+        // along it, scrubbing some speed — you can't fall off here
+        const maxOff = samp.w / 2 - 1.0;
+        if (Math.abs(off) > maxOff) {
+          st.pos.addScaledVector(samp.left, Math.sign(off) * maxOff - off);
+          const vLat = st.vel.dot(samp.left);
+          if (Math.sign(vLat) === Math.sign(off)) st.vel.addScaledVector(samp.left, -vLat);
+          st.vel.multiplyScalar(Math.max(0, 1 - 1.4 * dt));
+        }
+      } else {
+        // narrow precision sections: only a gentle nudge — falling is real
+        const margin = samp.w / 2 - 1.3;
+        if (Math.abs(off) > margin) {
+          const inward = -Math.sign(off);
+          const over = Math.abs(off) - margin;
+          st.vel.addScaledVector(samp.left, inward * Math.min(over * 48, 95) * dt);
+          const vLat = st.vel.dot(samp.left);
+          if (Math.sign(vLat) === Math.sign(off)) {
+            st.vel.addScaledVector(samp.left, -vLat * Math.min(1, 7 * dt));
+          }
         }
       }
     }
@@ -656,7 +690,7 @@ function step(dt) {
         AudioSys.blip(660, 0.3, 0.2);
       }
       st.lastPadIdx = st.idx;
-      st.boostTimer = 1.6;
+      st.boostTimer = 1.3;
     }
     if (st.boostTimer > 0) {
       speed = st.vel.dot(st.fwd);
@@ -755,7 +789,9 @@ function step(dt) {
   }
 
   // -------- checkpoints / lap / zones
-  if (!samp.gap) lastCheckpoint = st.idx;
+  // only bank a checkpoint while actually driving on safe, flat road —
+  // never mid-air, mid-wall-ride, or mid-corkscrew
+  if (st.grounded && samp.cpOk) lastCheckpoint = st.idx;
   const third = Math.floor(st.idx / (N / 3));
   st.gates[third] = true;
   const prevIdx = st._prevIdx ?? st.idx;
@@ -793,7 +829,7 @@ function step(dt) {
   // -------- death / respawn
   const distToTrack = st.pos.distanceTo(samp.pos);
   st.offTrackTime = (!st.grounded && distToTrack > samp.w) ? st.offTrackTime + dt : 0;
-  if (st.pos.y < samp.pos.y - 65 || st.offTrackTime > 4) {
+  if (st.pos.y < samp.pos.y - 50 || st.offTrackTime > 2.5) {
     if (window._deaths) window._deaths.push({ t: +st.time.toFixed(1), idx: st.idx,
       y: Math.round(st.pos.y), sampY: Math.round(samp.pos.y),
       offT: +st.offTrackTime.toFixed(1), cause: st.offTrackTime > 4 ? 'offtrack' : 'fell' });
@@ -939,4 +975,6 @@ addEventListener('resize', () => {
 });
 
 // debug hook for tests
-window.GAME = { state, S, N, respawn, placeAt, get speed() { return state.vel.length(); } };
+window.GAME = { state, S, N, respawn, placeAt,
+  get speed() { return state.vel.length(); },
+  get checkpoint() { return lastCheckpoint; } };
