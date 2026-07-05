@@ -138,6 +138,9 @@ def legal_actions(s):
                 if player.money + money_on >= card.cost * mult:
                     for city in range(len(s.cities)):
                         actions.append(("buy", r, c, city))
+        if (cfg.loan_repayment_cost > 0 and player.loans > 0
+                and player.money >= cfg.loan_repayment_cost):
+            actions.append(("repay",))
         actions.append(PASS)
         return actions
 
@@ -178,6 +181,12 @@ def apply_action(s, action):
         if action == PASS:
             s.buy_passed.add(pid)
             s.log(f"P{pid} passes")
+        elif action == ("repay",):
+            p = s.players[pid]
+            p.money -= s.config.loan_repayment_cost
+            p.loans -= 1
+            s.log(f"P{pid} repays a loan for ${s.config.loan_repayment_cost} "
+                  f"({p.loans} left)")
         else:
             _do_buy(s, pid, *action[1:])
         s.buy_ptr = (s.buy_ptr + 1) % s.n_players

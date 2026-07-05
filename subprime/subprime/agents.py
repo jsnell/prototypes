@@ -229,16 +229,21 @@ class HeuristicAgent(Agent):
         extra = raise_to - desired
         if extra <= 0:
             return True
-        # lifetime interest per extra loan: rates never fall, and cleanup
-        # expiry alone guarantees a known floor each future round
+        per_loan = max(0.5, self._lifetime_rate(s) - cfg.money_per_loan)
+        return extra * per_loan <= self.p.turn_order_value * rivals
+
+    def _lifetime_rate(self, s):
+        """Projected interest one loan accrues from now to game end: rates
+        never fall, and cleanup expiry alone guarantees a known floor each
+        future round."""
+        cfg = s.config
         rate = s.current_rate()
-        lifetime = 0
+        total = 0
         for k in range(s.round, cfg.max_rounds + 1):
             i = min(k - 2, len(cfg.loan_row_rates) - 1)
             floor = cfg.loan_row_rates[i] if k >= 2 else 0
-            lifetime += max(rate, floor)
-        per_loan = max(0.5, lifetime - cfg.money_per_loan)
-        return extra * per_loan <= self.p.turn_order_value * rivals
+            total += max(rate, floor)
+        return total
 
     # -- phase 2 -------------------------------------------------------
     def _interest_due(self, s, pid):
@@ -334,19 +339,51 @@ class HeuristicAgent(Agent):
                     * self.p.vp_weight)
         return val
 
+    def _drowning(self, s, pid):
+        """Even hoarding every dollar, would we default within two rounds
+        without new loans? (Then deleveraging outranks building.)"""
+        p = s.players[pid]
+        cfg = s.config
+        income = self._printed_income(s, pid)
+        rate = s.current_rate()
+        cash = p.money + income
+        for k in (s.round, s.round + 1):
+            if k > cfg.max_rounds:
+                break
+            r_k = rate
+            if k >= 2:
+                i = min(k - 2, len(cfg.loan_row_rates) - 1)
+                r_k = max(rate, cfg.loan_row_rates[i])
+            cash -= r_k * p.loans if cfg.interest_per_loan else r_k
+            if cash < 0:
+                return True
+            cash += income
+        return False
+
     def _buy(self, s, pid, actions):
         player = s.players[pid]
+        if ("repay",) in actions and self._drowning(s, pid):
+            return ("repay",)   # lifeline: survival outranks profit
         reserve = self._reserve(s, pid)
         best, best_net = PASS, self.p.buy_threshold
         for a in actions:
-            if a[0] != "buy":
+            if a[0] == "repay":
+                # deleveraging: pay now, stop bleeding the loan's remaining
+                # lifetime interest
+                cost = s.config.loan_repayment_cost
+                if player.money - cost < reserve:
+                    continue
+                net = self._lifetime_rate(s) - cost
+            elif a[0] == "buy":
+                _, r, c, city_idx = a
+                card, money_on = s.display[r][c]
+                cost = card.cost * s.config.row_cost_multipliers[r]
+                if player.money + money_on - cost < reserve:
+                    continue
+                net = (self._placement_value(s, pid, card, city_idx)
+                       - cost + money_on)
+            else:
                 continue
-            _, r, c, city_idx = a
-            card, money_on = s.display[r][c]
-            cost = card.cost * s.config.row_cost_multipliers[r]
-            if player.money + money_on - cost < reserve:
-                continue
-            net = self._placement_value(s, pid, card, city_idx) - cost + money_on
             if net > best_net:
                 best, best_net = a, net
         return best

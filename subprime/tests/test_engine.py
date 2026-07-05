@@ -366,6 +366,32 @@ class TestRuleVariants(unittest.TestCase):
         apply_action(s, ("bid", 1))
         self.assertEqual(s.bids[decision_player(s)], 1)  # lowest is asked
 
+    def test_loan_repayment_action(self):
+        cfg = CFG.with_changes(loan_repayment_cost=12)
+        s = new_game(cfg, 3, seed=3)
+        while s.phase != P_BUY:
+            acts = legal_actions(s)
+            apply_action(s, PASS if PASS in acts else min(
+                acts, key=lambda a: a[1]))
+        pid = decision_player(s)
+        s.players[pid].money, s.players[pid].loans = 20, 3
+        self.assertIn(("repay",), legal_actions(s))
+        apply_action(s, ("repay",))
+        self.assertEqual(s.players[pid].money, 8)
+        self.assertEqual(s.players[pid].loans, 2)
+        # too poor to repay -> action not offered
+        s2 = new_game(cfg, 3, seed=3)
+        while s2.phase != P_BUY:
+            acts = legal_actions(s2)
+            apply_action(s2, PASS if PASS in acts else min(
+                acts, key=lambda a: a[1]))
+        s2.players[decision_player(s2)].money = 5
+        for row in s2.display:
+            for cell in row:
+                if cell:
+                    cell[1] = 0
+        self.assertNotIn(("repay",), legal_actions(s2))
+
     def test_bankruptcy_pick_most_loans(self):
         cfg = CFG.with_changes(bankruptcy_pick="most_loans")
         s = new_game(cfg, 3, seed=7)

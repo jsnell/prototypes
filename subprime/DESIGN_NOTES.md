@@ -172,10 +172,29 @@ tested by simulation instead of argued about.
     even the safe economy collapses (84% bankruptcy, 3.4-round games).
   Net: the auction asymmetry is conserved — every softening either
   relocates the squeeze (someone is always first in the queue) or
-  un-rations credit. Making the squeeze fair likely requires a
-  different auction shape (e.g. simultaneous blind bids), or accepting
-  "someone is left holding the bag" as a theme and randomizing who
-  starts exposed.
+  un-rations credit.
+- **Why the bag is static: debt is permanent.** The agents are *not*
+  overspending — demand-aware bidders self-correct (after an overbid
+  they enter the next auction with ~$20 and want only 2 loans; seat 1's
+  loan demand is the lowest at the table from round 3 on). The
+  stickiness is that loans can never be repaid: an early forced overbid
+  is a permanent interest annuity whose price the rate ratchet keeps
+  raising. The bag-holder is chosen in rounds 1–2 and is irredeemable.
+- **A deleveraging valve makes the bag dynamic** (`loan_repayment_cost`:
+  repaying one loan is a buy-phase action). Agents needed a "lifeline"
+  rule to use it (survival outranks profit when default is 2 rounds
+  out — repayment competes badly with building on pure ROI). Dose
+  response in the tense economy, all-shark, busts by round-1 seat:
+  - no repayment: 37/14/12/10 (win spread 24pp)
+  - $10 (principal price): **61**/10/4/8 — cheap repayment is a poverty
+    trap: the rich deleverage easily, the drowning player spends every
+    dollar treading water and still dies
+  - $20 (~2x principal): **29/13/32/25, win spread 12pp** — bag fully
+    dynamic, bankruptcy still 100% (someone always holds it), the
+    leapfrog auction untouched
+  Caveat: repayment shortens tense games to ~3.3 rounds and pushes
+  bankruptcy to 100%; pairing the $20 valve with slightly softer
+  pricing is the next tuning sweep.
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a

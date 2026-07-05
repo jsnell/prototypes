@@ -57,6 +57,10 @@ class GameConfig:
                                     # raising leapfrogs occupied spaces. False
                                     # = markers may share a space (minimal
                                     # raises possible; ties act FIFO)
+    loan_repayment_cost: int = 0    # variant: if > 0, repaying one loan is a
+                                    # buy-phase action at this price (a
+                                    # deleveraging valve; doc has none, so
+                                    # early overbids are permanent)
 
     # --- loan track: row sizes (must sum to the number of loan markers)
     # and the interest rate printed on every space of each row. The round
