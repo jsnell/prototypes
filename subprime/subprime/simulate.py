@@ -40,6 +40,9 @@ class GameRecord:
     buys_by_row: list = field(default_factory=lambda: [0, 0, 0])
     buys_by_type: dict = field(default_factory=dict)
     cards_left_in_deck: int = 0
+    # market saturation, one entry per round (after the buy phase)
+    display_left_by_round: list = field(default_factory=list)
+    unspent_cash_by_round: list = field(default_factory=list)
 
 
 def _record(state, agent_names, seed, initial_order, buys_by_row, buys_by_type):
@@ -66,6 +69,9 @@ def _record(state, agent_names, seed, initial_order, buys_by_row, buys_by_type):
         buys_by_row=buys_by_row,
         buys_by_type=buys_by_type,
         cards_left_in_deck=len(state.deck),
+        display_left_by_round=[rs["display_left"] for rs in state.round_stats],
+        unspent_cash_by_round=[sum(rs["cash_after_buy"])
+                               for rs in state.round_stats],
     )
 
 
@@ -193,6 +199,18 @@ def summarize(records):
         for t in BUILDING_TYPES))
     add(f"avg cards left in deck: "
         f"{statistics.mean(r.cards_left_in_deck for r in records):.1f} / deck")
+
+    # market saturation: unsold stock and idle cash after each buy phase
+    depth = max(len(r.display_left_by_round) for r in records)
+    cells = []
+    for i in range(depth):
+        left = [r.display_left_by_round[i] for r in records
+                if len(r.display_left_by_round) > i]
+        cash = [r.unspent_cash_by_round[i] for r in records
+                if len(r.unspent_cash_by_round) > i]
+        cells.append(f"r{i + 1} {statistics.mean(left):.1f}|${statistics.mean(cash):.0f}")
+    add("after buy phase (cards unsold | idle cash, table total): "
+        + "  ".join(cells))
     return "\n".join(out)
 
 

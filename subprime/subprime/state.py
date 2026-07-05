@@ -108,6 +108,7 @@ class GameState:
         self.end_cause = None         # 'bankruptcy' | 'loans_exhausted' | 'rounds'
         self.winners = []             # pids (ties possible)
         self.events = None            # list[str] when event logging is on
+        self.round_stats = []         # per-round market snapshots (see engine)
 
     # -- convenience ---------------------------------------------------
     def current_rate(self):
@@ -161,4 +162,5 @@ class GameState:
         s.end_cause = self.end_cause
         s.winners = list(self.winners)
         s.events = None
+        s.round_stats = list(self.round_stats)  # snapshots are immutable
         return s

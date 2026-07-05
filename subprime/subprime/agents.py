@@ -47,6 +47,8 @@ class HeuristicParams:
     subsidy_weight: float = 1.0    # weight on projected subsidy income
     buy_threshold: float = 0.0     # min net value ($) to buy instead of pass
     keep_reserve: float = 1.0      # 1.0 = always keep enough for interest
+    demand_aware: bool = False     # cap loans by what the market can absorb
+    market_share: float = 1.0      # fraction of a fair display share to chase
 
 
 class HeuristicAgent(Agent):
@@ -57,9 +59,30 @@ class HeuristicAgent(Agent):
         self.rng = random.Random(seed)
 
     # -- phase 1 -------------------------------------------------------
+    def _demand_cap(self, s, pid):
+        """Most loans worth taking given what money can actually buy:
+        my share of the current display, plus this round's interest bill,
+        less cash and income on hand. Each loan nets money_per_loan minus
+        the interest it accrues this round."""
+        cfg = s.config
+        display_cost = sum(cell[0].cost * cfg.row_cost_multipliers[r]
+                           for r, row in enumerate(s.display)
+                           for cell in row if cell)
+        share = display_cost / s.n_players * self.p.market_share
+        rate = s.current_rate()
+        p = s.players[pid]
+        due = rate * p.loans if cfg.interest_per_loan else rate
+        need = share + due - p.money - self._printed_income(s, pid)
+        net_per_loan = cfg.money_per_loan - (rate if cfg.interest_per_loan else 0)
+        if need <= 0 or net_per_loan <= 0:
+            return 0
+        return int(-(-need // net_per_loan))   # ceil
+
     def _desired_loans(self, s, pid):
         remaining = s.config.max_rounds - s.round + 1
         d = self.p.loan_appetite * remaining - self.p.rate_fear * s.current_rate()
+        if self.p.demand_aware:
+            d = min(d, self._demand_cap(s, pid))
         d = min(int(round(d)), s.markers_left(), max(s.config.bid_spaces))
         return max(d, 0)
 
@@ -239,6 +262,12 @@ AGENT_REGISTRY = {
     "leveraged": lambda seed: HeuristicAgent(
         HeuristicParams(loan_appetite=1.5, rate_fear=0.2, keep_reserve=0.5),
         seed=seed),
+    # demand-aware variants: loans capped by what the market can absorb
+    "sharp": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True), seed=seed),
+    "sharp-lev": lambda seed: HeuristicAgent(
+        HeuristicParams(loan_appetite=2.0, rate_fear=0.2, keep_reserve=0.5,
+                        demand_aware=True), seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }

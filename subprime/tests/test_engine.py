@@ -11,7 +11,8 @@ from subprime import engine
 from subprime.engine import (new_game, legal_actions, apply_action,
                              decision_player, run_game, collect_income,
                              pay_interest, cleanup, PASS)
-from subprime.agents import RandomAgent, HeuristicAgent, MonteCarloAgent
+from subprime.agents import (RandomAgent, HeuristicAgent, HeuristicParams,
+                             MonteCarloAgent)
 from subprime.simulate import run_series, summarize
 
 
@@ -366,9 +367,13 @@ class TestFullGames(unittest.TestCase):
     def test_heuristic_and_mc_agents_play_legally(self):
         agents = [HeuristicAgent(seed=1),
                   MonteCarloAgent(rollouts=2, max_actions=4, seed=2),
-                  RandomAgent(seed=3)]
+                  RandomAgent(seed=3),
+                  HeuristicAgent(HeuristicParams(loan_appetite=2.0,
+                                                 demand_aware=True), seed=4)]
         s = run_game(CFG, agents, seed=9)
         self.assertEqual(s.phase, P_OVER)
+        # market snapshots recorded once per completed buy phase
+        self.assertEqual(len(s.round_stats), s.round)
 
     def test_series_and_summary(self):
         records = run_series(CFG, ["greedy", "random"], 4, 6, base_seed=0)

@@ -198,6 +198,7 @@ def _advance(s):
 
         elif s.phase == P_BUY:
             if len(s.buy_passed) == s.n_players:
+                _snapshot_market(s)
                 collect_income(s)
                 pay_interest(s)
                 s.phase = P_RESOLVE
@@ -269,6 +270,18 @@ def _do_buy(s, pid, row, col, city_idx):
     s.cities[city_idx].sections[card.type].append(Building(card, pid))
     s.log(f"P{pid} buys {card.short()} from row {row + 1} for ${cost}"
           f"{f' (+${money_on} on card)' if money_on else ''} -> city {city_idx}")
+
+
+def _snapshot_market(s):
+    """Record market saturation at the end of each buy phase: how much
+    stock survived and how much cash went unspent (a proxy for whether
+    loan money had anything to buy)."""
+    s.round_stats.append({
+        "round": s.round,
+        "display_left": sum(1 for row in s.display for cell in row if cell),
+        "display_size": sum(len(row) for row in s.display),
+        "cash_after_buy": tuple(p.money for p in s.players),
+    })
 
 
 # ----------------------------------------------------- phase 3: income

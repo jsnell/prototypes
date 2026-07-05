@@ -32,16 +32,33 @@ tested by simulation instead of argued about.
 | **Initial bid** — may a player decline to bid? | no; but bid space 0 exists (no loans, last turn order) | `legal_actions` |
 | **City subsidy with a single owner in a section** | sole ownership is "most" — subsidy granted | `collect_income` |
 
-## Known dynamics of the defaults (from simulation)
+## Known dynamics (from simulation — updated as experiments run)
 
-- A loan taken in round 1 pays $10 and costs ~$21 in lifetime interest
-  (rates 1+2+…+6 with per-loan interest). Leverage must convert to income
-  immediately or it's fatal — likely the intended theme, but the steepness
-  is tunable via `loan_row_rates` / `money_per_loan`.
-- With `bid_spaces` up to 12, the 50-marker track drains in ~2 rounds and
-  ~96% of games end in early bankruptcy. Capping bids at 6 restores 3+
-  round games. Candidate fixes to compare: smaller bid track, more markers,
-  flatter rates, higher `money_per_loan`.
+- **Two regimes, selected by bidding behavior, not by the economy.**
+  Homogeneous cautious tables (`timid`, `greedy`) play all 6 rounds with
+  0% bankruptcies under *every* config variant tested. Aggressive tables
+  collapse by round ~2 — by bankruptcy, or (if buildings are made richer/
+  cheaper) by the loan-track-empty end condition at the same point.
+- **The market is a fixed-size money sink.** At 4 players the display
+  holds ~$120 of stock per round; a max-bid round injects ~$460. The board
+  sells out in round 1 and $200+ sits idle as pure interest liability
+  (measured: `display_left_by_round` / `unspent_cash_by_round`).
+- **Agent-artifact warning (methodological).** The first sweeps concluded
+  "building prices don't affect survival" — wrong. The blind agents' bid
+  policies ignored prices and market depth entirely. With demand-aware
+  bidders (`sharp`, `sharp-lev`, which cap loans by what money can buy),
+  price level becomes the *primary* pacing lever: row multipliers
+  (1,2,3) → 2% bankruptcy, (1,2,4) → 46%, (1,3,4) → 97%, (2,3,4) → 100%
+  (collapse by round 2.6). The transition is smooth — the bankruptcy rate
+  is tunable by pricing alone, no bid-track cap needed. Conclusions from
+  sims are only as good as the agents' economic literacy.
+- A loan taken in round 1 pays $10 and costs ≥$16 in lifetime interest
+  even in the best case (expiry alone forces rates 1,1,2,3,4,5). Leverage
+  must convert to income immediately — likely the intended theme; the
+  steepness is tunable via `loan_row_rates` / `money_per_loan`.
+- A bid-track cap (≤3) also restores 5.7-round games with ~60% bankruptcy
+  *even for price-blind players* — useful as a robustness knob against
+  irrational tables, but it treats the symptom; pricing is the root lever.
 - Row-1 ($1-accumulating) purchases and fresh row-3 purchases both see
   play, and all three building types get bought at roughly even rates with
   the default card table — the market mechanism itself looks healthy.
@@ -54,6 +71,7 @@ tested by simulation instead of argued about.
    `double_subsidy_bonus`, watch `subsidy_earned` and win rates)
 3. Does the game need 6 rounds, or is it decided by round 4? (sweep
    `max_rounds`, watch whether late purchases still change winners)
-4. Is early turn order worth its price in loans? (positional win rates)
+4. How much is turn order actually worth — does a demand-aware agent ever
+   profit from bidding *above* its spending cap purely for position?
 5. Card economy: are cheap residentials strictly better than industrials?
    (purchases-by-type vs. win correlation from the JSON dumps)

@@ -46,19 +46,27 @@ python3 -m unittest discover -s tests
 
 `--json out.json` dumps per-game records for your own analysis.
 
-## Findings so far (with default config)
+## Findings so far
 
-Even the first runs produce design signal:
+See the bottom of DESIGN_NOTES.md for the current state of knowledge. The
+headline results:
 
-- With a bid track of 0–12, players *can* take 10+ loans in round 1; the
-  50-marker track drains, the rate jumps to 6, and **96% of games end in
-  bankruptcy by round 2–3**. Capping the bid track at 6 lengthens games and
-  triples the win rate of the most leveraged strategy — leverage becomes a
-  sharp edge instead of a suicide pact.
+- Cautious tables finish all 6 rounds with 0% bankruptcies under every
+  config tested — early collapse comes from aggressive *bidding*, not from
+  the economy itself.
+- The market is a fixed-size money sink (~$120 of stock per round at 4
+  players); a max-bid round injects ~$460, the board sells out, and the
+  excess is pure interest liability. Price-blind agents do this anyway —
+  so early conclusions like "building prices don't affect survival" were
+  **agent artifacts**. Methodological lesson: make agents demand-aware
+  (`sharp`, `sharp-lev`) before reading economics off the sims.
+- With demand-aware agents, the building price level is the primary pacing
+  lever: row multipliers (1,2,3) → ~2% bankruptcies; (1,2,4) → 46%;
+  (1,3,4) → 97%; (2,3,4) → 100% with round-2.6 collapse. The transition is
+  smooth, so the bankruptcy rate is tunable by pricing alone.
 - Interest scales per-loan (see `interest_per_loan` in DESIGN_NOTES.md):
-  a round-1 loan costs ~$21 in lifetime interest against $10 received, so
-  loans only pay if converted into income *immediately*. Whether that's the
-  intended knife-edge is a design decision the sweeps can inform.
+  a round-1 loan costs ≥$16 in lifetime interest against $10 received, so
+  loans only pay if converted into income *immediately*.
 
 ## Layout
 
