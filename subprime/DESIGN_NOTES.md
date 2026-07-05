@@ -193,8 +193,9 @@ tested by simulation instead of argued about.
     dynamic, bankruptcy still 100% (someone always holds it), the
     leapfrog auction untouched
   Caveat: repayment shortens tense games to ~3.3 rounds and pushes
-  bankruptcy to 100%; pairing the $20 valve with slightly softer
-  pricing is the next tuning sweep.
+  bankruptcy to 100%. **Designer verdict: repayment rejected as a rule.**
+  The knob stays in the code for reference but defaults to off
+  (`loan_repayment_cost=0`), and no registered agent enables it.
 - **Why "the counts should level out" doesn't happen** (the natural
   objection to the sticky bag): measured trajectories show (1) rivals
   never catch up on loans (+3.2 gap at bust time) because loan demand is
@@ -223,6 +224,22 @@ tested by simulation instead of argued about.
   coasting rounds are rounds rivals spend building. The forced overbid
   is paid either as an annuity (bust) or as tempo (VP deficit) — the
   catch-up levels the debt, not the economy.
+- **"Invest the windfall immediately" is wrong — banked cash has real
+  option value** (designer's insight, confirmed). Two agent upgrades:
+  `patience` (a card at row r costs up to 3x what it will after sliding
+  down; discount buys by the waiting option) and, more generally,
+  `cash_reserve_value` (a spent dollar is priced above face value when
+  it would have to be re-borrowed next round at the ratcheted rate —
+  rate expectations, and hence rivals' bids, enter through the
+  projected rate path). Head-to-head vs the spend-it-all shark:
+  patience 0.8 wins 29.4/20.6; cash valuation 0.4 wins **30.1/19.9** —
+  the strongest single buy-policy edge found. The combined `digest`
+  agent (cooldown + patience + cash valuation) wins 28.9/21.1 with the
+  lowest bust rate. In an all-digest field, busts even out
+  (15/16/6/7 by seat) and bankruptcy drops to 46%, but seat 1's *win*
+  deficit persists (11% vs ~35%): even optimally digested, the round-1
+  forced overbid costs irrecoverable tempo. That residual is now a
+  measured, rules-rooted first-mover tax, not an agent artifact.
 - **Fixed-rate loans (tested: each marker pays its space's printed rate
   forever) are catastrophic**: early credit becomes strictly cheap, the
   table races to drain the track, and games collapse to 2 rounds with

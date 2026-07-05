@@ -67,6 +67,14 @@ class HeuristicParams:
     debt_cooldown: float = 0.0     # reduce loan demand by this x our excess
                                    # loans over the rival average (coast after
                                    # an overbid instead of keeping pace)
+    patience: float = 0.0          # weight on the option to buy a card
+                                   # cheaper after it slides down a row
+                                   # (~subjective P(nobody snipes it first))
+    cash_reserve_value: float = 0.0  # marginal value of a banked dollar as a
+                                     # fraction of the borrowing premium it
+                                     # displaces next round (a dollar held is
+                                     # a dollar not re-borrowed at the
+                                     # ratcheted rate)
 
 
 class HeuristicAgent(Agent):
@@ -244,22 +252,35 @@ class HeuristicAgent(Agent):
         per_loan = max(0.5, self._lifetime_rate(s) - cfg.money_per_loan)
         return extra * per_loan <= self.p.turn_order_value * rivals
 
-    def _lifetime_rate(self, s):
-        """Projected interest one NEW loan accrues from now to game end.
-        Fixed-rate: today's rate, every remaining round. Adjustable (doc):
-        rates never fall, and cleanup expiry alone guarantees a known
-        floor each future round."""
+    def _lifetime_rate(self, s, from_round=None):
+        """Projected interest one NEW loan accrues from `from_round` (default
+        now) to game end. Fixed-rate: today's rate, every remaining round.
+        Adjustable (doc): rates never fall, and cleanup expiry alone
+        guarantees a known floor each future round."""
         cfg = s.config
         rate = s.current_rate()
-        remaining = cfg.max_rounds - s.round + 1
+        start = s.round if from_round is None else from_round
+        remaining = cfg.max_rounds - start + 1
         if cfg.fixed_rate_loans:
             return rate * remaining
         total = 0
-        for k in range(s.round, cfg.max_rounds + 1):
+        for k in range(start, cfg.max_rounds + 1):
             i = min(k - 2, len(cfg.loan_row_rates) - 1)
             floor = cfg.loan_row_rates[i] if k >= 2 else 0
             total += max(rate, floor)
         return total
+
+    def _cash_mult(self, s, pid):
+        """Effective value of a dollar spent this round. Above face value
+        when we'd plausibly re-borrow next round: a banked dollar displaces
+        a tenth of a loan priced at next round's lifetime interest. (This
+        is where turn-order/rival-bid expectations enter, via the projected
+        rate path.)"""
+        if self.p.cash_reserve_value <= 0 or s.round >= s.config.max_rounds:
+            return 1.0
+        nxt = self._lifetime_rate(s, from_round=s.round + 1)
+        prem = max(0.0, nxt / s.config.money_per_loan - 1.0)
+        return 1.0 + self.p.cash_reserve_value * prem
 
     # -- phase 2 -------------------------------------------------------
     def _interest_due(self, s, pid):
@@ -353,6 +374,18 @@ class HeuristicAgent(Agent):
                     * self.p.vp_weight)
         return val
 
+    def _wait_net(self, s, card, r, money_on, value_now):
+        """Net value of buying this card NEXT round instead: one income
+        round less, but a row cheaper (or +$1 stale money on row 1)."""
+        cfg = s.config
+        if r == 0:
+            cost_next = card.cost * cfg.row_cost_multipliers[0]
+            money_next = money_on + cfg.stale_card_money
+        else:
+            cost_next = card.cost * cfg.row_cost_multipliers[r - 1]
+            money_next = money_on
+        return (value_now - card.income) - cost_next + money_next
+
     def _drowning(self, s, pid):
         """Even hoarding every dollar, would we default within two rounds
         without new loans? (Then deleveraging outranks building.)"""
@@ -379,6 +412,7 @@ class HeuristicAgent(Agent):
         if ("repay",) in actions and self._drowning(s, pid):
             return ("repay",)   # lifeline: survival outranks profit
         reserve = self._reserve(s, pid)
+        cash_mult = self._cash_mult(s, pid)
         best, best_net = PASS, self.p.buy_threshold
         for a in actions:
             if a[0] == "repay":
@@ -398,8 +432,17 @@ class HeuristicAgent(Agent):
                 cost = card.cost * s.config.row_cost_multipliers[r]
                 if player.money + money_on - cost < reserve:
                     continue
-                net = (self._placement_value(s, pid, card, city_idx)
-                       - cost + money_on)
+                value = self._placement_value(s, pid, card, city_idx)
+                # dollars leaving the wallet are priced above face value
+                # when they'd have to be re-borrowed next round
+                out = max(0, cost - money_on)
+                net = value - cost + money_on - (cash_mult - 1.0) * out
+                if self.p.patience > 0 and s.round < s.config.max_rounds:
+                    # option value of waiting: same card one row cheaper
+                    # next round (row-1 cards stay put and accrue $1)
+                    wait = self._wait_net(s, card, r, money_on, value)
+                    if wait > net:
+                        net -= self.p.patience * (wait - net)
             else:
                 continue
             if net > best_net:
@@ -531,6 +574,14 @@ AGENT_REGISTRY = {
         HeuristicParams(demand_aware=True, turn_order_value=2.0,
                         kill_instinct=1.0, endgame_awareness=1.0,
                         debt_cooldown=1.0), seed=seed),
+    # the full overbid-digestion kit: coast on debt excess, value the
+    # slide-down option on cards, and price spent cash at the borrowing it
+    # displaces next round. Strongest agent found so far.
+    "digest": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+                        kill_instinct=1.0, endgame_awareness=1.0,
+                        debt_cooldown=1.0, patience=0.5,
+                        cash_reserve_value=0.4), seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }
