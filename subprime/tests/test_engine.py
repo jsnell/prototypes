@@ -366,6 +366,25 @@ class TestRuleVariants(unittest.TestCase):
         apply_action(s, ("bid", 1))
         self.assertEqual(s.bids[decision_player(s)], 1)  # lowest is asked
 
+    def test_fixed_rate_loans(self):
+        cfg = CFG.with_changes(fixed_rate_loans=True)
+        s = new_game(cfg, 4, seed=1)
+        p = s.players[0]
+        # starting loan came from row 1 (rate 1)
+        self.assertEqual(p.loan_rates, [1])
+        engine._grant_loans(s, p, 7)     # spans into row 2
+        # rate ratchets for the table, but this player's due is the sum of
+        # the printed rates their markers came from
+        self.assertEqual(engine.interest_due(s, p), sum(p.loan_rates))
+        self.assertLess(engine.interest_due(s, p),
+                        s.current_rate() * p.loans)  # cheaper than repriced
+        # adjustable (doc) model reprices everything to the visible rate
+        s2 = new_game(CFG, 4, seed=1)
+        p2 = s2.players[0]
+        engine._grant_loans(s2, p2, 7)
+        self.assertEqual(engine.interest_due(s2, p2),
+                         s2.current_rate() * p2.loans)
+
     def test_loan_repayment_action(self):
         cfg = CFG.with_changes(loan_repayment_cost=12)
         s = new_game(cfg, 3, seed=3)

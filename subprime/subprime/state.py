@@ -4,7 +4,7 @@ GameState, so the engine can be driven as pure functions
 rolled out by search-based agents."""
 
 import random
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 
 from .cards import BUILDING_TYPES
 
@@ -59,11 +59,15 @@ class PlayerState:
     income_earned: int = 0
     subsidy_earned: int = 0
     loans_taken: int = 0
+    # rate printed on the space each held loan's marker came from (used by
+    # the fixed_rate_loans variant; len == loans)
+    loan_rates: list = field(default_factory=list)
 
     def copy(self):
         return PlayerState(self.pid, self.money, self.loans, self.bankrupt,
                            self.vp, self.interest_paid, self.income_earned,
-                           self.subsidy_earned, self.loans_taken)
+                           self.subsidy_earned, self.loans_taken,
+                           list(self.loan_rates))
 
 
 class GameState:

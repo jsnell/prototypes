@@ -107,14 +107,15 @@ class HeuristicAgent(Agent):
         everyone has taken theirs, ratcheted each further round by the
         cleanup-expiry floor and by rivals borrowing at the same pace.
         Income is held at current printed income and cash is retained
-        (no purchases) — the option to hunker down and survive."""
+        (no purchases) — the option to hunker down and survive. Under
+        fixed-rate loans, existing debt does not reprice."""
         p = s.players[pid]
         cfg = s.config
         others = self._expected_others_take(s, pid)
         income = self._printed_income(s, pid)
         cash = p.money + d * cfg.money_per_loan + income
-        loans = p.loans + d
         taken = others + d
+        take_rate = s.rate_after(taken)          # new loans priced near here
         horizon = max(1, self.p.survival_horizon)
         for step in range(horizon):
             k = s.round + step                   # round being projected
@@ -124,7 +125,9 @@ class HeuristicAgent(Agent):
             if k >= 2:                           # expiry floor is public info
                 i = min(k - 2, len(cfg.loan_row_rates) - 1)
                 rate = max(rate, cfg.loan_row_rates[i])
-            due = rate * loans if cfg.interest_per_loan else rate
+            due = engine.interest_due(s, p, rate=rate)
+            if cfg.interest_per_loan:
+                due += d * (take_rate if cfg.fixed_rate_loans else rate)
             if step > 0:
                 cash += income
             cash -= due
@@ -156,13 +159,13 @@ class HeuristicAgent(Agent):
                 if q.pid == pid or q.bankrupt:
                     continue
                 q_bid = s.bids.get(q.pid, 0)
-                q_loans = q.loans + q_bid
                 q_cash = (q.money + q_bid * s.config.money_per_loan
                           + self._printed_income(s, q.pid))
                 for my_d in range(0, max_bid + 1):
                     rate = s.rate_after(others + my_d)
-                    due = (rate * q_loans if s.config.interest_per_loan
-                           else rate)
+                    due = engine.interest_due(s, q, rate=rate)
+                    if s.config.interest_per_loan:
+                        due += q_bid * rate
                     if due > q_cash:
                         # they default; do we like the world after that?
                         if self._am_leading(s, pid, exclude=q.pid):
@@ -233,11 +236,15 @@ class HeuristicAgent(Agent):
         return extra * per_loan <= self.p.turn_order_value * rivals
 
     def _lifetime_rate(self, s):
-        """Projected interest one loan accrues from now to game end: rates
-        never fall, and cleanup expiry alone guarantees a known floor each
-        future round."""
+        """Projected interest one NEW loan accrues from now to game end.
+        Fixed-rate: today's rate, every remaining round. Adjustable (doc):
+        rates never fall, and cleanup expiry alone guarantees a known
+        floor each future round."""
         cfg = s.config
         rate = s.current_rate()
+        remaining = cfg.max_rounds - s.round + 1
+        if cfg.fixed_rate_loans:
+            return rate * remaining
         total = 0
         for k in range(s.round, cfg.max_rounds + 1):
             i = min(k - 2, len(cfg.loan_row_rates) - 1)
@@ -247,9 +254,7 @@ class HeuristicAgent(Agent):
 
     # -- phase 2 -------------------------------------------------------
     def _interest_due(self, s, pid):
-        p = s.players[pid]
-        rate = s.current_rate()
-        return rate * p.loans if s.config.interest_per_loan else rate
+        return engine.interest_due(s, s.players[pid])
 
     def _printed_income(self, s, pid):
         return sum(b.card.income
@@ -354,7 +359,7 @@ class HeuristicAgent(Agent):
             if k >= 2:
                 i = min(k - 2, len(cfg.loan_row_rates) - 1)
                 r_k = max(rate, cfg.loan_row_rates[i])
-            cash -= r_k * p.loans if cfg.interest_per_loan else r_k
+            cash -= engine.interest_due(s, p, rate=r_k)
             if cash < 0:
                 return True
             cash += income
@@ -368,12 +373,16 @@ class HeuristicAgent(Agent):
         best, best_net = PASS, self.p.buy_threshold
         for a in actions:
             if a[0] == "repay":
-                # deleveraging: pay now, stop bleeding the loan's remaining
-                # lifetime interest
+                # deleveraging: pay now, stop bleeding the remaining
+                # lifetime interest of the dearest held loan
                 cost = s.config.loan_repayment_cost
                 if player.money - cost < reserve:
                     continue
-                net = self._lifetime_rate(s) - cost
+                if s.config.fixed_rate_loans and player.loan_rates:
+                    remaining = s.config.max_rounds - s.round + 1
+                    net = max(player.loan_rates) * remaining - cost
+                else:
+                    net = self._lifetime_rate(s) - cost
             elif a[0] == "buy":
                 _, r, c, city_idx = a
                 card, money_on = s.display[r][c]

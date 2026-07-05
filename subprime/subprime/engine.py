@@ -55,8 +55,8 @@ def new_game(config, n_players, seed=None, collect_events=False):
     # like bids, starting loans are honored even if markers run out)
     for pid in range(n_players):
         p = PlayerState(pid, money=config.starting_money)
-        _take_loan_markers(s, config.starting_loans)
-        p.loans += config.starting_loans
+        _grant_loans(s, p, config.starting_loans)
+        p.loans_taken = 0   # starting loans don't count as taken
         s.players.append(p)
 
     # cities
@@ -81,17 +81,42 @@ def new_game(config, n_players, seed=None, collect_events=False):
 
 def _take_loan_markers(s, wanted):
     """Remove up to `wanted` markers from the track, cheapest spaces first.
-    Returns how many were actually there. Loans themselves are NOT limited
-    by marker supply (designer ruling): the markers track how deep into the
-    credit supply the table is, and an empty track ends the game."""
-    taken = 0
+    Returns the printed rates of the spaces they came from. Loans are NOT
+    limited by marker supply (designer ruling): the markers track how deep
+    into the credit supply the table is, and an empty track ends the game."""
+    rates = []
     for i, has_marker in enumerate(s.loan_markers):
-        if taken == wanted:
+        if len(rates) == wanted:
             break
         if has_marker:
             s.loan_markers[i] = False
-            taken += 1
-    return taken
+            rates.append(s.loan_rates[i])
+    return rates
+
+
+def _grant_loans(s, player, count):
+    """Give `count` loans: markers come off the track while they last;
+    loans beyond the supply are booked at the then-current rate."""
+    rates = _take_loan_markers(s, count)
+    while len(rates) < count:
+        rates.append(max(s.current_rate(), 1))
+    player.loans += count
+    player.loans_taken += count
+    player.loan_rates.extend(rates)
+    return len(rates)
+
+
+def interest_due(s, player, rate=None):
+    """This round's interest for a player. `rate` overrides the current
+    visible rate (for agents projecting future rounds). Under
+    fixed_rate_loans, existing debt keeps the rate it was taken at and
+    does not reprice."""
+    r = s.current_rate() if rate is None else rate
+    if not s.config.interest_per_loan:
+        return r
+    if s.config.fixed_rate_loans:
+        return sum(player.loan_rates)
+    return r * player.loans
 
 
 # ------------------------------------------------------- decision layer
@@ -185,6 +210,7 @@ def apply_action(s, action):
             p = s.players[pid]
             p.money -= s.config.loan_repayment_cost
             p.loans -= 1
+            p.loan_rates.remove(max(p.loan_rates))  # retire the dearest loan
             s.log(f"P{pid} repays a loan for ${s.config.loan_repayment_cost} "
                   f"({p.loans} left)")
         else:
@@ -273,10 +299,8 @@ def _pass_out(s, pid, bid):
     track ends the game in phase 4."""
     slot = max(i for i, v in enumerate(s.next_order) if v is None)
     s.next_order[slot] = pid
-    taken = _take_loan_markers(s, bid)
     player = s.players[pid]
-    player.loans += bid
-    player.loans_taken += bid
+    taken = _grant_loans(s, player, bid)
     player.money += bid * s.config.money_per_loan
     dry = f" (track dry: only {taken} markers removed)" if taken < bid else ""
     s.log(f"P{pid} passes at bid {bid}: +{bid} loans, "
@@ -379,7 +403,7 @@ def pay_interest(s):
     for p in s.players:
         if p.bankrupt:
             continue
-        due = rate * p.loans if s.config.interest_per_loan else rate
+        due = interest_due(s, p)
         paid = min(due, p.money)
         p.money -= paid
         p.interest_paid += paid

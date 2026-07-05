@@ -195,6 +195,28 @@ tested by simulation instead of argued about.
   Caveat: repayment shortens tense games to ~3.3 rounds and pushes
   bankruptcy to 100%; pairing the $20 valve with slightly softer
   pricing is the next tuning sweep.
+- **Why "the counts should level out" doesn't happen** (the natural
+  objection to the sticky bag): measured trajectories show (1) rivals
+  never catch up on loans (+3.2 gap at bust time) because loan demand is
+  derived from the display-capped market — everyone builds ~3/round
+  regardless, so rivals match the overbidder's *buildings* (lead shrinks
+  1.5 → 0.9 by round 4) with 3 fewer *loans*; catch-up borrowing would
+  buy nothing. And (2) the interest is back-loaded: the doc's rule is
+  effectively an adjustable-rate mortgage — all debt reprices to the
+  current rate — so an overbid costing $3–6/round at signing costs
+  $15–19/round by the endgame (cumulative extra ≈ $31, not "a few
+  dollars"). Strikingly, busted bag-holders enter their final round with
+  the *best income at the table* (+4.7 vs average): their engine is
+  fine; the annuity simply outgrows it.
+- **Fixed-rate loans (tested: each marker pays its space's printed rate
+  forever) are catastrophic**: early credit becomes strictly cheap, the
+  table races to drain the track, and games collapse to 2 rounds with
+  huge seat unfairness — in the safe economy too. The ARM repricing is
+  load-bearing: it is the game's only throttle on early credit. It
+  cannot be removed, which is exactly why the repayment valve (pay off
+  the back-loaded annuity mid-game, at a stiff price) is the right
+  shape of fix for bag dynamism. `fixed_rate_loans` stays as a knob for
+  the record.
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a

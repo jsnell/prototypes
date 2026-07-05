@@ -70,6 +70,11 @@ class GameConfig:
     loan_row_rates: tuple = (1, 2, 3, 4, 5, 6)
     interest_per_loan: bool = True   # True: pay rate * own loans. False: flat rate
                                      # per player (literal doc reading).
+    fixed_rate_loans: bool = False   # variant: each loan pays the rate printed
+                                     # on the space its marker came from,
+                                     # forever. Doc rule (False) is effectively
+                                     # adjustable-rate: all debt reprices to
+                                     # the current visible rate every round.
     base_interest_rate: int = 0      # rate when no track space is uncovered
 
     # --- card display (phase 2) ---
