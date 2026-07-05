@@ -12,8 +12,8 @@ Pure Python 3.11+, stdlib only. No dependencies to install.
 ```bash
 cd subprime  # this project directory
 
-# PLAY the game in a browser: you vs 3 AIs (then open localhost:8000)
-python3 -m subprime.web
+# PLAY the game: open webgame/index.html in any browser (no server,
+# no dependencies — the engine and AIs are ported to JS in webgame/)
 
 # watch one game with a full event log
 python3 -m subprime.cli play --agents greedy,random,greedy,random --seed 3
@@ -84,7 +84,7 @@ Paths relative to this directory; the inner `subprime/` is the Python package.
 | `subprime/agents.py` | RandomAgent, HeuristicAgent (parameterized), MonteCarloAgent |
 | `subprime/simulate.py` | batch runner, metrics, config sweeps |
 | `subprime/cli.py` | `play` / `sim` / `sweep` commands |
-| `subprime/web.py` + `webui.html` | browser game: 1 human vs 3 agents (stdlib HTTP server) |
+| `webgame/` | static browser game, 1 human vs 3 agents: JS port of engine + heuristic agents (`node webgame/test.js` checks it against the Python suite's invariants) |
 | `tests/` | rule unit tests + full-game smoke tests |
 | `DESIGN_NOTES.md` | every gap/ambiguity in the doc → the config knob that fills it |
 | `docs/original-design.md` | the design doc, as received |

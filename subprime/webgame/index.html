@@ -26,13 +26,14 @@
   button:hover:not(:disabled) { border-color: #6b7690; }
   button:disabled { opacity: .4; cursor: default; }
   button.primary { background: #2c4a8a; border-color: #3d62b3; }
+  select { background: var(--panel2); color: var(--text);
+           border: 1px solid var(--line); border-radius: 6px; padding: 5px; }
   main { display: grid; grid-template-columns: 260px 1fr 300px; gap: 12px;
          padding: 12px 16px; align-items: start; }
   .panel { background: var(--panel); border: 1px solid var(--line);
            border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
   .panel h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
               letter-spacing: 1px; color: var(--dim); }
-  /* loan track */
   .lrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
   .lrow .r { width: 46px; color: var(--dim); font-size: 12px; }
   .lrow .bar { flex: 1; height: 12px; background: #3a2a2a; border-radius: 3px;
@@ -40,26 +41,24 @@
   .lrow .fill { height: 100%; background: #7a5cd6; }
   .lrow.expired .bar { opacity: .25; }
   .lrow .n { width: 42px; text-align: right; font-size: 12px; color: var(--dim); }
-  /* players */
   .player { border-left: 4px solid; border-radius: 4px; background: var(--panel2);
             padding: 6px 9px; margin: 6px 0; }
-  .player .nm { font-weight: 600; display: flex; justify-content: space-between; }
+  .player .nm { font-weight: 600; display: flex; justify-content: space-between;
+                gap: 6px; flex-wrap: wrap; }
   .player .st { color: var(--dim); font-size: 12.5px; }
   .player.dead { opacity: .45; }
   .player .tag { font-size: 11px; padding: 1px 6px; border-radius: 8px;
                  background: #46340f; color: #ecc35a; }
   .player .tag.dead { background: #4a1f1f; color: #ff9a9a; }
   .player .tag.turn { background: #1f3a25; color: #7ade8f; }
-  /* bid track */
   .bidtrack { display: flex; flex-wrap: wrap; gap: 5px; }
   .bspace { width: 42px; height: 42px; border: 1px dashed var(--line);
             border-radius: 6px; display: flex; flex-direction: column;
             align-items: center; justify-content: center; font-size: 12px;
-            color: var(--dim); position: relative; }
+            color: var(--dim); }
   .bspace.legal { border-style: solid; border-color: #4f8ef7; cursor: pointer; }
   .bspace.legal:hover { background: #22304a; }
   .bspace .dot { width: 14px; height: 14px; border-radius: 50%; }
-  /* market */
   .mrow { display: flex; gap: 8px; margin: 6px 0; align-items: center; }
   .mrow .rlabel { width: 58px; color: var(--dim); font-size: 12px; }
   .card { width: 86px; border-radius: 7px; padding: 6px 8px; cursor: default;
@@ -77,7 +76,6 @@
   .cash { position: absolute; top: -7px; right: -7px; background: #ecc35a;
           color: #201703; font-size: 11px; font-weight: 800; padding: 1px 6px;
           border-radius: 9px; }
-  /* cities */
   .cities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
   .city { background: var(--panel2); border-radius: 8px; padding: 8px; }
   .city h3 { margin: 0 0 6px; font-size: 12.5px; color: var(--dim); }
@@ -87,15 +85,13 @@
               display: flex; gap: 6px; align-items: center; }
   .sect.res .hd b { color: var(--res); } .sect.com .hd b { color: var(--com); }
   .sect.ind .hd b { color: var(--ind); }
-  .sect.target { border-color: #4f8ef7; cursor: pointer;
-                 background: #22304a; }
+  .sect.target { border-color: #4f8ef7; cursor: pointer; background: #22304a; }
   .sect.target:hover { background: #2a3c5e; }
   .b { display: inline-flex; align-items: center; gap: 3px; font-size: 11px;
        border-radius: 4px; padding: 1px 5px; margin: 2px 2px 0 0;
        background: #171a22; }
   .b .own { width: 9px; height: 9px; border-radius: 50%; }
   .sub { font-size: 12px; }
-  /* actions + log */
   #actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
              min-height: 38px; }
   #hint { color: var(--dim); }
@@ -154,29 +150,50 @@
   <button class="primary" onclick="newGame()">Play again</button>
 </div></div>
 
+<script src="engine.js"></script>
+<script src="agents.js"></script>
 <script>
+const E = SubprimeEngine, A = SubprimeAgents;
 const COLORS = ['var(--p0)','var(--p1)','var(--p2)','var(--p3)'];
-const TYPES = {residential:'res', commercial:'com', industrial:'ind'};
-let S = null, sel = null;
+const CSS = {residential:'res', commercial:'com', industrial:'ind'};
+const AI_NAMES = ['Bear & Stearns', 'Lehman Sisters', 'Northern Rock'];
+const HUMAN = 0;
+let G = null;        // {state, agents, names, cursor}
+let sel = null;
 
-async function api(path, opts) {
-  const r = await fetch(path, opts);
-  const j = await r.json();
-  if (!r.ok) { logLine('⚠ ' + (j.error || r.status)); return null; }
-  return j;
-}
-async function newGame() {
-  const opps = document.getElementById('opps').value;
-  const steep = document.getElementById('steep').checked ? 1 : 0;
+function newGame() {
+  const opps = document.getElementById('opps').value.split(',');
+  const cfg = E.defaultConfig();
+  if (document.getElementById('steep').checked) {
+    cfg.loanRowRates = [1, 2, 3, 5, 7, 9];
+  }
+  const seed = (Math.random() * 0xffffffff) >>> 0;
+  const state = E.newGame(cfg, 1 + opps.length, seed, true);
+  const agents = [null, ...opps.map((n, i) => A.REGISTRY[n](seed + 1 + i))];
+  const names = ['You', ...opps.map((n, i) =>
+    `${AI_NAMES[i % AI_NAMES.length]} (${n})`)];
   document.getElementById('log').innerHTML = '';
-  const j = await api(`/api/new?agents=${opps}&steep=${steep}`, {method:'POST'});
-  if (j) { S = j; sel = null; render(); }
+  G = {state, agents, names, cursor: 0};
+  sel = null;
+  runAgents();
+  render();
 }
-async function act(a) {
-  const j = await api('/api/act', {method:'POST',
-    headers:{'Content-Type':'application/json'},
-    body: JSON.stringify({action: a})});
-  if (j) { S = j; sel = null; render(); }
+
+function runAgents() {
+  const s = G.state;
+  while (s.phase !== 'over' && E.decisionPlayer(s) !== HUMAN) {
+    const pid = E.decisionPlayer(s);
+    E.applyAction(s, G.agents[pid].act(s, pid, E.legalActions(s)));
+  }
+}
+
+function act(action) {
+  try {
+    E.applyAction(G.state, action);
+  } catch (e) { logLine('⚠ ' + e.message); return; }
+  sel = null;
+  runAgents();
+  render();
 }
 
 function logLine(t) {
@@ -186,92 +203,109 @@ function logLine(t) {
   if (t.includes('P0')) d.className = 'you';
   el.prepend(d);
 }
-function esc(s){ return String(s).replace(/[&<>]/g,
-  c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+const esc = (x) => String(x).replace(/[&<>]/g,
+  c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
 
-function cardHTML(c, cls='', extra='') {
-  if (!c) return `<div class="card empty"></div>`;
-  const money = c.money ? `<span class="cash">$${c.money}</span>` : '';
-  const pr = c.price !== undefined ? `$${c.price}` : `$${c.cost}`;
-  return `<div class="card ${TYPES[c.type]} ${cls}" ${extra}>${money}
-    <div class="t">${c.type.slice(0,3)}</div>
-    <div class="pr">${pr}</div>
-    <div class="inc">+$${c.income}/rd</div></div>`;
+function humanTurn() {
+  return G.state.phase !== 'over' && E.decisionPlayer(G.state) === HUMAN;
+}
+function legal() { return humanTurn() ? E.legalActions(G.state) : []; }
+
+function cardHTML(cell, price, cls = '', extra = '') {
+  if (!cell) return `<div class="card empty"></div>`;
+  const money = cell.money ? `<span class="cash">$${cell.money}</span>` : '';
+  return `<div class="card ${CSS[cell.card.type]} ${cls}" ${extra}>${money}
+    <div class="t">${cell.card.type.slice(0,3)}</div>
+    <div class="pr">$${price}</div>
+    <div class="inc">+$${cell.card.income}/rd</div></div>`;
 }
 
 function render() {
-  if (!S) return;
-  (S.events || []).forEach(logLine);
-  document.getElementById('round').textContent = `${S.round}/${S.maxRounds}`;
-  document.getElementById('rate').textContent = '$' + S.rate +
-    (S.interestPerLoan ? '/loan' : '');
-  document.getElementById('markers').textContent = S.markersLeft;
-  document.getElementById('phase').textContent = 'phase: ' + S.phase;
+  const s = G.state;
+  s.events.slice(G.cursor).forEach(logLine);
+  G.cursor = s.events.length;
+
+  document.getElementById('round').textContent = `${s.round}/${s.cfg.maxRounds}`;
+  document.getElementById('rate').textContent =
+    '$' + E.currentRate(s) + (s.cfg.interestPerLoan ? '/loan' : '');
+  document.getElementById('markers').textContent = E.markersLeft(s);
+  document.getElementById('phase').textContent = 'phase: ' + s.phase;
 
   // players
-  const order = S.turnOrder || [];
-  document.getElementById('players').innerHTML = S.players.map((p, i) => {
-    const due = S.interestPerLoan ? S.rate * p.loans : S.rate;
-    const pos = order.indexOf(i);
+  const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
+  document.getElementById('players').innerHTML = s.players.map((p, i) => {
+    const due = E.interestDue(s, p);
+    const income = s.cities.reduce((n, c) => n + E.TYPES.reduce((m, t) =>
+      m + c[t].filter(b => b.owner === i)
+              .reduce((k, b) => k + b.card.income, 0), 0), 0);
+    const bld = s.cities.reduce((n, c) => n + E.ownedCount(c, i), 0);
+    const pos = s.turnOrder.indexOf(i);
     const tags = [];
     if (p.bankrupt) tags.push('<span class="tag dead">BANKRUPT</span>');
-    else if (S.decisionPlayer === i) tags.push('<span class="tag turn">acting</span>');
-    if (p.bailedOut) tags.push('<span class="tag">bailed out</span>');
+    else if (dp === i) tags.push('<span class="tag turn">acting</span>');
+    if (s.bailedOut.has(i)) tags.push('<span class="tag">bailed out</span>');
     return `<div class="player ${p.bankrupt?'dead':''}"
       style="border-color:${COLORS[i]}">
-      <div class="nm"><span>${esc(p.name)}</span><span>${tags.join(' ')}</span></div>
+      <div class="nm"><span>${esc(G.names[i])}</span><span>${tags.join(' ')}</span></div>
       <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
-        ${p.buildings} bldgs (+$${p.income}/rd)
-        ${pos >= 0 ? ' · turn ' + (pos+1) : ''}</div></div>`;
+        ${bld} bldgs (+$${income}/rd)${pos >= 0 ? ' · turn ' + (pos+1) : ''}
+      </div></div>`;
   }).join('');
 
   // loan track
-  document.getElementById('ltrack').innerHTML = S.loanTrack.map((r, i) =>
-    `<div class="lrow ${r.left===0?'expired':''}">
-       <div class="r">rate $${r.rate}</div>
-       <div class="bar"><div class="fill" style="width:${100*r.left/r.size}%"></div></div>
-       <div class="n">${r.left}/${r.size}</div></div>`).join('');
+  let idx = 0;
+  document.getElementById('ltrack').innerHTML =
+    s.cfg.loanRowSizes.map((size, i) => {
+      let left = 0;
+      for (let k = 0; k < size; k++) if (s.loanMarkers[idx + k]) left++;
+      idx += size;
+      return `<div class="lrow ${left===0?'expired':''}">
+        <div class="r">rate $${s.cfg.loanRowRates[i]}</div>
+        <div class="bar"><div class="fill" style="width:${100*left/size}%"></div></div>
+        <div class="n">${left}/${size}</div></div>`;
+    }).join('');
 
-  renderBids();
-  renderMarket();
-  renderCities();
-  renderActions();
-  renderOver();
+  renderBids(); renderMarket(); renderCities(); renderActions(); renderOver();
 }
 
 function renderBids() {
+  const s = G.state;
   const el = document.getElementById('btrack');
-  const inBid = S.phase === 'bid_initial' || S.phase === 'bid_raise';
+  const inBid = s.phase === 'bid_initial' || s.phase === 'bid_raise';
   document.getElementById('bidpanel').style.opacity = inBid ? 1 : .45;
-  const legalBids = new Set(S.legal.filter(a => a[0]==='bid').map(a => a[1]));
+  const legalBids = new Set(legal().filter(a => a[0]==='bid').map(a => a[1]));
   const occ = {};
-  Object.entries(S.bids).forEach(([pid, v]) => occ[v] = +pid);
-  el.innerHTML = S.bidSpaces.map(v => {
+  Object.keys(s.bids).forEach(pid => occ[s.bids[pid]] = Number(pid));
+  el.innerHTML = s.cfg.bidSpaces.map(v => {
     const o = occ[v];
-    const legal = S.humanTurn && legalBids.has(v);
+    const isLegal = legalBids.has(v);
     const dot = o !== undefined ?
       `<span class="dot" style="background:${COLORS[o]}"></span>` : '';
-    return `<div class="bspace ${legal?'legal':''}" data-bid="${v}">
+    return `<div class="bspace ${isLegal?'legal':''}" data-bid="${v}">
       <span>${v}</span>${dot}</div>`;
   }).join('');
   el.querySelectorAll('.bspace.legal').forEach(b =>
-    b.onclick = () => act(['bid', +b.dataset.bid]));
+    b.onclick = () => act(['bid', Number(b.dataset.bid)]));
 }
 
 function renderMarket() {
+  const s = G.state;
   const buyable = {};
-  S.legal.filter(a => a[0]==='buy').forEach(a => {
+  legal().filter(a => a[0]==='buy').forEach(a => {
     (buyable[`${a[1]},${a[2]}`] ||= []).push(a[3]);
   });
-  document.getElementById('market').innerHTML = S.display.map((row, r) =>
-    `<div class="mrow"><div class="rlabel">row ${r+1} ×${S.rowMultipliers[r]}</div>
-     ${row.map((c, ci) => {
-       const key = `${r},${ci}`;
-       const can = S.humanTurn && buyable[key];
-       const isSel = sel && sel.key === key;
-       return cardHTML(c, (can?'buyable ':'') + (isSel?'sel':''),
-                       can ? `data-key="${key}"` : '');
-     }).join('')}</div>`).reverse().join('');
+  document.getElementById('market').innerHTML = s.display.map((row, r) => {
+    const mult = s.cfg.rowCostMultipliers[r];
+    return `<div class="mrow"><div class="rlabel">row ${r+1} ×${mult}</div>
+      ${row.map((cell, ci) => {
+        const key = `${r},${ci}`;
+        const can = buyable[key];
+        const isSel = sel && sel.key === key;
+        return cardHTML(cell, cell ? cell.card.cost * mult : 0,
+          (can ? 'buyable ' : '') + (isSel ? 'sel' : ''),
+          can ? `data-key="${key}"` : '');
+      }).join('')}</div>`;
+  }).reverse().join('');
   document.querySelectorAll('.card.buyable').forEach(el => {
     el.onclick = () => {
       const key = el.dataset.key;
@@ -283,12 +317,12 @@ function renderMarket() {
 }
 
 function renderCities() {
-  const stateSubs = new Set((S.stateSubsidies||[]).map(x => x.join(',')));
-  document.getElementById('cities').innerHTML = S.cities.map((city, ci) => {
-    const sects = Object.keys(TYPES).map(t => {
+  const s = G.state;
+  document.getElementById('cities').innerHTML = s.cities.map((city, ci) => {
+    const sects = E.TYPES.map(t => {
       const marks = [];
-      if (stateSubs.has(`${ci},${t}`)) marks.push('★');
-      const cs = (S.citySubsidies||{})[`${ci},${t}`];
+      if (s.stateSubsidies.has(E.key(ci, t))) marks.push('★');
+      const cs = s.citySubsidies[E.key(ci, t)];
       if (cs !== undefined)
         marks.push(`<span style="color:${COLORS[cs]}">●</span>`);
       const target = sel && sel.cities.includes(ci);
@@ -296,7 +330,7 @@ function renderCities() {
         `<span class="b"><span class="own" style="background:${
           b.owner===null?'#555':COLORS[b.owner]}"></span>$${b.card.income}</span>`
       ).join('');
-      return `<div class="sect ${TYPES[t]} ${target?'target':''}"
+      return `<div class="sect ${CSS[t]} ${target?'target':''}"
         data-city="${ci}"><div class="hd"><b>${t.slice(0,3)}</b>
         <span>${marks.join(' ')}</span></div>${bs}</div>`;
     }).join('');
@@ -304,18 +338,21 @@ function renderCities() {
   }).join('');
   if (sel) {
     document.querySelectorAll('.sect.target').forEach(el => {
-      el.onclick = () => act(['buy', sel.rc[0], sel.rc[1], +el.dataset.city]);
+      el.onclick = () => act(['buy', sel.rc[0], sel.rc[1],
+                              Number(el.dataset.city)]);
     });
   }
 }
 
 function renderActions() {
+  const s = G.state;
   const el = document.getElementById('actions');
   const hint = document.getElementById('hint');
+  const acts = legal();
   el.innerHTML = ''; hint.textContent = '';
   document.getElementById('acthead').textContent =
-    S.humanTurn ? 'Your move' : (S.over ? 'Game over' : 'Waiting…');
-  if (!S.humanTurn) return;
+    humanTurn() ? 'Your move' : (s.phase === 'over' ? 'Game over' : 'Waiting…');
+  if (!humanTurn()) return;
 
   const mk = (label, action, primary) => {
     const b = document.createElement('button');
@@ -324,60 +361,57 @@ function renderActions() {
     b.onclick = () => act(action);
     el.appendChild(b);
   };
-  if (S.phase === 'bid_initial') {
+  if (s.phase === 'bid_initial') {
     hint.textContent = 'Place your bid: click a space on the bid track. ' +
-      `Each bid step = 1 loan ($${S.moneyPerLoan} now, interest forever).`;
-    if (S.legal.some(a => a[0]==='pass'))
+      `Each bid step = 1 loan ($${s.cfg.moneyPerLoan} now, interest forever).`;
+    if (acts.some(a => a[0]==='pass'))
       mk('Pass (no loans, last turn order)', ['pass']);
-  } else if (S.phase === 'bid_raise') {
+  } else if (s.phase === 'bid_raise') {
     hint.textContent = 'You hold the lowest bid: raise to a higher empty ' +
       'space, or pass to lock in your loans and turn-order spot.';
     mk('Pass — take your loans', ['pass'], true);
-  } else if (S.phase === 'buy') {
+  } else if (s.phase === 'buy') {
     hint.textContent = sel ?
       'Now click a highlighted city section to place the building.' :
       'Click a highlighted card to buy (then pick a city), or pass out of the round.';
-    if (S.legal.some(a => a[0]==='repay'))
-      mk('Repay 1 loan', ['repay']);
-    mk('Pass — done buying', ['pass'], !S.legal.some(a => a[0]==='buy'));
-  } else if (S.phase === 'bailout') {
+    if (acts.some(a => a[0]==='repay')) mk('Repay 1 loan', ['repay']);
+    mk('Pass — done buying', ['pass'], !acts.some(a => a[0]==='buy'));
+  } else if (s.phase === 'bailout') {
     hint.textContent = 'Foreclosure sale: buy one repossessed building?';
-    (S.bailoutLots || []).forEach((lot, i) => {
-      if (lot && S.legal.some(a => a[0]==='bailout_buy' && a[1]===i))
+    s.bailoutLots.forEach((lot, i) => {
+      if (lot.card && acts.some(a => a[0]==='bailout_buy' && a[1]===i)) {
         mk(`Buy ${lot.card.type.slice(0,3)} +$${lot.card.income}/rd in city ` +
-           `${lot.city+1} for $${lot.card.price}`, ['bailout_buy', i]);
+           `${lot.city+1} for $${lot.card.cost * s.cfg.bailoutPriceMultiplier}`,
+           ['bailout_buy', i]);
+      }
     });
     mk('Pass', ['pass'], true);
   }
 }
 
 function renderOver() {
+  const s = G.state;
   const ov = document.getElementById('over');
-  if (!S.over) { ov.classList.add('hidden'); return; }
+  if (s.phase !== 'over') { ov.classList.add('hidden'); return; }
   ov.classList.remove('hidden');
-  const youWon = S.winners.includes(0);
+  const youWon = s.winners.includes(HUMAN);
   document.getElementById('overtitle').textContent =
     (youWon ? '🏆 You win!' : 'Game over — ' +
-      S.winners.map(w => S.players[w].name).join(' & ') + ' wins') +
-    ` (${S.endCause})`;
-  const rows = S.players.map((p, i) => ({...p, i}))
-    .sort((a, b) => b.vp - a.vp || b.money - a.money);
+      s.winners.map(w => G.names[w]).join(' & ') + ' wins') +
+    ` (${s.endCause})`;
+  const rows = s.players.map((p, i) => ({
+    i, vp: p.vp, money: p.money, bankrupt: p.bankrupt,
+    bld: s.cities.reduce((n, c) => n + E.ownedCount(c, i), 0),
+  })).sort((a, b) => b.vp - a.vp || b.money - a.money);
   document.getElementById('scores').innerHTML =
     '<tr><th></th><th>VP</th><th>$</th><th>bldgs</th><th></th></tr>' +
-    rows.map(p => `<tr><td style="color:${COLORS[p.i]}">${esc(p.name)}</td>
-      <td><b>${p.vp}</b></td><td>${p.money}</td><td>${p.buildings}</td>
-      <td>${p.bankrupt ? '💥 bankrupt' : (S.winners.includes(p.i) ? '🏆' : '')}
+    rows.map(p => `<tr><td style="color:${COLORS[p.i]}">${esc(G.names[p.i])}</td>
+      <td><b>${p.vp}</b></td><td>${p.money}</td><td>${p.bld}</td>
+      <td>${p.bankrupt ? '💥 bankrupt' : (s.winners.includes(p.i) ? '🏆' : '')}
       </td></tr>`).join('');
 }
 
-// restore a running game on refresh; otherwise start fresh
-(async () => {
-  try {
-    const r = await fetch('/api/state');
-    if (r.ok) { S = await r.json(); render(); return; }
-  } catch (e) {}
-  newGame();
-})();
+newGame();
 </script>
 </body>
 </html>
