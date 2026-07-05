@@ -71,7 +71,15 @@ tested by simulation instead of argued about.
    `double_subsidy_bonus`, watch `subsidy_earned` and win rates)
 3. Does the game need 6 rounds, or is it decided by round 4? (sweep
    `max_rounds`, watch whether late purchases still change winners)
-4. How much is turn order actually worth — does a demand-aware agent ever
-   profit from bidding *above* its spending cap purely for position?
+4. ~~How much is turn order actually worth?~~ **Answered** (see
+   `turn_order_value` on `HeuristicParams`, swept 0/2/4/8/16/32 against a
+   volume-only control agent): in the default (safe) economy, position adds
+   ~nothing at matched loan volume — the apparent gain from bidding up is
+   just the extra borrowed cash. In a tense economy (row multipliers
+   1,2,4), valuing position at ~$2 per outlasted rival is worth ~+7pp win
+   rate over volume-only borrowing, but $4+ becomes a debt trap (37–48%
+   bankruptcy, win rate collapses). Design takeaway: the bid auction only
+   creates real turn-order tension when the price/income economy bites;
+   in a soft economy it degenerates into a pure borrow-more auction.
 5. Card economy: are cheap residentials strictly better than industrials?
    (purchases-by-type vs. win correlation from the JSON dumps)

@@ -49,6 +49,8 @@ class HeuristicParams:
     keep_reserve: float = 1.0      # 1.0 = always keep enough for interest
     demand_aware: bool = False     # cap loans by what the market can absorb
     market_share: float = 1.0      # fraction of a fair display share to chase
+    turn_order_value: float = 0.0  # $ value of outlasting one rival on the
+                                   # bid track (first pick of the display)
 
 
 class HeuristicAgent(Agent):
@@ -94,7 +96,36 @@ class HeuristicAgent(Agent):
             return ("bid", at_most[-1] if at_most else values[0])
         if current < desired and at_most:        # raise toward desired
             return ("bid", at_most[0])           # legal raises are all > current
+        if values and self._position_worth_raise(s, current, desired, values[0]):
+            return ("bid", values[0])            # pay extra purely for position
         return PASS
+
+    def _position_worth_raise(self, s, current, desired, raise_to):
+        """Is outlasting the remaining bidders worth the extra loans?
+        Marginal loan cost = expected lifetime interest minus the cash it
+        grants; only loans actually backed by markers cost anything, so
+        when the track runs dry, position comes nearly free."""
+        if self.p.turn_order_value <= 0:
+            return False
+        rivals = len(s.bids) - 1                 # bidders we could outlast
+        if rivals <= 0:
+            return False
+        cfg = s.config
+        markers = s.markers_left()
+        justified = max(current, desired)        # loans we'd take anyway
+        extra = min(raise_to, markers) - min(justified, markers)
+        if extra <= 0:
+            return True
+        # lifetime interest per extra loan: rates never fall, and cleanup
+        # expiry alone guarantees a known floor each future round
+        rate = s.current_rate()
+        lifetime = 0
+        for k in range(s.round, cfg.max_rounds + 1):
+            i = min(k - 2, len(cfg.loan_row_rates) - 1)
+            floor = cfg.loan_row_rates[i] if k >= 2 else 0
+            lifetime += max(rate, floor)
+        per_loan = max(0.5, lifetime - cfg.money_per_loan)
+        return extra * per_loan <= self.p.turn_order_value * rivals
 
     # -- phase 2 -------------------------------------------------------
     def _interest_due(self, s, pid):
@@ -268,6 +299,10 @@ AGENT_REGISTRY = {
     "sharp-lev": lambda seed: HeuristicAgent(
         HeuristicParams(loan_appetite=2.0, rate_fear=0.2, keep_reserve=0.5,
                         demand_aware=True), seed=seed),
+    # turn_order_value=2 is the empirically robust setting: higher values
+    # win only when the economy is too safe to punish the extra loans
+    "sharp-pos": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True, turn_order_value=2.0), seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }

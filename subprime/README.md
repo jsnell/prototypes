@@ -109,4 +109,7 @@ Paths relative to this directory; the inner `subprime/` is the Python package.
 | `greedy` | heuristic: bids by loan appetite vs. rate fear, buys by projected income + subsidies + endgame VPs, keeps an interest reserve |
 | `timid` | `greedy` with low loan appetite, high rate fear |
 | `leveraged` | `greedy` with high appetite, thin reserves |
+| `sharp` | demand-aware `greedy`: caps loans by what the market can absorb |
+| `sharp-lev` | `sharp` with maximum appetite — aggressive but market-aware |
+| `sharp-pos` | `sharp` that also pays for turn order ($2 per outlasted rival) |
 | `mc` / `mc-fast` | flat Monte Carlo over legal actions (slow / cheaper) |
