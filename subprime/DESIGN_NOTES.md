@@ -112,6 +112,23 @@ tested by simulation instead of argued about.
   as intended. If prudence should be viable, the levers are the
   bankruptcy-selection rule (earliest in turn order) or softer
   winner-take-all (e.g. money mattering beyond a tiebreak).
+- **Realism check on kill bids: they are not an intra-round ambush.** A
+  kill could in principle exploit commitment order — the victim passes
+  (locking loans and cash), then the killer stretches the rate with no
+  reaction possible. Measured across 300 all-shark tense games (both
+  reckless and prudent victims): the average rate escalation *after* a
+  defaulter's pass is 0.04 points, and only 3% of defaults were
+  "survivable at the rate they saw when passing, dead at the final
+  rate" — and in 100% of those a bigger defensive bid at their pass
+  moment would have survived (at rates ≤ 6, an extra loan is always
+  +cash this round). The auction structure itself protects victims: the
+  cash-poor are by construction among the lowest bidders, so they act
+  repeatedly *after* seeing the hunter's committed high bid and price it
+  into their survival check. Kill bids execute or accelerate positions
+  already doomed by the debt ratchet; they don't manufacture deaths via
+  information advantage. (A worst-case-anticipation bid check could
+  close even the residual 3%, deliberately not added at that effect
+  size.)
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a
