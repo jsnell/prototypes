@@ -51,6 +51,16 @@ class HeuristicParams:
     market_share: float = 1.0      # fraction of a fair display share to chase
     turn_order_value: float = 0.0  # $ value of outlasting one rival on the
                                    # bid track (first pick of the display)
+    survival_margin: float = 0.0   # cash cushion required after projected
+                                   # interest (very negative = ignore survival)
+    kill_instinct: float = 0.0     # >0: stretch bids to force a rival's
+                                   # default when the post-kill score favors us
+    endgame_awareness: float = 0.0 # >0: drain the loan track to end the game
+                                   # while leading the would-be scoring
+    contest_model: bool = True     # discount majority leads by rivals'
+                                   # capacity to contest them
+    denial_weight: float = 0.5     # value of breaking a rival's subsidy
+                                   # stream or city majority
 
 
 class HeuristicAgent(Agent):
@@ -80,13 +90,78 @@ class HeuristicAgent(Agent):
             return 0
         return int(-(-need // net_per_loan))   # ceil
 
+    def _expected_others_take(self, s, pid):
+        """Markers the other players will plausibly take this phase:
+        committed bids for players still on the track, a modest guess for
+        players yet to place an initial bid."""
+        take = sum(v for q, v in s.bids.items() if q != pid)
+        take += 2 * sum(1 for q in s.bid_pending if q != pid)
+        return take
+
+    def _survivable(self, s, pid, d):
+        """Could we pay this round's interest after taking d loans, at the
+        rate the track will show once everyone has taken theirs?"""
+        p = s.players[pid]
+        cfg = s.config
+        rate = s.rate_after(self._expected_others_take(s, pid) + d)
+        due = rate * (p.loans + d) if cfg.interest_per_loan else rate
+        cash = p.money + d * cfg.money_per_loan + self._printed_income(s, pid)
+        return cash - due >= self.p.survival_margin
+
+    def _am_leading(self, s, pid, exclude=None):
+        snap = engine.score_snapshot(s, exclude=exclude)
+        mine = snap.get(pid, 0)
+        rivals = [v for q, v in snap.items() if q != pid]
+        return mine >= max(rivals, default=0)
+
+    def _forcing_bid(self, s, pid, max_bid):
+        """Smallest bid that ends the game in our favor this round, either
+        by draining the loan track or by pushing the rate past what some
+        rival can pay. None if impossible or not favorable."""
+        others = self._expected_others_take(s, pid)
+        candidates = []
+
+        if self.p.endgame_awareness > 0 and self._am_leading(s, pid):
+            need = s.markers_left() - others
+            if 0 < need <= max_bid:
+                candidates.append(need)
+
+        if self.p.kill_instinct > 0:
+            for q in s.players:
+                if q.pid == pid or q.bankrupt:
+                    continue
+                q_bid = s.bids.get(q.pid, 0)
+                q_loans = q.loans + q_bid
+                q_cash = (q.money + q_bid * s.config.money_per_loan
+                          + self._printed_income(s, q.pid))
+                for my_d in range(0, max_bid + 1):
+                    rate = s.rate_after(others + my_d)
+                    due = (rate * q_loans if s.config.interest_per_loan
+                           else rate)
+                    if due > q_cash:
+                        # they default; do we like the world after that?
+                        if self._am_leading(s, pid, exclude=q.pid):
+                            candidates.append(my_d)
+                        break
+
+        good = [c for c in candidates if self._survivable(s, pid, c)]
+        return min(good) if good else None
+
     def _desired_loans(self, s, pid):
-        remaining = s.config.max_rounds - s.round + 1
+        cfg = s.config
+        max_bid = max(cfg.bid_spaces)
+        remaining = cfg.max_rounds - s.round + 1
         d = self.p.loan_appetite * remaining - self.p.rate_fear * s.current_rate()
         if self.p.demand_aware:
             d = min(d, self._demand_cap(s, pid))
-        d = min(int(round(d)), s.markers_left(), max(s.config.bid_spaces))
-        return max(d, 0)
+        d = max(0, min(int(round(d)), max_bid))
+        while d > 0 and not self._survivable(s, pid, d):
+            d -= 1
+        if self.p.kill_instinct > 0 or self.p.endgame_awareness > 0:
+            force = self._forcing_bid(s, pid, max_bid)
+            if force is not None and force > d:
+                d = force
+        return d
 
     def _bid(self, s, pid, actions, current=None):
         desired = self._desired_loans(s, pid)
@@ -96,24 +171,26 @@ class HeuristicAgent(Agent):
             return ("bid", at_most[-1] if at_most else values[0])
         if current < desired and at_most:        # raise toward desired
             return ("bid", at_most[0])           # legal raises are all > current
-        if values and self._position_worth_raise(s, current, desired, values[0]):
+        if values and self._position_worth_raise(s, pid, current, desired,
+                                                 values[0]):
             return ("bid", values[0])            # pay extra purely for position
         return PASS
 
-    def _position_worth_raise(self, s, current, desired, raise_to):
+    def _position_worth_raise(self, s, pid, current, desired, raise_to):
         """Is outlasting the remaining bidders worth the extra loans?
-        Marginal loan cost = expected lifetime interest minus the cash it
-        grants; only loans actually backed by markers cost anything, so
-        when the track runs dry, position comes nearly free."""
+        Marginal loan cost = projected lifetime interest minus the cash the
+        loan grants. (Bids are honored even when the loan track runs dry,
+        so extra loans always cost — but draining the track is itself a
+        weapon, handled by endgame_awareness, not here.)"""
         if self.p.turn_order_value <= 0:
             return False
         rivals = len(s.bids) - 1                 # bidders we could outlast
         if rivals <= 0:
             return False
+        if not self._survivable(s, pid, raise_to):
+            return False
         cfg = s.config
-        markers = s.markers_left()
-        justified = max(current, desired)        # loans we'd take anyway
-        extra = min(raise_to, markers) - min(justified, markers)
+        extra = raise_to - max(current, desired)  # beyond what we'd take anyway
         if extra <= 0:
             return True
         # lifetime interest per extra loan: rates never fall, and cleanup
@@ -144,39 +221,81 @@ class HeuristicAgent(Agent):
         need = self._interest_due(s, pid) - self._printed_income(s, pid)
         return max(0, need) * self.p.keep_reserve
 
+    def _contest_capacity(self, s, pid, typ):
+        """How many buildings of this type the strongest rival could still
+        add from the current display — the force available to fight my
+        lead. 0 when opponent modeling is off."""
+        if not self.p.contest_model:
+            return 0
+        cfg = s.config
+        prices = sorted(cell[0].cost * cfg.row_cost_multipliers[r]
+                        for r, row in enumerate(s.display)
+                        for cell in row if cell and cell[0].type == typ)
+        rich = max((q.money for q in s.players
+                    if q.pid != pid and not q.bankrupt), default=0)
+        afford = 0
+        for price in prices:                     # cheapest first
+            if rich < price:
+                break
+            rich -= price
+            afford += 1
+        return afford
+
     def _placement_value(self, s, pid, card, city_idx):
-        """Rough $ value of owning this card in this city until game end."""
+        """Rough $ value of owning this card in this city until game end,
+        including what the placement does to rivals' positions."""
         cfg = s.config
         remaining = cfg.max_rounds - s.round + 1  # income phases left, incl. now
         val = card.income * remaining
         city = s.cities[city_idx]
         mine_sec = city.owned_count(pid, card.type) + 1
 
-        # city subsidy: would I strictly lead the section?
-        others = [0]
-        seen = {}
+        rival_counts = {}
         for b in city.sections[card.type]:
             if b.owner is not None and b.owner != pid:
-                seen[b.owner] = seen.get(b.owner, 0) + 1
-        others += list(seen.values())
-        if mine_sec > max(others):
-            val += (mine_sec * cfg.single_subsidy_bonus * remaining
-                    * self.p.subsidy_weight)
+                rival_counts[b.owner] = rival_counts.get(b.owner, 0) + 1
+        by_count = sorted(rival_counts.values(), reverse=True)
+        top_rival = by_count[0] if by_count else 0
+        second_rival = by_count[1] if len(by_count) > 1 else 0
+
+        # city subsidy: a strict section lead, discounted by how easily the
+        # strongest rival could still contest it with cards on the display
+        bonus_stream = cfg.single_subsidy_bonus * remaining * self.p.subsidy_weight
+        if mine_sec > top_rival:
+            margin = mine_sec - top_rival
+            capacity = self._contest_capacity(s, pid, card.type)
+            # floor at 0.5: rivals who *could* contest usually build their
+            # own engines instead (capability is not intent)
+            hold = max(0.5, margin / (margin + capacity)) if capacity else 1.0
+            val += mine_sec * bonus_stream * hold
+
+        # denial: a tie kills a rival's city-subsidy marker (ties place no
+        # marker), so matching a strict leader is itself worth their stream
+        leader_was_strict = top_rival > max(second_rival, mine_sec - 1)
+        if leader_was_strict and mine_sec >= top_rival:
+            val += self.p.denial_weight * top_rival * bonus_stream
 
         # state subsidy: would this city be the strict-fewest for the type?
         counts = [c.type_count(card.type) for c in s.cities]
         counts[city_idx] += 1
         if counts.count(min(counts)) == 1 and counts[city_idx] == min(counts):
-            val += (mine_sec * cfg.single_subsidy_bonus * remaining
-                    * self.p.subsidy_weight * 0.5)
+            val += mine_sec * bonus_stream * 0.5
 
         # endgame VPs
         val += cfg.vp_per_building * self.p.vp_weight
         mine_city = city.owned_count(pid) + 1
-        rival = max((city.owned_count(q.pid) for q in s.players
-                     if q.pid != pid and not q.bankrupt), default=0)
-        if mine_city > rival:
+        city_counts = sorted((city.owned_count(q.pid) for q in s.players
+                              if q.pid != pid and not q.bankrupt), reverse=True)
+        top_city = city_counts[0] if city_counts else 0
+        second_city = city_counts[1] if len(city_counts) > 1 else 0
+        if mine_city > top_city:
             val += cfg.vp_city_majority * self.p.vp_weight * 0.5
+        # exceeding (not tying — city ties still score) a strict city
+        # leader strips their 3vp majority
+        if (top_city > max(second_city, mine_city - 1)
+                and mine_city > top_city):
+            val += (self.p.denial_weight * cfg.vp_city_majority
+                    * self.p.vp_weight)
         return val
 
     def _buy(self, s, pid, actions):
@@ -303,6 +422,11 @@ AGENT_REGISTRY = {
     # win only when the economy is too safe to punish the extra loans
     "sharp-pos": lambda seed: HeuristicAgent(
         HeuristicParams(demand_aware=True, turn_order_value=2.0), seed=seed),
+    # the works: demand-aware, position-buying, hunts forced bankruptcies
+    # and drains the loan track to end the game while ahead
+    "shark": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+                        kill_instinct=1.0, endgame_awareness=1.0), seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }

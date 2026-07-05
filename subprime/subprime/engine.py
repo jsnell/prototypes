@@ -51,11 +51,12 @@ def new_game(config, n_players, seed=None, collect_events=False):
             s.loan_rows.append(row_no)
     s.loan_markers = [True] * len(s.loan_rates)
 
-    # players (starting loan markers come off the track, cheapest spaces first)
+    # players (starting loan markers come off the track, cheapest spaces first;
+    # like bids, starting loans are honored even if markers run out)
     for pid in range(n_players):
         p = PlayerState(pid, money=config.starting_money)
-        taken = _take_loan_markers(s, config.starting_loans)
-        p.loans += taken
+        _take_loan_markers(s, config.starting_loans)
+        p.loans += config.starting_loans
         s.players.append(p)
 
     # cities
@@ -80,8 +81,9 @@ def new_game(config, n_players, seed=None, collect_events=False):
 
 def _take_loan_markers(s, wanted):
     """Remove up to `wanted` markers from the track, cheapest spaces first.
-    Returns how many were actually available (doc leaves the shortage case
-    open; we allow partial takes)."""
+    Returns how many were actually there. Loans themselves are NOT limited
+    by marker supply (designer ruling): the markers track how deep into the
+    credit supply the table is, and an empty track ends the game."""
     taken = 0
     for i, has_marker in enumerate(s.loan_markers):
         if taken == wanted:
@@ -239,14 +241,17 @@ def _bid_pass(s, pid):
     # last free (latest) spot on the turn order track
     slot = max(i for i, v in enumerate(s.next_order) if v is None)
     s.next_order[slot] = pid
+    # Bids are honored in full even if the loan markers run out (designer
+    # ruling): the markers just track supply, and an empty track ends the
+    # game in phase 4.
     taken = _take_loan_markers(s, bid)
     player = s.players[pid]
-    player.loans += taken
-    player.loans_taken += taken
-    player.money += taken * s.config.money_per_loan
-    short = f" (only {taken} markers left)" if taken < bid else ""
-    s.log(f"P{pid} passes at bid {bid}: +{taken} loans, "
-          f"+${taken * s.config.money_per_loan}{short}; turn order spot {slot + 1}")
+    player.loans += bid
+    player.loans_taken += bid
+    player.money += bid * s.config.money_per_loan
+    dry = f" (track dry: only {taken} markers removed)" if taken < bid else ""
+    s.log(f"P{pid} passes at bid {bid}: +{bid} loans, "
+          f"+${bid * s.config.money_per_loan}{dry}; turn order spot {slot + 1}")
 
 
 def _finish_bidding(s):
@@ -286,22 +291,21 @@ def _snapshot_market(s):
 
 # ----------------------------------------------------- phase 3: income
 
-def collect_income(s):
-    cfg = s.config
-    s.state_subsidies = set()
-    s.city_subsidies = {}
+def determine_subsidies(cities):
+    """Where the subsidy markers would go, given these city boards.
 
-    # State subsidies: per building type, the city with strictly the fewest
-    # buildings of that type (owned or not) gets a marker.
+    State subsidies: per building type, the city with strictly the fewest
+    buildings of that type (owned or not). City subsidies: per city
+    section, the player with strictly the most buildings there."""
+    state_subs = set()
     for typ in BUILDING_TYPES:
-        counts = [c.type_count(typ) for c in s.cities]
+        counts = [c.type_count(typ) for c in cities]
         low = min(counts)
         if counts.count(low) == 1:
-            s.state_subsidies.add((counts.index(low), typ))
+            state_subs.add((counts.index(low), typ))
 
-    # City subsidies: per city section, the player with strictly the most
-    # buildings gets a marker.
-    for ci, city in enumerate(s.cities):
+    city_subs = {}
+    for ci, city in enumerate(cities):
         for typ in BUILDING_TYPES:
             owned = {}
             for b in city.sections[typ]:
@@ -311,7 +315,13 @@ def collect_income(s):
                 best = max(owned.values())
                 leaders = [p for p, n in owned.items() if n == best]
                 if len(leaders) == 1:
-                    s.city_subsidies[(ci, typ)] = leaders[0]
+                    city_subs[(ci, typ)] = leaders[0]
+    return state_subs, city_subs
+
+
+def collect_income(s):
+    cfg = s.config
+    s.state_subsidies, s.city_subsidies = determine_subsidies(s.cities)
 
     # Payout.
     for ci, city in enumerate(s.cities):
@@ -471,6 +481,37 @@ def _score_and_end(s):
     s.log(f"game over ({s.end_cause}); "
           f"vp={[p.vp for p in s.players]} money={[p.money for p in s.players]} "
           f"winners={s.winners}")
+
+
+def score_snapshot(s, exclude=None):
+    """VPs per non-bankrupt player if the game ended right now, with the
+    state-subsidy markers placed as they would be this round. `exclude`
+    previews a player's bankruptcy: they are dropped and their buildings
+    count for nobody. Read-only — agents use this to decide whether
+    forcing the game to end (track drain, induced default) favors them."""
+    cfg = s.config
+    pids = [p.pid for p in s.players if not p.bankrupt and p.pid != exclude]
+    vp = {pid: 0 for pid in pids}
+    state_subs, _ = determine_subsidies(s.cities)
+
+    for city in s.cities:
+        counts = {pid: city.owned_count(pid) for pid in pids}
+        for pid, n in counts.items():
+            vp[pid] += cfg.vp_per_building * n
+        best = max(counts.values(), default=0)
+        if best > 0:
+            for pid, n in counts.items():
+                if n == best:
+                    vp[pid] += cfg.vp_city_majority
+
+    for (ci, typ) in state_subs:
+        counts = {pid: s.cities[ci].owned_count(pid, typ) for pid in pids}
+        best = max(counts.values(), default=0)
+        if best > 0:
+            for pid, n in counts.items():
+                if n == best:
+                    vp[pid] += cfg.vp_state_subsidy_per_building * n
+    return vp
 
 
 # ---------------------------------------------------- phase 5: cleanup

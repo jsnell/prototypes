@@ -12,7 +12,7 @@ tested by simulation instead of argued about.
 | **Card distribution** (100 cards: types, costs, incomes) | residential cheap/plentiful (34), commercial mid (33), industrial expensive/high-income (33); costs 1–7, incomes 1–5 | `card_distribution` — table in `config.py` |
 | **Loan track layout** (50 markers, rate numbers, rows) | 6 rows of 10/9/9/8/7/7 spaces with rates 1/2/3/4/5/6; the round marker sits beside row N in round N, so cleanup expiry removes rows below the current round | `loan_row_sizes`, `loan_row_rates` |
 | **Bid track spaces** | integers 0–12; a bid's value = loans taken | `bid_spaces` |
-| **"Running out of loan markers"** (dangling heading in the doc) | you take what's left (partial fill) and get $10 only per marker actually received | `_take_loan_markers` in `engine.py` |
+| **"Running out of loan markers"** (dangling heading in the doc) | **resolved by designer ruling**: bids are always honored in full ($10 + one loan per bid step, markers or not); the markers only track supply, and an empty track ends the game in phase 4 | `_bid_pass` in `engine.py` |
 | **Row cost multipliers** | doc says "multiplied by the card row": row 1 = ×1 (the stale/discount row that collects $1), row 3 = ×3 | `row_cost_multipliers` |
 | **Bailout auction price** ("normal purchase price") | printed cost ×1 (no row multiplier — the card isn't in the display) | `bailout_price_multiplier` |
 | **Where a bailout-bought building goes** | into the city it was repossessed from (it's "next to" that city) | `_do_bailout_buy` |
@@ -62,6 +62,25 @@ tested by simulation instead of argued about.
 - Row-1 ($1-accumulating) purchases and fresh row-3 purchases both see
   play, and all three building types get bought at roughly even rates with
   the default card table — the market mechanism itself looks healthy.
+- **Track-draining is a dominant endgame lever.** With bids honored in
+  full (designer ruling above), a player who leads the would-be scoring
+  can unilaterally end the game by bidding for the remaining markers. The
+  `shark` agent does this: against demand-aware rivals in the default
+  economy it wins 40.6% (vs 25% baseline) and converts **91% of games**
+  into deliberate loans-exhausted endings — only 6% reach round 6. Design
+  question: intended kingmaker-proofing, or does the end condition need a
+  buffer (e.g. the game ends one full round *after* the track empties)?
+- **Forced bankruptcies work as a weapon.** In a tense economy the shark
+  stretches its bid to push the rate past what a cash-poor rival can pay
+  when the post-bankruptcy scoring favors it: 9.2% of its seats are wins
+  via a rival's bust, against 16.8% self-busts.
+- **Denial is a public good in multiplayer.** First A/B of buy-phase
+  opponent modeling came out *negative*: discounting leads by rivals'
+  raw capacity to contest over-discounts (capability ≠ intent), and a
+  denial buy costs the denier alone while all rivals share the benefit.
+  With an intent floor on the contest discount (hold ≥ 0.5), the modeled
+  buyer beats a naive one by +2pp (safe) / +4pp (tense economy). Majority
+  fights are real but second-order next to engine quality.
 
 ## Questions the framework can answer next
 

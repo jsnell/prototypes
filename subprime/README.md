@@ -112,4 +112,5 @@ Paths relative to this directory; the inner `subprime/` is the Python package.
 | `sharp` | demand-aware `greedy`: caps loans by what the market can absorb |
 | `sharp-lev` | `sharp` with maximum appetite — aggressive but market-aware |
 | `sharp-pos` | `sharp` that also pays for turn order ($2 per outlasted rival) |
+| `shark` | `sharp-pos` plus survival math at projected rates, kill-bids that force a rival's default, and loan-track draining to end the game while ahead |
 | `mc` / `mc-fast` | flat Monte Carlo over legal actions (slow / cheaper) |

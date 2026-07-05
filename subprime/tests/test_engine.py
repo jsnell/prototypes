@@ -321,6 +321,53 @@ class TestBankruptcyAndScoring(unittest.TestCase):
         self.assertEqual(s.winners, [0])
 
 
+class TestLoanRuling(unittest.TestCase):
+    def test_bids_honored_when_markers_run_out(self):
+        s = fresh(3, seed=2)
+        engine._take_loan_markers(s, s.markers_left() - 2)  # 2 markers remain
+        order = list(s.turn_order)
+        p5, p6, p0 = order[-1], order[-2], order[-3]  # reverse bid order
+        apply_action(s, ("bid", 5))
+        apply_action(s, ("bid", 6))
+        apply_action(s, ("bid", 0))
+        apply_action(s, PASS)   # p0 (lowest) passes: no loans
+        apply_action(s, PASS)   # p5 passes: only 2 markers, but 5 full loans
+        apply_action(s, PASS)   # p6 passes: track already dry, 6 full loans
+        self.assertEqual(s.markers_left(), 0)
+        self.assertEqual(s.players[p5].loans, 1 + 5)
+        self.assertEqual(s.players[p5].money, 10 + 50)
+        self.assertEqual(s.players[p6].loans, 1 + 6)
+        self.assertEqual(s.players[p6].money, 10 + 60)
+        # empty track = max rate, and the game ends this round
+        self.assertEqual(s.current_rate(), 6)
+        while s.phase == P_BUY:
+            apply_action(s, PASS)
+        self.assertEqual(s.phase, P_OVER)
+        self.assertIn(s.end_cause, ("loans_exhausted", "bankruptcy"))
+
+
+class TestSnapshotsAndProjections(unittest.TestCase):
+    def test_rate_after(self):
+        s = fresh(4)                            # 4 starting markers removed
+        self.assertEqual(s.rate_after(0), s.current_rate())
+        self.assertEqual(s.rate_after(6), 1)    # row 1 exactly exhausted
+        self.assertEqual(s.rate_after(7), 2)    # first row-2 space uncovered
+        self.assertEqual(s.rate_after(999), 6)  # whole track uncovered
+
+    def test_score_snapshot_and_exclude(self):
+        s = bare_state(3)
+        for i in range(2):
+            s.cities[0].sections[RESIDENTIAL].append(
+                Building(Card(i, RESIDENTIAL, 2, 1), 0))
+        s.cities[0].sections[COMMERCIAL].append(
+            Building(Card(9, COMMERCIAL, 2, 1), 1))
+        snap = engine.score_snapshot(s)
+        # P0: 2 buildings + 3vp city-0 majority; P1: 1 building; P2: nothing
+        self.assertEqual(snap, {0: 5, 1: 1, 2: 0})
+        # previewing P0's bankruptcy hands the majority to P1
+        self.assertEqual(engine.score_snapshot(s, exclude=0), {1: 4, 2: 0})
+
+
 class TestEndConditions(unittest.TestCase):
     def test_loan_track_exhaustion_ends_game(self):
         s = fresh(4, seed=11)

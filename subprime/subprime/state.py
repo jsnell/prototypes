@@ -118,6 +118,19 @@ class GameState:
     def markers_left(self):
         return sum(self.loan_markers)
 
+    def rate_after(self, extra_taken):
+        """Interest rate if `extra_taken` more markers were removed from
+        the track (cheapest first). rate_after(0) == current_rate()."""
+        best = self.config.base_interest_rate
+        left = extra_taken
+        for rate, marked in zip(self.loan_rates, self.loan_markers):
+            if not marked:
+                best = max(best, rate)
+            elif left > 0:
+                left -= 1
+                best = max(best, rate)
+        return best
+
     def alive_players(self):
         return [p for p in self.players if not p.bankrupt]
 
