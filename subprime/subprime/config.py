@@ -46,6 +46,9 @@ class GameConfig:
     # --- bid track (phase 1): the spaces players can put bid markers on;
     # a bid's value = number of loans taken when passing ---
     bid_spaces: tuple = tuple(range(0, 13))
+    initial_bids_inverted: bool = True  # doc rule: initial bids placed last-
+                                        # to-first in turn order. False =
+                                        # first-to-last (structural variant)
 
     # --- loan track: row sizes (must sum to the number of loan markers)
     # and the interest rate printed on every space of each row. The round
@@ -69,6 +72,9 @@ class GameConfig:
 
     # --- bankruptcy (phase 4) ---
     bailout_price_multiplier: int = 1  # auction price = printed cost * this
+    bankruptcy_pick: str = "earliest"  # who dies among co-defaulters:
+                                       # "earliest" (doc: earliest in turn
+                                       # order), "latest", or "most_loans"
 
     # --- scoring ---
     vp_per_building: int = 1

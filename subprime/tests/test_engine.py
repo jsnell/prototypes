@@ -346,6 +346,23 @@ class TestLoanRuling(unittest.TestCase):
         self.assertIn(s.end_cause, ("loans_exhausted", "bankruptcy"))
 
 
+class TestRuleVariants(unittest.TestCase):
+    def test_uninverted_initial_bid_order(self):
+        cfg = CFG.with_changes(initial_bids_inverted=False)
+        s = new_game(cfg, 3, seed=2)
+        self.assertEqual(decision_player(s), s.turn_order[0])
+
+    def test_bankruptcy_pick_most_loans(self):
+        cfg = CFG.with_changes(bankruptcy_pick="most_loans")
+        s = new_game(cfg, 3, seed=7)
+        s.turn_order = [0, 1, 2]
+        s.players[0].loans, s.players[2].loans = 2, 9
+        s.unable = {0, 2}
+        s.players[1].money = 0
+        engine._resolve_round_end(s)
+        self.assertEqual(s.bankrupt_pid, 2)   # biggest debtor, not earliest
+
+
 class TestSnapshotsAndProjections(unittest.TestCase):
     def test_rate_after(self):
         s = fresh(4)                            # 4 starting markers removed

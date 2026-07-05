@@ -227,7 +227,10 @@ def _advance(s):
 
 def _start_bid_phase(s):
     s.phase = P_BID_INITIAL
-    s.bid_pending = list(reversed(s.turn_order))  # last player bids first
+    if s.config.initial_bids_inverted:
+        s.bid_pending = list(reversed(s.turn_order))  # doc: last player first
+    else:
+        s.bid_pending = list(s.turn_order)
     s.bids = {}
     s.next_order = [None] * s.n_players
 
@@ -381,8 +384,17 @@ def _resolve_round_end(s):
 
 def _setup_bankruptcy(s):
     s.end_cause = "bankruptcy"
-    # Earliest defaulter in turn order goes bankrupt; the rest are bailed out.
-    for pid in s.turn_order:
+    # Pick who goes bankrupt among the defaulters; the rest are bailed out.
+    pick = s.config.bankruptcy_pick
+    if pick == "earliest":        # doc rule: earliest in turn order
+        order = s.turn_order
+    elif pick == "latest":
+        order = list(reversed(s.turn_order))
+    elif pick == "most_loans":    # biggest debtor dies, turn order breaks ties
+        order = sorted(s.turn_order, key=lambda q: -s.players[q].loans)
+    else:
+        raise ValueError(f"unknown bankruptcy_pick {pick!r}")
+    for pid in order:
         if pid in s.unable:
             s.bankrupt_pid = pid
             break

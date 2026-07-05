@@ -129,6 +129,32 @@ tested by simulation instead of argued about.
   information advantage. (A worst-case-anticipation bid check could
   close even the residual 3%, deliberately not added at that effect
   size.)
+- **The seat-1 squeeze is a repeated forcing loop, and no tested fix is
+  free.** Measured: the round-1 turn order leader suffers a forced
+  initial overbid in 1.09 rounds/game and is forced 2+ times in 26% of
+  games (vs 6–7% for late seats) — overbidding keeps them first in turn
+  order, which keeps them placing initial bids last. The victims usually
+  default *alone*, so changing the who-dies-among-co-defaulters rule
+  (`bankruptcy_pick`: earliest/latest/most_loans) has no effect. Fix
+  grid in the tense (1,2,4) economy, all-shark, 400 games each
+  (fairness = win-rate spread across round-1 seats; doc rules = 25pp
+  spread with seat 1 busting 34%):
+  - gentler rate curves: remove tense-economy bankruptcy wholesale and
+    whipsaw the seat advantage — overshoot, not a fix
+  - extra baseline debt (`starting_loans=3`): 100% bankruptcy by round
+    2 — disaster
+  - forced minimum bid (`bid_spaces` starting at 2): best economic fix
+    — spread 25→18pp, seat-1 busts 34→20% — but degrades the *safe*
+    economy's fairness (9→25pp)
+  - un-inverted initial placement (`initial_bids_inverted=False`):
+    relocates the trap to the trailing seat (busts 37%) and also breaks
+    safe-economy fairness — the doc's inversion is *correct* in a mild
+    economy, where it taxes the leader's first-pick advantage; it only
+    turns toxic when the economy is harsh enough that forced overbids
+    kill
+  Untested but most promising structural idea: duplicate low bid spaces
+  (several players may sit at 0/1), which removes the forced-overbid
+  mechanic entirely while keeping the inversion's leader tax.
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a
