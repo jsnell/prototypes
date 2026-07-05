@@ -74,6 +74,25 @@ tested by simulation instead of argued about.
   stretches its bid to push the rate past what a cash-poor rival can pay
   when the post-bankruptcy scoring favors it: 9.2% of its seats are wins
   via a rival's bust, against 16.8% self-busts.
+- **When *everyone* is endgame-aware, the drain becomes a race — but a
+  bounded one.** The 50-marker track physically can't be emptied before
+  round ~4 (a drain needs remaining markers ≤ one bid plus the table's
+  normal take), so all-shark tables play 4–5 rounds; round 6 simply never
+  happens (0% of 400 games). Track size, not the round counter, is the
+  real game clock. In the safe economy 90% of all-shark games end in a
+  deliberate drain; in the tense economy universal kill-hunting turns
+  into brinkmanship — 68% of games end in bankruptcy and average VP
+  halves (23.6 → 13.5). Endgame awareness is individually rational
+  either way (2 sharks vs 2 sharps: 31–34% vs 16–19% win rate), so the
+  shortened, bloodier game IS the equilibrium meta.
+- **Initial-bid order inverts under pressure.** Round-1 turn order seat 1
+  places its initial bid *last* (bids go in inverse turn order), finds
+  the low bid spaces taken, lands as the lowest bidder, and gets
+  raise-squeezed into over-leverage: in all-shark tense games seat 1
+  averages 14.2 loans and busts 34%, vs ~10–13 loans and 9–12% busts for
+  the other seats — with matching win-rate inversion (16% vs 38% for the
+  last seat). The "informed" late placement is a trap when raising is
+  dangerous; early commitment to a low spot is protection.
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a
