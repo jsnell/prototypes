@@ -208,6 +208,21 @@ tested by simulation instead of argued about.
   dollars"). Strikingly, busted bag-holders enter their final round with
   the *best income at the table* (+4.7 vs average): their engine is
   fine; the annuity simply outgrows it.
+- **The catch-up defense works — when agents actually play it**
+  (`debt_cooldown` on `HeuristicParams`: cut loan demand by your debt
+  excess over the rival average, i.e. coast after an overbid while
+  rivals level the counts). The market-share-driven bidders never
+  coasted — they kept borrowing +2.5/round after an overbid because
+  their cash was already invested in buildings. With cooldown, in
+  all-shark tense fields: loan counts fully level (seat 1 ends with the
+  *fewest* loans: 13.3 vs 14.1–15.8), seat-1 busts drop 37% → 19%,
+  table bankruptcy 73% → 51%, and coasting is individually viable
+  (23.8% vs 26.2% head-to-head — unlike blanket prudence, which lost
+  18.5/31.5). BUT the seat disadvantage transmutes rather than
+  vanishes: seat 1's win rate stays lowest (11% vs 35–37%) because the
+  coasting rounds are rounds rivals spend building. The forced overbid
+  is paid either as an annuity (bust) or as tempo (VP deficit) — the
+  catch-up levels the debt, not the economy.
 - **Fixed-rate loans (tested: each marker pays its space's printed rate
   forever) are catastrophic**: early credit becomes strictly cheap, the
   table races to drain the track, and games collapse to 2 rounds with

@@ -64,6 +64,9 @@ class HeuristicParams:
                                    # capacity to contest them
     denial_weight: float = 0.5     # value of breaking a rival's subsidy
                                    # stream or city majority
+    debt_cooldown: float = 0.0     # reduce loan demand by this x our excess
+                                   # loans over the rival average (coast after
+                                   # an overbid instead of keeping pace)
 
 
 class HeuristicAgent(Agent):
@@ -182,6 +185,12 @@ class HeuristicAgent(Agent):
         d = self.p.loan_appetite * remaining - self.p.rate_fear * s.current_rate()
         if self.p.demand_aware:
             d = min(d, self._demand_cap(s, pid))
+        if self.p.debt_cooldown > 0:
+            rivals = [q.loans for q in s.players
+                      if q.pid != pid and not q.bankrupt]
+            if rivals:
+                excess = s.players[pid].loans - sum(rivals) / len(rivals)
+                d -= self.p.debt_cooldown * max(0.0, excess)
         d = max(0, min(int(round(d)), max_bid))
         while d > 0 and not self._survivable(s, pid, d):
             d -= 1
@@ -515,6 +524,13 @@ AGENT_REGISTRY = {
         HeuristicParams(demand_aware=True, turn_order_value=2.0,
                         kill_instinct=1.0, endgame_awareness=1.0,
                         survival_horizon=2), seed=seed),
+    # shark that coasts after over-borrowing (cuts loan demand by its debt
+    # excess over the rival average) — the "catch-up" style: rivals level
+    # the loan counts while it digests the overbid
+    "shark-cool": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+                        kill_instinct=1.0, endgame_awareness=1.0,
+                        debt_cooldown=1.0), seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }
