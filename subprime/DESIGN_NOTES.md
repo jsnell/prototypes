@@ -257,6 +257,23 @@ tested by simulation instead of argued about.
   buyer beats a naive one by +2pp (safe) / +4pp (tense economy). Majority
   fights are real but second-order next to engine quality.
 
+- **Candidate tuning: back-load the rate curve.** With skilled (digest)
+  play, only 46% of tense games ended in bankruptcy — the rest were
+  leader drains (54%, zero games reaching round 6): the bag was being
+  dropped before it landed. Deepening the track backfires (softer
+  credit, 3–5% busts). The dial that works is steepening the *back* of
+  the rate curve: `loan_row_rates=(1,2,3,5,7,9)` keeps early credit
+  priced for the arms race but makes the expiry floor brutal in rounds
+  5–6, so the bag lands on whoever mistimes late-game leverage instead
+  of round-1's squeezed seat. Results: all-digest at (1,2,4) prices —
+  95% bankruptcy, 4.4 rounds, busts near-uniform by seat (23/19/25/26).
+  Mixed-skill field at doc prices — **99% bankruptcy, 4.6 rounds, win
+  spread 4pp, busts 24/26/23/25**: the design target ("someone is left
+  holding the bag ~always, dynamically") hit with a rate-curve change
+  only, no rule changes. Homogeneous expert mirrors retain a ~15-20pp
+  first-mover win deficit; mixed tables are flat. Default config keeps
+  the doc curve pending designer sign-off.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without
