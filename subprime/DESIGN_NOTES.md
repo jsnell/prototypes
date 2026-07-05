@@ -93,6 +93,25 @@ tested by simulation instead of argued about.
   the other seats — with matching win-rate inversion (16% vs 38% for the
   last seat). The "informed" late placement is a trap when raising is
   dangerous; early commitment to a low spot is protection.
+- **Realism check on the squeeze: it is rules-structural, and prudence
+  cannot escape it.** Decomposing busted players' loans in all-shark
+  tense games: they carry 2.6 *forced* initial overbids (vs 1.0 for
+  survivors) — placing last when the low bid spaces are taken, with bids
+  only allowed to go up — plus more economically-intended loans taken
+  under a one-round-myopic survival check. Fixing the myopia
+  (`survival_horizon` projects the expiry ratchet and rivals' borrowing
+  pace) lengthens games (round 6 returns: 39–50% of games) but
+  *concentrates* the squeeze: seat 1 busts 51% at horizon 2 while
+  everyone else drops to ~3%. And prudence is individually irrational:
+  horizon-2 sharks lose to reckless horizon-1 sharks 18.5% to 31.5%,
+  because both default at the same total rate (~28%) — smaller bids only
+  demote a default from fatal bankruptcy (big bid → early turn order →
+  you die) to a bailout (late turn order → stripped but alive) while
+  building 1.6 fewer buildings. Winner-take-all scoring pays the
+  variance-maximizer; the moral-hazard equilibrium is the theme working
+  as intended. If prudence should be viable, the levers are the
+  bankruptcy-selection rule (earliest in turn order) or softer
+  winner-take-all (e.g. money mattering beyond a tiebreak).
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a

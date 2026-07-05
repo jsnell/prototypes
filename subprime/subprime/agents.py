@@ -53,6 +53,9 @@ class HeuristicParams:
                                    # bid track (first pick of the display)
     survival_margin: float = 0.0   # cash cushion required after projected
                                    # interest (very negative = ignore survival)
+    survival_horizon: int = 1      # rounds ahead to project the interest
+                                   # ratchet (expiry floor + rivals borrowing
+                                   # at the same pace) when judging a bid
     kill_instinct: float = 0.0     # >0: stretch bids to force a rival's
                                    # default when the post-kill score favors us
     endgame_awareness: float = 0.0 # >0: drain the loan track to end the game
@@ -99,14 +102,36 @@ class HeuristicAgent(Agent):
         return take
 
     def _survivable(self, s, pid, d):
-        """Could we pay this round's interest after taking d loans, at the
-        rate the track will show once everyone has taken theirs?"""
+        """Could we keep paying interest after taking d loans? Projects
+        `survival_horizon` rounds: the rate the track will show once
+        everyone has taken theirs, ratcheted each further round by the
+        cleanup-expiry floor and by rivals borrowing at the same pace.
+        Income is held at current printed income and cash is retained
+        (no purchases) — the option to hunker down and survive."""
         p = s.players[pid]
         cfg = s.config
-        rate = s.rate_after(self._expected_others_take(s, pid) + d)
-        due = rate * (p.loans + d) if cfg.interest_per_loan else rate
-        cash = p.money + d * cfg.money_per_loan + self._printed_income(s, pid)
-        return cash - due >= self.p.survival_margin
+        others = self._expected_others_take(s, pid)
+        income = self._printed_income(s, pid)
+        cash = p.money + d * cfg.money_per_loan + income
+        loans = p.loans + d
+        taken = others + d
+        horizon = max(1, self.p.survival_horizon)
+        for step in range(horizon):
+            k = s.round + step                   # round being projected
+            if k > cfg.max_rounds:
+                break
+            rate = s.rate_after(taken)
+            if k >= 2:                           # expiry floor is public info
+                i = min(k - 2, len(cfg.loan_row_rates) - 1)
+                rate = max(rate, cfg.loan_row_rates[i])
+            due = rate * loans if cfg.interest_per_loan else rate
+            if step > 0:
+                cash += income
+            cash -= due
+            if cash < self.p.survival_margin:
+                return False
+            taken += others                      # rivals keep borrowing
+        return True
 
     def _am_leading(self, s, pid, exclude=None):
         snap = engine.score_snapshot(s, exclude=exclude)
@@ -427,6 +452,12 @@ AGENT_REGISTRY = {
     "shark": lambda seed: HeuristicAgent(
         HeuristicParams(demand_aware=True, turn_order_value=2.0,
                         kill_instinct=1.0, endgame_awareness=1.0), seed=seed),
+    # shark that projects the interest ratchet two rounds out before
+    # bidding — safer, builds less; loses to the reckless shark head-to-head
+    "shark-h2": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+                        kill_instinct=1.0, endgame_awareness=1.0,
+                        survival_horizon=2), seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }
