@@ -327,7 +327,8 @@ def _do_buy(s, pid, row, col, city_idx):
     s.display[row][col] = None
     s.cities[city_idx].sections[card.type].append(Building(card, pid))
     s.log(f"P{pid} buys {card.short()} from row {row + 1} for ${cost}"
-          f"{f' (+${money_on} on card)' if money_on else ''} -> city {city_idx}")
+          f"{f' (+${money_on} on card)' if money_on else ''} "
+          f"-> City {city_idx + 1}")
 
 
 def _snapshot_market(s):
@@ -393,8 +394,11 @@ def collect_income(s):
                          else cfg.single_subsidy_bonus if single else 0)
                 p.money += bonus
                 p.subsidy_earned += bonus
-    s.log("income collected; subsidies: state="
-          f"{sorted(s.state_subsidies)} city={s.city_subsidies}")
+    subs = ([f"City {c + 1} {t[:3].upper()} state-subsidized"
+             for c, t in sorted(s.state_subsidies)] +
+            [f"City {c + 1} {t[:3].upper()} city subsidy to P{p}"
+             for (c, t), p in sorted(s.city_subsidies.items())])
+    s.log("income collected; " + ("; ".join(subs) if subs else "no subsidies"))
 
 
 def pay_interest(s):
@@ -489,7 +493,7 @@ def _do_bailout_buy(s, pid, lot_index):
     s.players[pid].money -= price
     s.cities[ci].sections[card.type].append(Building(card, pid))
     s.bailout_lots[lot_index] = (ci, None)  # sold
-    s.log(f"P{pid} buys repossessed {card.short()} in city {ci} for ${price}")
+    s.log(f"P{pid} buys repossessed {card.short()} in City {ci + 1} for ${price}")
 
 
 def _finish_bailout(s):

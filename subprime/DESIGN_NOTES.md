@@ -274,6 +274,35 @@ tested by simulation instead of argued about.
   first-mover win deficit; mixed tables are flat. Default config keeps
   the doc curve pending designer sign-off.
 
+## LLM playtest strength probe (via `subprime.llmcli`)
+
+Two Claude subagents each played a full game (tuned rate curve), armed
+with the rulebook + rulings but barred from reading agent code or these
+notes. **Both won with 21 VP** — vs digest/shark/greedy (round-3
+bankruptcy ending) and vs 3x digest (round-4). Convergent findings:
+
+- **Verdict**: the digest table plays "solid intermediate" — tight local
+  purchase economics, good subsidy placement, one AI even grabbed the
+  turn-order bankruptcy shield — but they lack a terminal-state model.
+  The mixed table rated below a rules-literate first-timer.
+- **Bug/weakness: forcing-bid death spirals under the steep curve.** In
+  both games one AI escalated its own bid into unsurvivable debt (2→11
+  raises, 14 loans; a round-3 bid of 10 at $105/round interest). The
+  1-round survival horizon + kill/position raising misprice badly when
+  the tail rates are 5/7/9. Needs a look before trusting steep-curve
+  sims with these agents.
+- **Missing endgame play, twice over**: (a) when mass default is
+  inevitable, cash is worthless (bailout zeroes it anyway) — the right
+  move is to spend every dying dollar on buildings, which the AIs never
+  do; (b) no reactive majority defense even when telegraphed for two
+  rounds (known limitation, confirmed at the table).
+- **Meta discovered by both playtesters independently**: "maximize
+  buildings, engineer your default behind someone else's" — the bailout
+  costs nothing but cash, so only the earliest-in-turn-order defaulter
+  is punished. Design question: should bailed-out players suffer a
+  scoring penalty (e.g. -VP or lose a building), or is the shield an
+  intended reward for turn-order play?
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without

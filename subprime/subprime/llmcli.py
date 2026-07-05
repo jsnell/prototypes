@@ -101,20 +101,39 @@ def _view(sess, events):
         "marker expire each cleanup): " + "  ".join(track))
     add("")
 
+    # projected income including the subsidies as they'd be placed now
+    from .engine import determine_subsidies
+    state_subs, city_subs = determine_subsidies(s.cities)
+    proj = {p.pid: 0 for p in s.players}
+    for ci, city in enumerate(s.cities):
+        for t in BUILDING_TYPES:
+            st = (ci, t) in state_subs
+            cs = city_subs.get((ci, t))
+            for b in city.sections[t]:
+                if b.owner is None:
+                    continue
+                bonus = (cfg.double_subsidy_bonus if st and cs == b.owner
+                         else cfg.single_subsidy_bonus if st or cs == b.owner
+                         else 0)
+                proj[b.owner] += b.card.income + bonus
+
     add("PLAYERS (turn order: " +
         ", ".join(sess["names"][p] for p in s.turn_order) + ")")
     for p in s.players:
         due = interest_due(s, p)
-        income = sum(b.card.income for c in s.cities for t in BUILDING_TYPES
-                     for b in c.sections[t] if b.owner == p.pid)
         bld = sum(c.owned_count(p.pid) for c in s.cities)
         status = " BANKRUPT" if p.bankrupt else ""
         bid = f" | bid marker on {s.bids[p.pid]}" if p.pid in s.bids else ""
         add(f"  {sess['names'][p.pid]:<22} ${p.money:<4} {p.loans} loans "
-            f"(owes ${due}/rd) | {bld} bldgs +${income}/rd{bid}{status}")
+            f"(owes ${due}/rd) | {bld} bldgs, ~${proj[p.pid]}/rd income "
+            f"incl. current subsidies{bid}{status}")
     add("")
 
     if s.phase in ("bid_initial", "bid_raise"):
+        hints = ", ".join(f"+{k} taken -> ${s.rate_after(k)}"
+                          for k in (1, 3, 5, 8))
+        add(f"RATE PROJECTION (rate = deepest uncovered track space; "
+            f"if more markers leave the track: {hints})")
         occ = {v: pid for pid, v in s.bids.items()}
         spaces = " ".join(f"[{v}{':' + sess['names'][occ[v]][:6] if v in occ else ''}]"
                           for v in cfg.bid_spaces)
@@ -122,8 +141,9 @@ def _view(sess, events):
             "means earlier turn order): " + spaces)
         add("")
 
-    add("MARKET (pay printed cost x row multiplier; unsold cards slide DOWN "
-        "a row each cleanup, row-1 leftovers gain $1)")
+    add("MARKET (prices shown are FINAL prices, multiplier included; unsold "
+        "cards slide DOWN a row each cleanup and get cheaper, row-1 "
+        "leftovers gain $1)")
     for r in range(cfg.display_rows - 1, -1, -1):
         mult = cfg.row_cost_multipliers[r]
         cells = []
@@ -160,11 +180,14 @@ def _view(sess, events):
     add("")
 
     acts = legal_actions(s)
-    add("YOUR LEGAL ACTIONS (you are " + sess["names"][HUMAN] + "):")
+    move = sess.get("moves", 0)
+    add(f"YOUR LEGAL ACTIONS (you are {sess['names'][HUMAN]}; this is your "
+        f"move #{move} — indices are only valid for this move):")
     for i, a in enumerate(acts):
         add(f"  {i}: {_describe(s, a)}")
     add("")
-    add("Move with: python3 -m subprime.llmcli act <index> --state <file>")
+    add(f"Move with: python3 -m subprime.llmcli act <index> --state <file>"
+        f"   (add --turn {move} to guard against acting on a stale view)")
     return "\n".join(out)
 
 
@@ -190,6 +213,8 @@ def main(argv=None):
     p = sub.add_parser("act")
     p.add_argument("action")
     p.add_argument("--state", required=True)
+    p.add_argument("--turn", type=int, default=None,
+                   help="expected move number; errors if the game has moved on")
 
     args = ap.parse_args(argv)
 
@@ -234,6 +259,9 @@ def main(argv=None):
     s = sess["state"]
     if s.phase == P_OVER:
         sys.exit("game is over — start a new one")
+    if args.turn is not None and args.turn != sess.get("moves", 0):
+        sys.exit(f"stale view: this is move #{sess.get('moves', 0)}, you "
+                 f"expected #{args.turn} — run 'show' and re-decide")
     acts = legal_actions(s)
     raw = args.action.strip()
     try:
@@ -248,6 +276,7 @@ def main(argv=None):
         apply_action(s, action)
     except IllegalAction as e:
         sys.exit(str(e))
+    sess["moves"] = sess.get("moves", 0) + 1
     _run_agents(sess)
     _emit(sess)
     with open(args.state, "wb") as f:
