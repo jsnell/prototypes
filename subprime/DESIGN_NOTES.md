@@ -322,6 +322,28 @@ bankruptcy ending) and vs 3x digest (round-4). Convergent findings:
   scoring penalty (e.g. -VP or lose a building), or is the shield an
   intended reward for turn-order play?
 
+### Re-probe after the agent fixes (tuned 1,2,3,4,6,8 curve)
+
+Two fresh LLM playtests against the fixed agents. Claude still won both,
+but the margins collapsed and the texture changed completely:
+
+- vs digest/shark/greedy: **28 / 25 / 18 / 0** (round-5 drain + greedy
+  bankrupt). digest came within 3 VP — "a human in its seat wins this
+  game." shark's denial modeling showed up at the table (it twice sniped
+  the playtester's subsidy majority). greedy's "spending into default"
+  was the new doomed-cash behavior working as designed (it was already
+  unsalvageable).
+- vs 3x digest: **34 / 23 / 20 / 12** (round-5 drain, no bankruptcies —
+  the expert-mirror drain corner, live). Digests deleveraged when debt
+  turned toxic and correctly took cash-positive rate-$8 loans in the
+  endgame drain race.
+- Verdict shift: from "below a first-time human" (pre-fix, mixed table)
+  to "**solid intermediate — competent but passive**." Remaining gaps
+  the LLM exploited both games: no endgame VP micro-play (majority
+  ties, subsidy flips, final-round buys with cash in hand), no model of
+  the loan track as a game clock, and (their read) under-leveraging in
+  rounds 1-2 when loans are cheapest.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without
