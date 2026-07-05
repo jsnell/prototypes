@@ -1,0 +1,383 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Subprime</title>
+<style>
+  :root {
+    --bg: #14161c; --panel: #1e222c; --panel2: #262b38; --text: #e8eaf0;
+    --dim: #9aa3b5; --line: #333a4a;
+    --p0: #4f8ef7; --p1: #e05555; --p2: #e0a832; --p3: #a86ee0;
+    --res: #58b368; --com: #5aa7d6; --ind: #d98a4a;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--text);
+         font: 14px/1.45 system-ui, sans-serif; }
+  header { display: flex; gap: 18px; align-items: center; padding: 10px 16px;
+           background: var(--panel); border-bottom: 1px solid var(--line);
+           flex-wrap: wrap; }
+  header h1 { font-size: 18px; margin: 0 8px 0 0; letter-spacing: 1px; }
+  .stat { color: var(--dim); } .stat b { color: var(--text); }
+  .rate { color: #ff7a7a; font-weight: 700; }
+  button { background: var(--panel2); color: var(--text); cursor: pointer;
+           border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+           font: inherit; }
+  button:hover:not(:disabled) { border-color: #6b7690; }
+  button:disabled { opacity: .4; cursor: default; }
+  button.primary { background: #2c4a8a; border-color: #3d62b3; }
+  main { display: grid; grid-template-columns: 260px 1fr 300px; gap: 12px;
+         padding: 12px 16px; align-items: start; }
+  .panel { background: var(--panel); border: 1px solid var(--line);
+           border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
+  .panel h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
+              letter-spacing: 1px; color: var(--dim); }
+  /* loan track */
+  .lrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+  .lrow .r { width: 46px; color: var(--dim); font-size: 12px; }
+  .lrow .bar { flex: 1; height: 12px; background: #3a2a2a; border-radius: 3px;
+               overflow: hidden; }
+  .lrow .fill { height: 100%; background: #7a5cd6; }
+  .lrow.expired .bar { opacity: .25; }
+  .lrow .n { width: 42px; text-align: right; font-size: 12px; color: var(--dim); }
+  /* players */
+  .player { border-left: 4px solid; border-radius: 4px; background: var(--panel2);
+            padding: 6px 9px; margin: 6px 0; }
+  .player .nm { font-weight: 600; display: flex; justify-content: space-between; }
+  .player .st { color: var(--dim); font-size: 12.5px; }
+  .player.dead { opacity: .45; }
+  .player .tag { font-size: 11px; padding: 1px 6px; border-radius: 8px;
+                 background: #46340f; color: #ecc35a; }
+  .player .tag.dead { background: #4a1f1f; color: #ff9a9a; }
+  .player .tag.turn { background: #1f3a25; color: #7ade8f; }
+  /* bid track */
+  .bidtrack { display: flex; flex-wrap: wrap; gap: 5px; }
+  .bspace { width: 42px; height: 42px; border: 1px dashed var(--line);
+            border-radius: 6px; display: flex; flex-direction: column;
+            align-items: center; justify-content: center; font-size: 12px;
+            color: var(--dim); position: relative; }
+  .bspace.legal { border-style: solid; border-color: #4f8ef7; cursor: pointer; }
+  .bspace.legal:hover { background: #22304a; }
+  .bspace .dot { width: 14px; height: 14px; border-radius: 50%; }
+  /* market */
+  .mrow { display: flex; gap: 8px; margin: 6px 0; align-items: center; }
+  .mrow .rlabel { width: 58px; color: var(--dim); font-size: 12px; }
+  .card { width: 86px; border-radius: 7px; padding: 6px 8px; cursor: default;
+          border: 2px solid transparent; color: #10131a; position: relative; }
+  .card.res { background: var(--res); } .card.com { background: var(--com); }
+  .card.ind { background: var(--ind); }
+  .card .t { font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
+  .card .pr { font-size: 16px; font-weight: 800; }
+  .card .inc { font-size: 11.5px; }
+  .card.buyable { cursor: pointer; box-shadow: 0 0 0 2px #ffffff55; }
+  .card.buyable:hover { box-shadow: 0 0 0 3px #fff; }
+  .card.sel { border-color: #fff; box-shadow: 0 0 0 3px #4f8ef7; }
+  .card.empty { background: #20242e; border: 1px dashed var(--line);
+                min-height: 58px; box-shadow: none; }
+  .cash { position: absolute; top: -7px; right: -7px; background: #ecc35a;
+          color: #201703; font-size: 11px; font-weight: 800; padding: 1px 6px;
+          border-radius: 9px; }
+  /* cities */
+  .cities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+  .city { background: var(--panel2); border-radius: 8px; padding: 8px; }
+  .city h3 { margin: 0 0 6px; font-size: 12.5px; color: var(--dim); }
+  .sect { border-radius: 6px; padding: 4px 6px; margin: 4px 0; min-height: 30px;
+          border: 1px solid var(--line); }
+  .sect .hd { font-size: 10.5px; text-transform: uppercase; color: var(--dim);
+              display: flex; gap: 6px; align-items: center; }
+  .sect.res .hd b { color: var(--res); } .sect.com .hd b { color: var(--com); }
+  .sect.ind .hd b { color: var(--ind); }
+  .sect.target { border-color: #4f8ef7; cursor: pointer;
+                 background: #22304a; }
+  .sect.target:hover { background: #2a3c5e; }
+  .b { display: inline-flex; align-items: center; gap: 3px; font-size: 11px;
+       border-radius: 4px; padding: 1px 5px; margin: 2px 2px 0 0;
+       background: #171a22; }
+  .b .own { width: 9px; height: 9px; border-radius: 50%; }
+  .sub { font-size: 12px; }
+  /* actions + log */
+  #actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
+             min-height: 38px; }
+  #hint { color: var(--dim); }
+  #log { max-height: 520px; overflow-y: auto; font-size: 12.5px;
+         color: var(--dim); }
+  #log div { padding: 1.5px 0; border-bottom: 1px solid #20242e; }
+  #log .you { color: #bcd3ff; }
+  #over { position: fixed; inset: 0; background: #000a; display: flex;
+          align-items: center; justify-content: center; }
+  #over .box { background: var(--panel); border: 1px solid var(--line);
+               border-radius: 12px; padding: 24px 32px; min-width: 340px; }
+  #over h2 { margin-top: 0; }
+  #over table { border-collapse: collapse; width: 100%; margin: 10px 0 16px; }
+  #over td, #over th { padding: 4px 10px; text-align: left;
+                       border-bottom: 1px solid var(--line); }
+  .hidden { display: none !important; }
+</style>
+</head>
+<body>
+<header>
+  <h1>SUBPRIME</h1>
+  <span class="stat">round <b id="round">–</b></span>
+  <span class="stat">interest <b class="rate" id="rate">–</b></span>
+  <span class="stat">loan markers <b id="markers">–</b></span>
+  <span class="stat" id="phase"></span>
+  <span style="flex:1"></span>
+  <label class="stat"><input type="checkbox" id="steep" checked> tuned rates</label>
+  <select id="opps">
+    <option value="digest,shark,greedy">digest / shark / greedy</option>
+    <option value="digest,digest,digest">3 × digest (hard)</option>
+    <option value="shark,shark,shark">3 × shark</option>
+    <option value="greedy,timid,random">easy table</option>
+  </select>
+  <button class="primary" onclick="newGame()">New game</button>
+</header>
+
+<main>
+  <div>
+    <div class="panel"><h2>Players</h2><div id="players"></div></div>
+    <div class="panel"><h2>Loan track</h2><div id="ltrack"></div></div>
+  </div>
+  <div>
+    <div class="panel"><h2 id="acthead">Your move</h2><div id="actions"></div>
+      <div id="hint"></div></div>
+    <div class="panel" id="bidpanel"><h2>Bid track — loans wanted (+turn order)</h2>
+      <div class="bidtrack" id="btrack"></div></div>
+    <div class="panel"><h2>Real estate market</h2><div id="market"></div></div>
+    <div class="panel"><h2>Cities <span class="sub">(★ state subsidy · ● city
+      subsidy)</span></h2><div class="cities" id="cities"></div></div>
+  </div>
+  <div class="panel"><h2>Log</h2><div id="log"></div></div>
+</main>
+
+<div id="over" class="hidden"><div class="box">
+  <h2 id="overtitle"></h2><table id="scores"></table>
+  <button class="primary" onclick="newGame()">Play again</button>
+</div></div>
+
+<script>
+const COLORS = ['var(--p0)','var(--p1)','var(--p2)','var(--p3)'];
+const TYPES = {residential:'res', commercial:'com', industrial:'ind'};
+let S = null, sel = null;
+
+async function api(path, opts) {
+  const r = await fetch(path, opts);
+  const j = await r.json();
+  if (!r.ok) { logLine('⚠ ' + (j.error || r.status)); return null; }
+  return j;
+}
+async function newGame() {
+  const opps = document.getElementById('opps').value;
+  const steep = document.getElementById('steep').checked ? 1 : 0;
+  document.getElementById('log').innerHTML = '';
+  const j = await api(`/api/new?agents=${opps}&steep=${steep}`, {method:'POST'});
+  if (j) { S = j; sel = null; render(); }
+}
+async function act(a) {
+  const j = await api('/api/act', {method:'POST',
+    headers:{'Content-Type':'application/json'},
+    body: JSON.stringify({action: a})});
+  if (j) { S = j; sel = null; render(); }
+}
+
+function logLine(t) {
+  const el = document.getElementById('log');
+  const d = document.createElement('div');
+  d.textContent = t;
+  if (t.includes('P0')) d.className = 'you';
+  el.prepend(d);
+}
+function esc(s){ return String(s).replace(/[&<>]/g,
+  c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+
+function cardHTML(c, cls='', extra='') {
+  if (!c) return `<div class="card empty"></div>`;
+  const money = c.money ? `<span class="cash">$${c.money}</span>` : '';
+  const pr = c.price !== undefined ? `$${c.price}` : `$${c.cost}`;
+  return `<div class="card ${TYPES[c.type]} ${cls}" ${extra}>${money}
+    <div class="t">${c.type.slice(0,3)}</div>
+    <div class="pr">${pr}</div>
+    <div class="inc">+$${c.income}/rd</div></div>`;
+}
+
+function render() {
+  if (!S) return;
+  (S.events || []).forEach(logLine);
+  document.getElementById('round').textContent = `${S.round}/${S.maxRounds}`;
+  document.getElementById('rate').textContent = '$' + S.rate +
+    (S.interestPerLoan ? '/loan' : '');
+  document.getElementById('markers').textContent = S.markersLeft;
+  document.getElementById('phase').textContent = 'phase: ' + S.phase;
+
+  // players
+  const order = S.turnOrder || [];
+  document.getElementById('players').innerHTML = S.players.map((p, i) => {
+    const due = S.interestPerLoan ? S.rate * p.loans : S.rate;
+    const pos = order.indexOf(i);
+    const tags = [];
+    if (p.bankrupt) tags.push('<span class="tag dead">BANKRUPT</span>');
+    else if (S.decisionPlayer === i) tags.push('<span class="tag turn">acting</span>');
+    if (p.bailedOut) tags.push('<span class="tag">bailed out</span>');
+    return `<div class="player ${p.bankrupt?'dead':''}"
+      style="border-color:${COLORS[i]}">
+      <div class="nm"><span>${esc(p.name)}</span><span>${tags.join(' ')}</span></div>
+      <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
+        ${p.buildings} bldgs (+$${p.income}/rd)
+        ${pos >= 0 ? ' · turn ' + (pos+1) : ''}</div></div>`;
+  }).join('');
+
+  // loan track
+  document.getElementById('ltrack').innerHTML = S.loanTrack.map((r, i) =>
+    `<div class="lrow ${r.left===0?'expired':''}">
+       <div class="r">rate $${r.rate}</div>
+       <div class="bar"><div class="fill" style="width:${100*r.left/r.size}%"></div></div>
+       <div class="n">${r.left}/${r.size}</div></div>`).join('');
+
+  renderBids();
+  renderMarket();
+  renderCities();
+  renderActions();
+  renderOver();
+}
+
+function renderBids() {
+  const el = document.getElementById('btrack');
+  const inBid = S.phase === 'bid_initial' || S.phase === 'bid_raise';
+  document.getElementById('bidpanel').style.opacity = inBid ? 1 : .45;
+  const legalBids = new Set(S.legal.filter(a => a[0]==='bid').map(a => a[1]));
+  const occ = {};
+  Object.entries(S.bids).forEach(([pid, v]) => occ[v] = +pid);
+  el.innerHTML = S.bidSpaces.map(v => {
+    const o = occ[v];
+    const legal = S.humanTurn && legalBids.has(v);
+    const dot = o !== undefined ?
+      `<span class="dot" style="background:${COLORS[o]}"></span>` : '';
+    return `<div class="bspace ${legal?'legal':''}" data-bid="${v}">
+      <span>${v}</span>${dot}</div>`;
+  }).join('');
+  el.querySelectorAll('.bspace.legal').forEach(b =>
+    b.onclick = () => act(['bid', +b.dataset.bid]));
+}
+
+function renderMarket() {
+  const buyable = {};
+  S.legal.filter(a => a[0]==='buy').forEach(a => {
+    (buyable[`${a[1]},${a[2]}`] ||= []).push(a[3]);
+  });
+  document.getElementById('market').innerHTML = S.display.map((row, r) =>
+    `<div class="mrow"><div class="rlabel">row ${r+1} ×${S.rowMultipliers[r]}</div>
+     ${row.map((c, ci) => {
+       const key = `${r},${ci}`;
+       const can = S.humanTurn && buyable[key];
+       const isSel = sel && sel.key === key;
+       return cardHTML(c, (can?'buyable ':'') + (isSel?'sel':''),
+                       can ? `data-key="${key}"` : '');
+     }).join('')}</div>`).reverse().join('');
+  document.querySelectorAll('.card.buyable').forEach(el => {
+    el.onclick = () => {
+      const key = el.dataset.key;
+      sel = (sel && sel.key === key) ? null :
+        {key, cities: buyable[key], rc: key.split(',').map(Number)};
+      render();
+    };
+  });
+}
+
+function renderCities() {
+  const stateSubs = new Set((S.stateSubsidies||[]).map(x => x.join(',')));
+  document.getElementById('cities').innerHTML = S.cities.map((city, ci) => {
+    const sects = Object.keys(TYPES).map(t => {
+      const marks = [];
+      if (stateSubs.has(`${ci},${t}`)) marks.push('★');
+      const cs = (S.citySubsidies||{})[`${ci},${t}`];
+      if (cs !== undefined)
+        marks.push(`<span style="color:${COLORS[cs]}">●</span>`);
+      const target = sel && sel.cities.includes(ci);
+      const bs = city[t].map(b =>
+        `<span class="b"><span class="own" style="background:${
+          b.owner===null?'#555':COLORS[b.owner]}"></span>$${b.card.income}</span>`
+      ).join('');
+      return `<div class="sect ${TYPES[t]} ${target?'target':''}"
+        data-city="${ci}"><div class="hd"><b>${t.slice(0,3)}</b>
+        <span>${marks.join(' ')}</span></div>${bs}</div>`;
+    }).join('');
+    return `<div class="city"><h3>City ${ci+1}</h3>${sects}</div>`;
+  }).join('');
+  if (sel) {
+    document.querySelectorAll('.sect.target').forEach(el => {
+      el.onclick = () => act(['buy', sel.rc[0], sel.rc[1], +el.dataset.city]);
+    });
+  }
+}
+
+function renderActions() {
+  const el = document.getElementById('actions');
+  const hint = document.getElementById('hint');
+  el.innerHTML = ''; hint.textContent = '';
+  document.getElementById('acthead').textContent =
+    S.humanTurn ? 'Your move' : (S.over ? 'Game over' : 'Waiting…');
+  if (!S.humanTurn) return;
+
+  const mk = (label, action, primary) => {
+    const b = document.createElement('button');
+    b.textContent = label;
+    if (primary) b.className = 'primary';
+    b.onclick = () => act(action);
+    el.appendChild(b);
+  };
+  if (S.phase === 'bid_initial') {
+    hint.textContent = 'Place your bid: click a space on the bid track. ' +
+      `Each bid step = 1 loan ($${S.moneyPerLoan} now, interest forever).`;
+    if (S.legal.some(a => a[0]==='pass'))
+      mk('Pass (no loans, last turn order)', ['pass']);
+  } else if (S.phase === 'bid_raise') {
+    hint.textContent = 'You hold the lowest bid: raise to a higher empty ' +
+      'space, or pass to lock in your loans and turn-order spot.';
+    mk('Pass — take your loans', ['pass'], true);
+  } else if (S.phase === 'buy') {
+    hint.textContent = sel ?
+      'Now click a highlighted city section to place the building.' :
+      'Click a highlighted card to buy (then pick a city), or pass out of the round.';
+    if (S.legal.some(a => a[0]==='repay'))
+      mk('Repay 1 loan', ['repay']);
+    mk('Pass — done buying', ['pass'], !S.legal.some(a => a[0]==='buy'));
+  } else if (S.phase === 'bailout') {
+    hint.textContent = 'Foreclosure sale: buy one repossessed building?';
+    (S.bailoutLots || []).forEach((lot, i) => {
+      if (lot && S.legal.some(a => a[0]==='bailout_buy' && a[1]===i))
+        mk(`Buy ${lot.card.type.slice(0,3)} +$${lot.card.income}/rd in city ` +
+           `${lot.city+1} for $${lot.card.price}`, ['bailout_buy', i]);
+    });
+    mk('Pass', ['pass'], true);
+  }
+}
+
+function renderOver() {
+  const ov = document.getElementById('over');
+  if (!S.over) { ov.classList.add('hidden'); return; }
+  ov.classList.remove('hidden');
+  const youWon = S.winners.includes(0);
+  document.getElementById('overtitle').textContent =
+    (youWon ? '🏆 You win!' : 'Game over — ' +
+      S.winners.map(w => S.players[w].name).join(' & ') + ' wins') +
+    ` (${S.endCause})`;
+  const rows = S.players.map((p, i) => ({...p, i}))
+    .sort((a, b) => b.vp - a.vp || b.money - a.money);
+  document.getElementById('scores').innerHTML =
+    '<tr><th></th><th>VP</th><th>$</th><th>bldgs</th><th></th></tr>' +
+    rows.map(p => `<tr><td style="color:${COLORS[p.i]}">${esc(p.name)}</td>
+      <td><b>${p.vp}</b></td><td>${p.money}</td><td>${p.buildings}</td>
+      <td>${p.bankrupt ? '💥 bankrupt' : (S.winners.includes(p.i) ? '🏆' : '')}
+      </td></tr>`).join('');
+}
+
+// restore a running game on refresh; otherwise start fresh
+(async () => {
+  try {
+    const r = await fetch('/api/state');
+    if (r.ok) { S = await r.json(); render(); return; }
+  } catch (e) {}
+  newGame();
+})();
+</script>
+</body>
+</html>
