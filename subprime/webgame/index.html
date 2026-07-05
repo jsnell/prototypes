@@ -165,7 +165,7 @@ function newGame() {
   const opps = document.getElementById('opps').value.split(',');
   const cfg = E.defaultConfig();
   if (document.getElementById('steep').checked) {
-    cfg.loanRowRates = [1, 2, 3, 5, 7, 9];
+    cfg.loanRowRates = [1, 2, 3, 4, 6, 8];
   }
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const state = E.newGame(cfg, 1 + opps.length, seed, true);

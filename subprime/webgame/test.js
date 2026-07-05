@@ -140,9 +140,9 @@ check(play(42) === play(42), "not deterministic for same seed");
 // ---- steep-curve config -----------------------------------------------
 {
   const cfg = E.defaultConfig();
-  cfg.loanRowRates = [1, 2, 3, 5, 7, 9];
+  cfg.loanRowRates = [1, 2, 3, 4, 6, 8];
   const s = E.newGame(cfg, 4, 5, false);
-  check(E.rateAfter(s, 999) === 9, "steep curve max rate");
+  check(E.rateAfter(s, 999) === 8, "tuned curve max rate");
 }
 
 if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }

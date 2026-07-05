@@ -25,7 +25,7 @@ from .agents import make_agent, AGENT_REGISTRY
 from .state import P_OVER
 
 HUMAN = 0
-CANDIDATE_RATES = (1, 2, 3, 5, 7, 9)
+CANDIDATE_RATES = (1, 2, 3, 4, 6, 8)   # current best (see DESIGN_NOTES)
 
 
 def _run_agents(sess):

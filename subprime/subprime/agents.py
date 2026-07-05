@@ -112,14 +112,14 @@ class HeuristicAgent(Agent):
         take += 2 * sum(1 for q in s.bid_pending if q != pid)
         return take
 
-    def _survivable(self, s, pid, d):
+    def _survivable(self, s, pid, d, horizon=None):
         """Could we keep paying interest after taking d loans? Projects
-        `survival_horizon` rounds: the rate the track will show once
-        everyone has taken theirs, ratcheted each further round by the
-        cleanup-expiry floor and by rivals borrowing at the same pace.
-        Income is held at current printed income and cash is retained
-        (no purchases) — the option to hunker down and survive. Under
-        fixed-rate loans, existing debt does not reprice."""
+        `survival_horizon` rounds (overridable): the rate the track will
+        show once everyone has taken theirs, ratcheted each further round
+        by the cleanup-expiry floor and by rivals borrowing at the same
+        pace. Income is held at current printed income and cash is
+        retained (no purchases) — the option to hunker down and survive.
+        Under fixed-rate loans, existing debt does not reprice."""
         p = s.players[pid]
         cfg = s.config
         others = self._expected_others_take(s, pid)
@@ -127,7 +127,8 @@ class HeuristicAgent(Agent):
         cash = p.money + d * cfg.money_per_loan + income
         taken = others + d
         take_rate = s.rate_after(taken)          # new loans priced near here
-        horizon = max(1, self.p.survival_horizon)
+        horizon = max(1, self.p.survival_horizon if horizon is None
+                      else horizon)
         for step in range(horizon):
             k = s.round + step                   # round being projected
             if k > cfg.max_rounds:
@@ -170,8 +171,10 @@ class HeuristicAgent(Agent):
                 if q.pid == pid or q.bankrupt:
                     continue
                 q_bid = s.bids.get(q.pid, 0)
+                # generous estimate of the target's resources: a kill that
+                # merely *might* land is a terrible trade (see below)
                 q_cash = (q.money + q_bid * s.config.money_per_loan
-                          + self._printed_income(s, q.pid))
+                          + self._projected_income(s, q.pid))
                 for my_d in range(0, max_bid + 1):
                     rate = s.rate_after(others + my_d)
                     due = engine.interest_due(s, q, rate=rate)
@@ -183,7 +186,12 @@ class HeuristicAgent(Agent):
                             candidates.append(my_d)
                         break
 
-        good = [c for c in candidates if self._survivable(s, pid, c)]
+        # a forcing bid must be survivable even if it MISSES: if the kill
+        # lands the game ends and future interest never comes due, but a
+        # miss leaves us holding the stretched debt into the ratchet — so
+        # gate on a 2-round horizon regardless of our usual myopia
+        good = [c for c in candidates
+                if self._survivable(s, pid, c, horizon=2)]
         return min(good) if good else None
 
     def _desired_loans(self, s, pid):
@@ -290,6 +298,27 @@ class HeuristicAgent(Agent):
         return sum(b.card.income
                    for city in s.cities for t in BUILDING_TYPES
                    for b in city.sections[t] if b.owner == pid)
+
+    def _projected_income(self, s, pid):
+        """Printed income plus subsidy bonuses as they'd be placed right
+        now. Used where GENEROSITY is correct: estimating a kill target's
+        resources, or declaring our own cash unsalvageable. (Survival
+        planning stays on conservative printed income.)"""
+        state_subs, city_subs = engine.determine_subsidies(s.cities)
+        cfg = s.config
+        total = 0
+        for ci, city in enumerate(s.cities):
+            for t in BUILDING_TYPES:
+                st = (ci, t) in state_subs
+                cs = city_subs.get((ci, t))
+                for b in city.sections[t]:
+                    if b.owner != pid:
+                        continue
+                    bonus = (cfg.double_subsidy_bonus if st and cs == pid
+                             else cfg.single_subsidy_bonus if st or cs == pid
+                             else 0)
+                    total += b.card.income + bonus
+        return total
 
     def _reserve(self, s, pid):
         """Cash to keep so this round's interest is payable (income arrives
@@ -411,8 +440,13 @@ class HeuristicAgent(Agent):
         player = s.players[pid]
         if ("repay",) in actions and self._drowning(s, pid):
             return ("repay",)   # lifeline: survival outranks profit
-        reserve = self._reserve(s, pid)
-        cash_mult = self._cash_mult(s, pid)
+        # if this round's interest is unpayable even with generous income,
+        # the default is certain and the bailout confiscates our cash
+        # anyway — convert every dying dollar into VP instead of hoarding
+        doomed = (player.money + self._projected_income(s, pid)
+                  < self._interest_due(s, pid))
+        reserve = 0 if doomed else self._reserve(s, pid)
+        cash_mult = 1.0 if doomed else self._cash_mult(s, pid)
         best, best_net = PASS, self.p.buy_threshold
         for a in actions:
             if a[0] == "repay":
@@ -437,7 +471,8 @@ class HeuristicAgent(Agent):
                 # when they'd have to be re-borrowed next round
                 out = max(0, cost - money_on)
                 net = value - cost + money_on - (cash_mult - 1.0) * out
-                if self.p.patience > 0 and s.round < s.config.max_rounds:
+                if (self.p.patience > 0 and not doomed
+                        and s.round < s.config.max_rounds):
                     # option value of waiting: same card one row cheaper
                     # next round (row-1 cards stay put and accrue $1)
                     wait = self._wait_net(s, card, r, money_on, value)

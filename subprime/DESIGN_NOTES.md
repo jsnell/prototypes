@@ -257,7 +257,21 @@ tested by simulation instead of argued about.
   buyer beats a naive one by +2pp (safe) / +4pp (tense economy). Majority
   fights are real but second-order next to engine quality.
 
-- **Candidate tuning: back-load the rate curve.** With skilled (digest)
+- **CORRECTION (post agent-bug fix): the back-loaded-curve fairness
+  result below was contaminated.** The forcing-bid death spiral (see the
+  LLM probe section) was randomizing who died, faking bag dynamism. With
+  fixed agents, (1,2,3,5,7,9) still gives ~100% bankruptcy and longer
+  games (5.8 rounds), but busts re-concentrate on seat 1 (39% mixed,
+  60-89% uniform tables). Clean re-sweep found a better cell: **rates
+  (1,2,3,4,6,8)** — mixed field: 94% bankruptcy, 5.7 rounds, 7pp win
+  spread, busts 29/23/21/21. That is the current candidate (now the
+  webgame/llmcli default). Remaining soft corner: a table of four
+  identical expert agents mostly escapes into drain endings (7% bank);
+  min-bid floors do NOT help under steep tails (99% seat-1 busts).
+  Also ruled: the bailout's cost stays "forfeit the post-bankruptcy
+  foreclosure purchase" — if the bailout shield needs further tuning,
+  strengthen that lever rather than adding VP penalties.
+- **Superseded — candidate tuning: back-load the rate curve.** With skilled (digest)
   play, only 46% of tense games ended in bankruptcy — the rest were
   leader drains (54%, zero games reaching round 6): the bag was being
   dropped before it landed. Deepening the track backfires (softer
@@ -285,12 +299,17 @@ bankruptcy ending) and vs 3x digest (round-4). Convergent findings:
   purchase economics, good subsidy placement, one AI even grabbed the
   turn-order bankruptcy shield — but they lack a terminal-state model.
   The mixed table rated below a rules-literate first-timer.
-- **Bug/weakness: forcing-bid death spirals under the steep curve.** In
-  both games one AI escalated its own bid into unsurvivable debt (2→11
-  raises, 14 loans; a round-3 bid of 10 at $105/round interest). The
-  1-round survival horizon + kill/position raising misprice badly when
-  the tail rates are 5/7/9. Needs a look before trusting steep-curve
-  sims with these agents.
+- **Bug/weakness: forcing-bid death spirals under the steep curve** —
+  in both games one AI escalated its own bid into unsurvivable debt
+  (2→11 raises, 14 loans). Root cause: a kill bid was priced as if it
+  always lands (if it lands the game ends, so the 1-round survival gate
+  passes trivially on loan cash), but a *missed* kill leaves the
+  stretched debt in the ratchet. **Fixed**: forcing bids must now
+  survive a miss (2-round horizon), kill targets' resources are
+  estimated generously (subsidy-inclusive income), and doomed players
+  (interest unpayable this round) spend their forfeit cash on VP
+  instead of hoarding. All steep-curve findings re-measured after the
+  fix — see the correction bullet above.
 - **Missing endgame play, twice over**: (a) when mass default is
   inevitable, cash is worthless (bailout zeroes it anyway) — the right
   move is to spend every dying dollar on buildings, which the AIs never

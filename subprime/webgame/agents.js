@@ -38,6 +38,27 @@ class HeuristicAgent {
     return n;
   }
 
+  projectedIncome(s, pid) {
+    // printed income + subsidy bonuses as they'd be placed now; used where
+    // generosity is correct (kill targets' resources, declaring doom)
+    const [stateSubs, citySubs] = E.determineSubsidies(s.cities);
+    const cfg = s.cfg;
+    let total = 0;
+    s.cities.forEach((city, ci) => {
+      for (const t of TYPES) {
+        const st = stateSubs.has(E.key(ci, t));
+        const cs = citySubs[E.key(ci, t)];
+        for (const b of city[t]) {
+          if (b.owner !== pid) continue;
+          const bonus = st && cs === pid ? cfg.doubleSubsidyBonus
+                      : (st || cs === pid) ? cfg.singleSubsidyBonus : 0;
+          total += b.card.income + bonus;
+        }
+      }
+    });
+    return total;
+  }
+
   lifetimeRate(s, fromRound) {
     const cfg = s.cfg;
     const rate = E.currentRate(s);
@@ -61,7 +82,7 @@ class HeuristicAgent {
     return take;
   }
 
-  survivable(s, pid, d) {
+  survivable(s, pid, d, horizonOverride) {
     const p = s.players[pid];
     const cfg = s.cfg;
     const others = this.expectedOthersTake(s, pid);
@@ -69,7 +90,8 @@ class HeuristicAgent {
     let cash = p.money + d * cfg.moneyPerLoan + income;
     let taken = others + d;
     const takeRate = E.rateAfter(s, taken);
-    const horizon = Math.max(1, this.p.survivalHorizon);
+    const horizon = Math.max(1, horizonOverride === undefined
+                                ? this.p.survivalHorizon : horizonOverride);
     for (let step = 0; step < horizon; step++) {
       const k = s.round + step;
       if (k > cfg.maxRounds) break;
@@ -128,8 +150,9 @@ class HeuristicAgent {
       for (const q of s.players) {
         if (q.pid === pid || q.bankrupt) continue;
         const qBid = s.bids[q.pid] || 0;
+        // generous estimate: a kill that merely might land is a bad trade
         const qCash = q.money + qBid * s.cfg.moneyPerLoan +
-                      this.printedIncome(s, q.pid);
+                      this.projectedIncome(s, q.pid);
         for (let myD = 0; myD <= maxBid; myD++) {
           const rate = E.rateAfter(s, others + myD);
           let due = E.interestDue(s, q, rate);
@@ -141,7 +164,9 @@ class HeuristicAgent {
         }
       }
     }
-    const good = candidates.filter(c => this.survivable(s, pid, c));
+    // a forcing bid must survive a MISS (2-round horizon): if the kill
+    // lands the game ends, but a miss leaves us holding the stretch
+    const good = candidates.filter(c => this.survivable(s, pid, c, 2));
     return good.length ? Math.min(...good) : null;
   }
 
@@ -331,8 +356,12 @@ class HeuristicAgent {
     if (actions.some(a => a[0] === "repay") && this.drowning(s, pid)) {
       return ["repay"];
     }
-    const reserve = this.reserve(s, pid);
-    const cashMult = this.cashMult(s, pid);
+    // certain default this round: the bailout confiscates cash anyway —
+    // convert every dying dollar into VP instead of hoarding
+    const doomed = player.money + this.projectedIncome(s, pid) <
+                   E.interestDue(s, player);
+    const reserve = doomed ? 0 : this.reserve(s, pid);
+    const cashMult = doomed ? 1.0 : this.cashMult(s, pid);
     let best = PASS, bestNet = this.p.buyThreshold;
     for (const a of actions) {
       let net;
@@ -351,7 +380,7 @@ class HeuristicAgent {
         const value = this.placementValue(s, pid, cell.card, cityIdx);
         const out = Math.max(0, cost - cell.money);
         net = value - cost + cell.money - (cashMult - 1) * out;
-        if (this.p.patience > 0 && s.round < s.cfg.maxRounds) {
+        if (this.p.patience > 0 && !doomed && s.round < s.cfg.maxRounds) {
           const wait = this.waitNet(s, cell.card, r, cell.money, value);
           if (wait > net) net -= this.p.patience * (wait - net);
         }
