@@ -192,8 +192,16 @@ class HeuristicAgent(Agent):
         desired = self._desired_loans(s, pid)
         values = sorted(a[1] for a in actions if a[0] == "bid")
         at_most = [v for v in values if v <= desired]
-        if current is None:                      # initial bid: must place
-            return ("bid", at_most[-1] if at_most else values[0])
+        if current is None:                      # initial placement
+            if at_most:
+                return ("bid", at_most[-1])
+            # every open space overbids; escape if the variant allows it,
+            # unless the overshoot is small and survivable
+            overshoot_ok = (self._survivable(s, pid, values[0])
+                            and values[0] - desired <= desired)
+            if PASS in actions and not overshoot_ok:
+                return PASS
+            return ("bid", values[0])
         if current < desired and at_most:        # raise toward desired
             return ("bid", at_most[0])           # legal raises are all > current
         if values and self._position_worth_raise(s, pid, current, desired,
@@ -215,7 +223,10 @@ class HeuristicAgent(Agent):
         if not self._survivable(s, pid, raise_to):
             return False
         cfg = s.config
-        extra = raise_to - max(current, desired)  # beyond what we'd take anyway
+        # charge the WHOLE premium over economic desire, not the marginal
+        # step — otherwise minimal counter-raises look individually free
+        # and the war escalates without bound
+        extra = raise_to - desired
         if extra <= 0:
             return True
         # lifetime interest per extra loan: rates never fall, and cleanup

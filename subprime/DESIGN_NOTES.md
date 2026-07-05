@@ -152,9 +152,30 @@ tested by simulation instead of argued about.
     economy, where it taxes the leader's first-pick advantage; it only
     turns toxic when the economy is harsh enough that forced overbids
     kill
-  Untested but most promising structural idea: duplicate low bid spaces
-  (several players may sit at 0/1), which removes the forced-overbid
-  mechanic entirely while keeping the inversion's leader tax.
+  Follow-up (both ideas tested as config flags):
+  - `compulsory_initial_bids=False` (may pass immediately for 0 loans,
+    no initial-bid round obligation): removes literal forcing entirely
+    (0.00 forced overbids with a strict agent policy) — but seat 1
+    still busts 29% vs ~8% for late seats. The compulsion was a
+    correlate, not the cause.
+  - The real root is the **raise-leapfrog mechanic**: the last placer
+    lands lowest (rivals hold the mid spots), and "raise to a higher
+    *empty* space" forces the lowest bidder to leapfrog the whole
+    cluster or exit. Measured: seat 1 does 8.8 spaces of raising per
+    game vs 1.1–2.8 for other seats, ending with the most loans.
+  - `unique_bid_spaces=False` (markers may share a space, minimal
+    raises, FIFO ties): kills the leapfrog and the seat-1 bust
+    concentration — but the squeeze moves to whoever places *first*
+    (FIFO-first at shared levels; seat 4 falls to 7–9% wins), and it
+    reveals that **space uniqueness is the game's credit rationing**:
+    without it every player bids their full desire every round, and
+    even the safe economy collapses (84% bankruptcy, 3.4-round games).
+  Net: the auction asymmetry is conserved — every softening either
+  relocates the squeeze (someone is always first in the queue) or
+  un-rations credit. Making the squeeze fair likely requires a
+  different auction shape (e.g. simultaneous blind bids), or accepting
+  "someone is left holding the bag" as a theme and randomizing who
+  starts exposed.
 - **Denial is a public good in multiplayer.** First A/B of buy-phase
   opponent modeling came out *negative*: discounting leads by rivals'
   raw capacity to contest over-discounts (capability ≠ intent), and a

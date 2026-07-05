@@ -352,6 +352,20 @@ class TestRuleVariants(unittest.TestCase):
         s = new_game(cfg, 3, seed=2)
         self.assertEqual(decision_player(s), s.turn_order[0])
 
+    def test_immediate_pass_variant(self):
+        cfg = CFG.with_changes(compulsory_initial_bids=False)
+        s = new_game(cfg, 3, seed=2)
+        first = decision_player(s)
+        self.assertIn(PASS, legal_actions(s))
+        apply_action(s, PASS)                     # pass straight out
+        p = s.players[first]
+        self.assertEqual((p.loans, p.money), (1, 10))   # starting loans only
+        self.assertEqual(s.next_order[-1], first)       # last turn-order spot
+        # remaining two players place and the auction proceeds normally
+        apply_action(s, ("bid", 3))
+        apply_action(s, ("bid", 1))
+        self.assertEqual(s.bids[decision_player(s)], 1)  # lowest is asked
+
     def test_bankruptcy_pick_most_loans(self):
         cfg = CFG.with_changes(bankruptcy_pick="most_loans")
         s = new_game(cfg, 3, seed=7)

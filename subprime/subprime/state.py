@@ -90,6 +90,8 @@ class GameState:
         # phase 1 progress
         self.bid_pending = []         # pids yet to place an initial bid
         self.bids = {}                # pid -> bid space value (still on track)
+        self.bid_seq = {}             # pid -> placement sequence (FIFO ties)
+        self.bid_counter = 0
         self.next_order = []          # next round's order, filled back-to-front
 
         # phase 2 progress
@@ -162,6 +164,8 @@ class GameState:
         s.cities = [c.copy() for c in self.cities]
         s.bid_pending = list(self.bid_pending)
         s.bids = dict(self.bids)
+        s.bid_seq = dict(self.bid_seq)
+        s.bid_counter = self.bid_counter
         s.next_order = list(self.next_order)
         s.buy_ptr = self.buy_ptr
         s.buy_passed = set(self.buy_passed)

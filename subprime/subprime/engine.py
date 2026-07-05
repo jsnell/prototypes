@@ -111,12 +111,15 @@ def decision_player(s):
 def legal_actions(s):
     cfg = s.config
     if s.phase == P_BID_INITIAL:
-        taken = set(s.bids.values())
-        return [("bid", v) for v in cfg.bid_spaces if v not in taken]
+        taken = set(s.bids.values()) if cfg.unique_bid_spaces else set()
+        actions = [("bid", v) for v in cfg.bid_spaces if v not in taken]
+        if not cfg.compulsory_initial_bids:
+            actions.append(PASS)   # variant: pass straight out, 0 loans
+        return actions
 
     if s.phase == P_BID_RAISE:
         pid = _lowest_bidder(s)
-        taken = set(s.bids.values())
+        taken = set(s.bids.values()) if cfg.unique_bid_spaces else set()
         current = s.bids[pid]
         raises = [("bid", v) for v in cfg.bid_spaces
                   if v > current and v not in taken]
@@ -157,16 +160,19 @@ def apply_action(s, action):
     pid = decision_player(s)
 
     if s.phase == P_BID_INITIAL:
-        s.bids[pid] = action[1]
         s.bid_pending.pop(0)
-        s.log(f"P{pid} opens bid at {action[1]}")
+        if action == PASS:
+            _pass_out(s, pid, 0)
+        else:
+            _set_bid(s, pid, action[1])
+            s.log(f"P{pid} opens bid at {action[1]}")
 
     elif s.phase == P_BID_RAISE:
         if action == PASS:
             _bid_pass(s, pid)
         else:
             s.log(f"P{pid} raises bid {s.bids[pid]} -> {action[1]}")
-            s.bids[pid] = action[1]
+            _set_bid(s, pid, action[1])
 
     elif s.phase == P_BUY:
         if action == PASS:
@@ -232,21 +238,32 @@ def _start_bid_phase(s):
     else:
         s.bid_pending = list(s.turn_order)
     s.bids = {}
+    s.bid_seq = {}
+    s.bid_counter = 0
     s.next_order = [None] * s.n_players
 
 
+def _set_bid(s, pid, value):
+    s.bids[pid] = value
+    s.bid_seq[pid] = s.bid_counter    # ties on a shared space act FIFO
+    s.bid_counter += 1
+
+
 def _lowest_bidder(s):
-    return min(s.bids, key=s.bids.get)
+    return min(s.bids, key=lambda q: (s.bids[q], s.bid_seq.get(q, 0)))
 
 
 def _bid_pass(s, pid):
-    bid = s.bids.pop(pid)
-    # last free (latest) spot on the turn order track
+    _pass_out(s, pid, s.bids.pop(pid))
+
+
+def _pass_out(s, pid, bid):
+    """Leave the auction with `bid` loans: last free turn-order spot,
+    loans and money in full. Bids are honored even if the loan markers run
+    out (designer ruling): the markers just track supply, and an empty
+    track ends the game in phase 4."""
     slot = max(i for i, v in enumerate(s.next_order) if v is None)
     s.next_order[slot] = pid
-    # Bids are honored in full even if the loan markers run out (designer
-    # ruling): the markers just track supply, and an empty track ends the
-    # game in phase 4.
     taken = _take_loan_markers(s, bid)
     player = s.players[pid]
     player.loans += bid

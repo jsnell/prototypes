@@ -49,6 +49,14 @@ class GameConfig:
     initial_bids_inverted: bool = True  # doc rule: initial bids placed last-
                                         # to-first in turn order. False =
                                         # first-to-last (structural variant)
+    compulsory_initial_bids: bool = True  # doc rule: everyone must place an
+                                          # initial bid. False = a player may
+                                          # pass immediately (0 loans) instead
+                                          # of being forced onto a high space
+    unique_bid_spaces: bool = True  # doc rule: one marker per bid space, so
+                                    # raising leapfrogs occupied spaces. False
+                                    # = markers may share a space (minimal
+                                    # raises possible; ties act FIFO)
 
     # --- loan track: row sizes (must sum to the number of loan markers)
     # and the interest rate printed on every space of each row. The round
