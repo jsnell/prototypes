@@ -201,6 +201,26 @@ const CSS = {residential:'res', commercial:'com', industrial:'ind'};
 const HUMAN = 0;
 const SAVE_KEY = 'subprime-save';
 const SAVE_VER = 1;   // bump when the state schema/rules change
+const PREFS_KEY = 'subprime-prefs';
+
+function savePrefs() {
+  try {
+    localStorage.setItem(PREFS_KEY, JSON.stringify({
+      steep: document.getElementById('steep').checked,
+      opps: document.getElementById('opps').value,
+    }));
+  } catch (e) {}
+}
+
+function loadPrefs() {
+  try {
+    const d = JSON.parse(localStorage.getItem(PREFS_KEY) || 'null');
+    if (!d) return;
+    document.getElementById('steep').checked = !!d.steep;
+    const sel = document.getElementById('opps');
+    if ([...sel.options].some(o => o.value === d.opps)) sel.value = d.opps;
+  } catch (e) {}
+}
 let G = null;        // {state, agents, names, cursor}
 let sel = null;
 
@@ -639,7 +659,11 @@ function renderOver() {
       </td></tr>`).join('');
 }
 
-// resume a saved game if one exists (artifact redeploys reload the page)
+// restore new-game settings, then resume a saved game if one exists
+// (artifact redeploys reload the page)
+loadPrefs();
+document.getElementById('steep').onchange = savePrefs;
+document.getElementById('opps').onchange = savePrefs;
 if (loadGame()) render(); else newGame();
 </script>
 </body>
