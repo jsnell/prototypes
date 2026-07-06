@@ -283,12 +283,19 @@ class HeuristicAgent {
     const topRival = byCount[0] || 0;
     const secondRival = byCount[1] || 0;
 
+    // MARGINAL accounting: a placement is credited with what it CHANGES —
+    // taking a lead credits the whole stream, extending an existing lead
+    // credits only the new card (full-stream crediting caused fortress
+    // piling and blinded the agents to spreading across cities)
     const bonusStream = cfg.singleSubsidyBonus * remaining * this.p.subsidyWeight;
-    if (mineSec > topRival) {
+    const wasLeadSec = (mineSec - 1) > topRival;
+    const nowLeadSec = mineSec > topRival;
+    const gainedSec = nowLeadSec ? (wasLeadSec ? 1 : mineSec) : 0;
+    if (nowLeadSec) {
       const margin = mineSec - topRival;
       const capacity = this.contestCapacity(s, pid, card.type);
       const hold = capacity ? Math.max(0.5, margin / (margin + capacity)) : 1.0;
-      val += mineSec * bonusStream * hold;
+      val += gainedSec * bonusStream * hold;
     }
     const leaderWasStrict = topRival > Math.max(secondRival, mineSec - 1);
     if (leaderWasStrict && mineSec >= topRival) {
@@ -299,7 +306,15 @@ class HeuristicAgent {
     counts[cityIdx] += 1;
     const low = Math.min(...counts);
     if (counts.filter(x => x === low).length === 1 && counts[cityIdx] === low) {
-      val += mineSec * bonusStream * 0.5;
+      // the new card itself earns the state bonus...
+      val += bonusStream * 0.5;
+      if (nowLeadSec) {
+        // ...and leading a state-subsidized section stacks to the double
+        // bonus AND scores 1 VP per building at game end
+        const stack = cfg.doubleSubsidyBonus - 2 * cfg.singleSubsidyBonus;
+        val += gainedSec * stack * remaining * this.p.subsidyWeight * 0.5;
+        val += cfg.vpStateSubsidyPerBuilding * gainedSec * this.p.vpWeight * 0.5;
+      }
     }
 
     val += cfg.vpPerBuilding * this.p.vpWeight;
@@ -309,7 +324,8 @@ class HeuristicAgent {
       .map(q => E.ownedCount(city, q.pid)).sort((a, b) => b - a);
     const topCity = cityCounts[0] || 0;
     const secondCity = cityCounts[1] || 0;
-    if (mineCity > topCity) {
+    // flat 3 VP majority: credit only when this placement newly takes it
+    if (mineCity > topCity && !((mineCity - 1) > topCity)) {
       val += cfg.vpCityMajority * this.p.vpWeight * 0.5;
     }
     if (topCity > Math.max(secondCity, mineCity - 1) && mineCity > topCity) {

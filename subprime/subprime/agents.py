@@ -363,16 +363,25 @@ class HeuristicAgent(Agent):
         top_rival = by_count[0] if by_count else 0
         second_rival = by_count[1] if len(by_count) > 1 else 0
 
-        # city subsidy: a strict section lead, discounted by how easily the
-        # strongest rival could still contest it with cards on the display
+        # MARGINAL accounting throughout: a placement is credited with what
+        # it CHANGES — taking a lead credits the whole stream, extending an
+        # existing lead credits only the new card. (Crediting the full
+        # stream every time made fortress-piling look far better than it
+        # is and blinded the agents to spreading across cities.)
         bonus_stream = cfg.single_subsidy_bonus * remaining * self.p.subsidy_weight
-        if mine_sec > top_rival:
-            margin = mine_sec - top_rival
+        was_lead_sec = (mine_sec - 1) > top_rival
+        now_lead_sec = mine_sec > top_rival
+        gained_sec = (1 if was_lead_sec else mine_sec) if now_lead_sec else 0
+
+        # city subsidy: cards of mine that START earning it via this buy,
+        # discounted by rivals' capacity to contest the lead
+        if now_lead_sec:
             capacity = self._contest_capacity(s, pid, card.type)
+            margin = mine_sec - top_rival
             # floor at 0.5: rivals who *could* contest usually build their
             # own engines instead (capability is not intent)
             hold = max(0.5, margin / (margin + capacity)) if capacity else 1.0
-            val += mine_sec * bonus_stream * hold
+            val += gained_sec * bonus_stream * hold
 
         # denial: a tie kills a rival's city-subsidy marker (ties place no
         # marker), so matching a strict leader is itself worth their stream
@@ -383,8 +392,20 @@ class HeuristicAgent(Agent):
         # state subsidy: would this city be the strict-fewest for the type?
         counts = [c.type_count(card.type) for c in s.cities]
         counts[city_idx] += 1
-        if counts.count(min(counts)) == 1 and counts[city_idx] == min(counts):
-            val += mine_sec * bonus_stream * 0.5
+        low = min(counts)
+        if counts.count(low) == 1 and counts[city_idx] == low:
+            # the new card itself earns the state bonus...
+            val += bonus_stream * 0.5
+            if now_lead_sec:
+                # ...and leading a state-subsidized section stacks to the
+                # double bonus AND scores 1 VP per building at game end —
+                # this is what makes under-developed cities pay
+                stack = (cfg.double_subsidy_bonus
+                         - 2 * cfg.single_subsidy_bonus)
+                val += (gained_sec * stack * remaining
+                        * self.p.subsidy_weight * 0.5)
+                val += (cfg.vp_state_subsidy_per_building * gained_sec
+                        * self.p.vp_weight * 0.5)
 
         # endgame VPs
         val += cfg.vp_per_building * self.p.vp_weight
@@ -393,7 +414,9 @@ class HeuristicAgent(Agent):
                               if q.pid != pid and not q.bankrupt), reverse=True)
         top_city = city_counts[0] if city_counts else 0
         second_city = city_counts[1] if len(city_counts) > 1 else 0
-        if mine_city > top_city:
+        # city majority is a flat 3 VP: credit it only when this placement
+        # newly takes the strict lead
+        if mine_city > top_city and not (mine_city - 1) > top_city:
             val += cfg.vp_city_majority * self.p.vp_weight * 0.5
         # exceeding (not tying — city ties still score) a strict city
         # leader strips their 3vp majority

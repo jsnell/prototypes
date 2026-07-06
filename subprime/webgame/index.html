@@ -80,6 +80,7 @@
   .card.ind { background: var(--ind); }
   .card .t { font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
   .card .pr { font-size: 16px; font-weight: 800; }
+  .card .pr .mk { font-size: 12px; opacity: .7; }
   .card .inc { font-size: 11.5px; }
   .card.buyable { cursor: pointer; box-shadow: 0 0 0 2px #ffffff55; }
   .card.buyable:hover { box-shadow: 0 0 0 3px #fff; }
@@ -160,8 +161,9 @@
       <div class="bidtrack" id="btrack"></div></div>
     <div class="panel"><h2 id="tohead">Turn order</h2>
       <div class="bidtrack" id="torder"></div></div>
-    <div class="panel"><h2>Real estate market <span class="sub">(unsold cards
-      slide toward row 1 each round and get cheaper)</span></h2>
+    <div class="panel" id="mpanel"><h2>Real estate market
+      <span class="sub" id="mnote">(price shown as printed cost + row markup;
+      unsold cards slide toward row 1 and lose the markup)</span></h2>
       <div id="market"></div></div>
     <div class="panel"><h2>Cities <span class="sub">(★ state subsidy · ● city
       subsidy — as they'd be awarded at the next income phase)</span></h2>
@@ -172,6 +174,7 @@
 
 <div id="over" class="hidden"><div class="box">
   <h2 id="overtitle"></h2><table id="scores"></table>
+  <button onclick="G.overDismissed = true; render();">Inspect final board</button>
   <button class="primary" onclick="newGame()">Play again</button>
 </div></div>
 
@@ -196,7 +199,7 @@ function newGame() {
   const agents = [null, ...opps.map((n, i) => A.REGISTRY[n](seed + 1 + i))];
   const names = ['P0 (you)', ...opps.map((n, i) => `P${i + 1} (${n})`)];
   document.getElementById('log').innerHTML = '';
-  G = {state, agents, names, cursor: 0};
+  G = {state, agents, names, cursor: 0, overDismissed: false};
   sel = null;
   runAgents();
   render();
@@ -234,12 +237,15 @@ function humanTurn() {
 }
 function legal() { return humanTurn() ? E.legalActions(G.state) : []; }
 
-function cardHTML(cell, price, cls = '', extra = '') {
+function cardHTML(cell, mult, cls = '', extra = '') {
   if (!cell) return `<div class="card empty"></div>`;
   const money = cell.money ? `<span class="cash">$${cell.money}</span>` : '';
+  const base = cell.card.cost, markup = base * (mult - 1);
+  const pr = markup > 0 ? `$${base}<span class="mk">+$${markup}</span>`
+                        : `$${base}`;
   return `<div class="card ${CSS[cell.card.type]} ${cls}" ${extra}>${money}
     <div class="t">${cell.card.type.slice(0,3)}</div>
-    <div class="pr">$${price}</div>
+    <div class="pr">${pr}</div>
     <div class="inc">+$${cell.card.income}/rd</div></div>`;
 }
 
@@ -283,6 +289,7 @@ function render() {
 
   // players
   const [stateSubs, citySubs] = currentSubs();
+  const vps = E.scoreBreakdown(s);
   const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
   document.getElementById('players').innerHTML = s.players.map((p, i) => {
     const due = E.interestDue(s, p);
@@ -295,12 +302,18 @@ function render() {
       tags.push('<span class="tag pass">passed</span>');
     }
     if (s.bailedOut.has(i)) tags.push('<span class="tag">bailed out</span>');
+    const v = vps[i];
+    const vpLine = s.phase === 'over'
+      ? `<b>${p.vp} VP final</b>`
+      : v ? `~<b>${v.total} VP</b> = ${v.buildings} bldg + ${v.majorities} ` +
+            `city-maj + ${v.state} state-sub`
+          : '';
     return `<div class="player ${p.bankrupt?'dead':''}"
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${esc(G.names[i])}</span><span>${tags.join(' ')}</span></div>
       <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
-        ${bld} bldgs (+$${income}/rd incl. subsidies)
-      </div></div>`;
+        ${bld} bldgs (+$${income}/rd incl. subsidies)</div>
+      <div class="st">${vpLine}</div></div>`;
   }).join('');
 
   // loan track
@@ -370,6 +383,13 @@ function renderMarket() {
   legal().filter(a => a[0]==='buy').forEach(a => {
     (buyable[`${a[1]},${a[2]}`] ||= []).push(a[3]);
   });
+  // the market is only open during the buy phase
+  const closed = s.phase === 'bailout' || s.phase === 'over';
+  document.getElementById('mpanel').style.opacity = closed ? .45 : 1;
+  document.getElementById('mnote').textContent = closed
+    ? '— CLOSED (foreclosure sale / scoring; only repossessed lots can be bought)'
+    : '(price shown as printed cost + row markup; unsold cards slide toward '
+      + 'row 1 and lose the markup)';
   // transposed: one grid column per price row (fresh ×3 on the left,
   // bargains ×1 on the right — the direction cards slide)
   const rows = [...Array(s.display.length).keys()].reverse();  // [2,1,0]
@@ -383,8 +403,7 @@ function renderMarket() {
       const key = `${r},${c}`;
       const can = cell && buyable[key];
       const isSel = sel && sel.key === key;
-      html += cardHTML(cell,
-        cell ? cell.card.cost * cfg.rowCostMultipliers[r] : 0,
+      html += cardHTML(cell, cfg.rowCostMultipliers[r],
         (can ? 'buyable ' : '') + (isSel ? 'sel' : ''),
         can ? `data-key="${key}"` : '');
     }
@@ -400,6 +419,29 @@ function renderMarket() {
   });
 }
 
+function sectTooltip(s, ci, t, stateSubs, citySubs) {
+  const st = stateSubs.has(E.key(ci, t));
+  const cs = citySubs[E.key(ci, t)];
+  if (!st && cs === undefined) return '';
+  const owners = {};
+  for (const b of s.cities[ci][t]) {
+    if (b.owner !== null) owners[b.owner] = (owners[b.owner] || 0) + 1;
+  }
+  const lines = [];
+  if (st) lines.push(`★ state subsidy: fewest ${t} of any city — every ` +
+    'owner here gets +$1/card; the section leader also scores 1 VP per ' +
+    'building at game end');
+  if (cs !== undefined) lines.push(`● city subsidy: P${cs} has the most ` +
+    `here — +$1/card${st ? ' (stacks with ★ to +$3/card)' : ''}`);
+  for (const pid of Object.keys(owners)) {
+    const n = owners[pid];
+    const per = st && cs === Number(pid) ? 3
+              : (st || cs === Number(pid)) ? 1 : 0;
+    if (per) lines.push(`P${pid}: +$${per * n}/rd (${n} card${n>1?'s':''} × $${per})`);
+  }
+  return lines.join('\n');
+}
+
 function renderCities() {
   const s = G.state;
   const [stateSubs, citySubs] = currentSubs();
@@ -410,13 +452,16 @@ function renderCities() {
       const cs = citySubs[E.key(ci, t)];
       if (cs !== undefined)
         marks.push(`<span style="color:${COLORS[cs]}">●</span>`);
+      const tip = esc(sectTooltip(s, ci, t, stateSubs, citySubs))
+        .replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
       const target = sel && sel.cities.includes(ci);
       const bs = city[t].map(b =>
         `<span class="b"><span class="own" style="background:${
           b.owner===null?'#555':COLORS[b.owner]}"></span>$${b.card.income}</span>`
       ).join('');
       return `<div class="sect ${CSS[t]} ${target?'target':''}"
-        data-city="${ci}"><div class="hd"><b>${t.slice(0,3)}</b>
+        data-city="${ci}" ${tip ? `title="${tip}"` : ''}>
+        <div class="hd"><b>${t.slice(0,3)}</b>
         <span>${marks.join(' ')}</span></div>${bs}</div>`;
     }).join('');
     return `<div class="city"><h3>City ${ci+1}</h3>${sects}</div>`;
@@ -437,6 +482,13 @@ function renderActions() {
   el.innerHTML = ''; hint.textContent = '';
   document.getElementById('acthead').textContent =
     humanTurn() ? 'Your move' : (s.phase === 'over' ? 'Game over' : 'Waiting…');
+  if (s.phase === 'over' && G.overDismissed) {
+    const b = document.createElement('button');
+    b.textContent = 'Show final scores';
+    b.className = 'primary';
+    b.onclick = () => { G.overDismissed = false; render(); };
+    el.appendChild(b);
+  }
   if (!humanTurn()) return;
 
   const mk = (label, action, primary) => {
@@ -462,12 +514,20 @@ function renderActions() {
     if (acts.some(a => a[0]==='repay')) mk('Repay 1 loan', ['repay']);
     mk('Pass — done buying', ['pass'], !acts.some(a => a[0]==='buy'));
   } else if (s.phase === 'bailout') {
-    hint.textContent = 'Foreclosure sale: buy one repossessed building?';
+    hint.textContent = 'Foreclosure sale: you may buy ONE repossessed ' +
+      'building at its printed cost (no row markup). The market is closed.';
     s.bailoutLots.forEach((lot, i) => {
-      if (lot.card && acts.some(a => a[0]==='bailout_buy' && a[1]===i)) {
-        mk(`Buy ${lot.card.type.slice(0,3)} +$${lot.card.income}/rd in city ` +
-           `${lot.city+1} for $${lot.card.cost * s.cfg.bailoutPriceMultiplier}`,
-           ['bailout_buy', i]);
+      if (!lot.card) return;   // already sold
+      const price = lot.card.cost * s.cfg.bailoutPriceMultiplier;
+      const label = `Buy ${lot.card.type.slice(0,3).toUpperCase()} ` +
+        `+$${lot.card.income}/rd in City ${lot.city+1} — $${price}`;
+      if (acts.some(a => a[0]==='bailout_buy' && a[1]===i)) {
+        mk(label, ['bailout_buy', i]);
+      } else {
+        const b = document.createElement('button');
+        b.textContent = label + ' (can\'t afford)';
+        b.disabled = true;
+        el.appendChild(b);
       }
     });
     mk('Pass', ['pass'], true);
@@ -477,7 +537,10 @@ function renderActions() {
 function renderOver() {
   const s = G.state;
   const ov = document.getElementById('over');
-  if (s.phase !== 'over') { ov.classList.add('hidden'); return; }
+  if (s.phase !== 'over' || G.overDismissed) {
+    ov.classList.add('hidden');
+    return;
+  }
   ov.classList.remove('hidden');
   const youWon = s.winners.includes(HUMAN);
   document.getElementById('overtitle').textContent =

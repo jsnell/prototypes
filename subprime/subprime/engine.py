@@ -557,6 +557,39 @@ def _score_and_end(s):
           f"winners={s.winners}")
 
 
+def score_breakdown(s, exclude=None):
+    """score_snapshot split by source: buildings, city majorities,
+    state-subsidized sections. Returns {pid: {buildings, majorities,
+    state, total}} for non-bankrupt players."""
+    cfg = s.config
+    pids = [p.pid for p in s.players if not p.bankrupt and p.pid != exclude]
+    out = {pid: {"buildings": 0, "majorities": 0, "state": 0} for pid in pids}
+    state_subs, _ = determine_subsidies(s.cities)
+
+    for city in s.cities:
+        counts = {pid: city.owned_count(pid) for pid in pids}
+        for pid, n in counts.items():
+            out[pid]["buildings"] += cfg.vp_per_building * n
+        best = max(counts.values(), default=0)
+        if best > 0:
+            for pid, n in counts.items():
+                if n == best:
+                    out[pid]["majorities"] += cfg.vp_city_majority
+
+    for (ci, typ) in state_subs:
+        counts = {pid: s.cities[ci].owned_count(pid, typ) for pid in pids}
+        best = max(counts.values(), default=0)
+        if best > 0:
+            for pid, n in counts.items():
+                if n == best:
+                    out[pid]["state"] += cfg.vp_state_subsidy_per_building * n
+
+    for pid in pids:
+        out[pid]["total"] = (out[pid]["buildings"] + out[pid]["majorities"]
+                             + out[pid]["state"])
+    return out
+
+
 def score_snapshot(s, exclude=None):
     """VPs per non-bankrupt player if the game ended right now, with the
     state-subsidy markers placed as they would be this round. `exclude`

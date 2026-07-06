@@ -181,6 +181,47 @@ function ownedCount(city, pid, typ) {
   return n;
 }
 
+function scoreBreakdown(s, exclude) {
+  // scoreSnapshot split by source: buildings, city majorities,
+  // state-subsidized sections
+  const cfg = s.cfg;
+  const pids = s.players.filter(p => !p.bankrupt && p.pid !== exclude)
+                        .map(p => p.pid);
+  const out = {};
+  pids.forEach(pid => out[pid] = { buildings: 0, majorities: 0, state: 0 });
+  const [stateSubs] = determineSubsidies(s.cities);
+  for (const city of s.cities) {
+    const counts = {};
+    let best = 0;
+    for (const pid of pids) {
+      counts[pid] = ownedCount(city, pid);
+      out[pid].buildings += cfg.vpPerBuilding * counts[pid];
+      best = Math.max(best, counts[pid]);
+    }
+    if (best > 0) for (const pid of pids) {
+      if (counts[pid] === best) out[pid].majorities += cfg.vpCityMajority;
+    }
+  }
+  for (const k of stateSubs) {
+    const [ci, typ] = splitKey(k);
+    const counts = {};
+    let best = 0;
+    for (const pid of pids) {
+      counts[pid] = ownedCount(s.cities[ci], pid, typ);
+      best = Math.max(best, counts[pid]);
+    }
+    if (best > 0) for (const pid of pids) {
+      if (counts[pid] === best) {
+        out[pid].state += cfg.vpStateSubsidyPerBuilding * counts[pid];
+      }
+    }
+  }
+  for (const pid of pids) {
+    out[pid].total = out[pid].buildings + out[pid].majorities + out[pid].state;
+  }
+  return out;
+}
+
 function scoreSnapshot(s, exclude) {
   const cfg = s.cfg;
   const pids = s.players.filter(p => !p.bankrupt && p.pid !== exclude)
@@ -649,7 +690,7 @@ const Engine = {
   TYPES, RES, COM, IND, PASS,
   defaultConfig, makeRng, newGame, legalActions, applyAction, decisionPlayer,
   currentRate, rateAfter, markersLeft, interestDue, ownedCount, scoreSnapshot,
-  determineSubsidies, key, splitKey, same,
+  scoreBreakdown, determineSubsidies, key, splitKey, same,
 };
 if (typeof module !== "undefined") module.exports = Engine;
 if (typeof globalThis !== "undefined") globalThis.SubprimeEngine = Engine;
