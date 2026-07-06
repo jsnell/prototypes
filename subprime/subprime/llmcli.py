@@ -1,21 +1,26 @@
-"""Text interface for playing one seat against the AIs — designed for
-LLM agents (and terminal die-hards). The game persists to a pickle file,
-so each move is a single command:
+"""Text interface for playing seats against (or alongside) the AIs —
+designed for LLM agents and terminal die-hards. The game persists to a
+pickle file, so each move is a single command:
 
   python3 -m subprime.llmcli new --state /tmp/game.pkl \\
-      --agents digest,shark,greedy [--seed N] [--doc-rates]
-  python3 -m subprime.llmcli show --state /tmp/game.pkl
-  python3 -m subprime.llmcli act 3 --state /tmp/game.pkl   # by index
-  python3 -m subprime.llmcli act '["bid", 5]' --state /tmp/game.pkl
+      --agents digest,shark,greedy [--seed N] [--doc-rates] [--humans 1]
+  python3 -m subprime.llmcli show --state /tmp/game.pkl [--as N]
+  python3 -m subprime.llmcli act 3 --state /tmp/game.pkl [--as N]
+  python3 -m subprime.llmcli wait --state /tmp/game.pkl --as N
 
-You are always player P0. After your action the AIs play until it is
-your turn again (or the game ends); everything that happened is printed.
+Seats 0..humans-1 are externally controlled; the rest are AI agents and
+play automatically. With --humans 2+ all player names are hidden (just
+P0..P3) and each external player acts with --as SEAT, using `wait` to
+block until it is their turn. File locking makes concurrent players from
+separate processes safe.
 """
 
 import argparse
+import fcntl
 import json
 import pickle
 import sys
+import time
 
 from .cards import BUILDING_TYPES
 from .config import GameConfig
@@ -24,24 +29,44 @@ from .engine import (new_game, legal_actions, apply_action, decision_player,
 from .agents import make_agent, AGENT_REGISTRY
 from .state import P_OVER
 
-HUMAN = 0
 CANDIDATE_RATES = (2, 3, 4, 6, 8, 10)  # current best (see DESIGN_NOTES)
+
+
+class _Lock:
+    """Exclusive advisory lock so concurrent players can share a state
+    file safely."""
+
+    def __init__(self, path):
+        self.f = open(path + ".lock", "a+")
+
+    def __enter__(self):
+        fcntl.flock(self.f, fcntl.LOCK_EX)
+        return self
+
+    def __exit__(self, *exc):
+        fcntl.flock(self.f, fcntl.LOCK_UN)
+        self.f.close()
+
+
+def _humans(sess):
+    return sess.get("humans", [0])
 
 
 def _run_agents(sess):
     s = sess["state"]
-    while s.phase != P_OVER and decision_player(s) != HUMAN:
+    humans = _humans(sess)
+    while s.phase != P_OVER and decision_player(s) not in humans:
         pid = decision_player(s)
         apply_action(s, sess["agents"][pid].act(s, pid, legal_actions(s)))
 
 
-def _describe(s, a):
+def _describe(s, a, viewer):
     if a == ("pass",):
         if s.phase == "bid_initial":
             return "pass — take no loans, last turn-order spot"
         if s.phase == "bid_raise":
-            return (f"pass — lock in {s.bids[HUMAN]} loan(s) "
-                    f"(+${s.bids[HUMAN] * s.config.money_per_loan}) and the "
+            return (f"pass — lock in {s.bids[viewer]} loan(s) "
+                    f"(+${s.bids[viewer] * s.config.money_per_loan}) and the "
                     "latest free turn-order spot")
         return "pass"
     if a[0] == "bid":
@@ -65,7 +90,7 @@ def _describe(s, a):
     return str(a)
 
 
-def _view(sess, events):
+def _view(sess, events, viewer):
     s = sess["state"]
     cfg = s.config
     out = []
@@ -85,7 +110,7 @@ def _view(sess, events):
             tag = (" <- BANKRUPT" if p.bankrupt else
                    " <- WINNER" if p.pid in s.winners else "")
             add(f"  {sess['names'][p.pid]:<22} {p.vp} VP, ${p.money}{tag}")
-        add("You " + ("WON!" if HUMAN in s.winners else "did not win."))
+        add("You " + ("WON!" if viewer in s.winners else "did not win."))
         return "\n".join(out)
 
     rate = s.current_rate()
@@ -119,8 +144,10 @@ def _view(sess, events):
 
     from .engine import score_snapshot
     snap = score_snapshot(s)
+    def pname(pid):
+        return sess["names"][pid] + (" (you)" if pid == viewer else "")
     add("PLAYERS (turn order: " +
-        ", ".join(sess["names"][p] for p in s.turn_order) +
+        ", ".join(pname(p) for p in s.turn_order) +
         ") — income shown as base+subsidy")
     for p in s.players:
         due = interest_due(s, p)
@@ -132,7 +159,7 @@ def _view(sess, events):
         bid = f" | bid marker on {s.bids[p.pid]}" if p.pid in s.bids else ""
         vp = f" | {snap[p.pid]} VP if scored now" if p.pid in snap else ""
         net = p.money + proj[p.pid] - due
-        add(f"  {sess['names'][p.pid]:<22} ${p.money:<4} {p.loans} loans "
+        add(f"  {pname(p.pid):<22} ${p.money:<4} {p.loans} loans "
             f"(owes ${due}/rd) | {bld} bldgs, income ${base}"
             f"{f'+${sub}' if sub else ''}/rd | net {net:+d} after interest"
             f"{' <== DEFAULT RISK' if net < 0 else ''}{vp}{bid}{status}")
@@ -193,23 +220,31 @@ def _view(sess, events):
         add(f"  City {ci + 1}: " + "  ".join(parts))
     add("")
 
-    acts = legal_actions(s)
+    dp = decision_player(s)
     move = sess.get("moves", 0)
-    add(f"YOUR LEGAL ACTIONS (you are {sess['names'][HUMAN]}; this is your "
+    if dp != viewer:
+        add(f"WAITING: it is {sess['names'][dp]}'s turn to act, not yours. "
+            f"Run: python3 -m subprime.llmcli wait --as {viewer} "
+            f"--state <file>")
+        return "\n".join(out)
+    acts = legal_actions(s)
+    add(f"YOUR LEGAL ACTIONS (you are {sess['names'][viewer]}; this is "
         f"move #{move} — indices are only valid for this move):")
     for i, a in enumerate(acts):
-        add(f"  {i}: {_describe(s, a)}")
+        add(f"  {i}: {_describe(s, a, viewer)}")
     add("")
-    add(f"Move with: python3 -m subprime.llmcli act <index> --state <file>"
-        f"   (add --turn {move} to guard against acting on a stale view)")
+    add(f"Move with: python3 -m subprime.llmcli act <index> --as {viewer} "
+        f"--state <file>   (add --turn {move} to guard against stale views)")
     return "\n".join(out)
 
 
-def _emit(sess):
+def _emit(sess, viewer):
     s = sess["state"]
-    events = (s.events or [])[sess["cursor"]:]
-    sess["cursor"] = len(s.events or [])
-    print(_view(sess, events))
+    cursors = sess.setdefault("cursors", {})
+    cur = cursors.get(viewer, sess.get("cursor", 0))
+    events = (s.events or [])[cur:]
+    cursors[viewer] = len(s.events or [])
+    print(_view(sess, events, viewer))
 
 
 def main(argv=None):
@@ -219,18 +254,37 @@ def main(argv=None):
     p = sub.add_parser("new")
     p.add_argument("--state", required=True)
     p.add_argument("--agents", default="digest,shark,greedy")
+    p.add_argument("--humans", type=int, default=1,
+                   help="externally controlled seats 0..N-1 (default 1). "
+                        "With 2+, player identities are hidden (P0..Pn)")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--doc-rates", action="store_true",
                    help="use the design doc's 1-6 curve instead of the tuned one")
     p = sub.add_parser("show")
     p.add_argument("--state", required=True)
+    p.add_argument("--as", dest="seat", type=int, default=0)
     p = sub.add_parser("act")
     p.add_argument("action")
     p.add_argument("--state", required=True)
+    p.add_argument("--as", dest="seat", type=int, default=0)
     p.add_argument("--turn", type=int, default=None,
                    help="expected move number; errors if the game has moved on")
+    p = sub.add_parser("wait",
+                       help="block until it is your seat's turn (or game over)")
+    p.add_argument("--state", required=True)
+    p.add_argument("--as", dest="seat", type=int, default=0)
+    p.add_argument("--poll", type=float, default=2.0)
+    p.add_argument("--max-wait", type=float, default=45.0)
 
     args = ap.parse_args(argv)
+
+    def load():
+        with open(args.state, "rb") as f:
+            return pickle.load(f)
+
+    def save(sess):
+        with open(args.state, "wb") as f:
+            pickle.dump(sess, f)
 
     if args.cmd == "new":
         names = [a.strip() for a in args.agents.split(",") if a.strip()]
@@ -238,63 +292,94 @@ def main(argv=None):
             if n not in AGENT_REGISTRY:
                 sys.exit(f"unknown agent {n!r}; "
                          f"options: {', '.join(sorted(AGENT_REGISTRY))}")
+        humans = list(range(max(1, args.humans)))
+        n_players = len(humans) + len(names)
         cfg = (GameConfig() if args.doc_rates
                else GameConfig(loan_row_rates=CANDIDATE_RATES))
         seed = args.seed
         if seed is None:
             import os
             seed = int.from_bytes(os.urandom(4), "big")
-        state = new_game(cfg, 1 + len(names), seed=seed, collect_events=True)
+        state = new_game(cfg, n_players, seed=seed, collect_events=True)
+        if len(humans) > 1:
+            pnames = [f"P{i}" for i in range(n_players)]   # identities hidden
+        else:
+            pnames = ["P0-YOU"] + [f"P{i + 1}-{n}"
+                                   for i, n in enumerate(names)]
         sess = {
             "state": state,
-            "agents": [None] + [make_agent(n, seed=seed + 1 + i)
-                                for i, n in enumerate(names)],
-            "names": ["P0-YOU"] + [f"P{i + 1}-{n}" for i, n in enumerate(names)],
-            "cursor": 0,
+            "agents": [None] * len(humans) +
+                      [make_agent(n, seed=seed + 1 + i)
+                       for i, n in enumerate(names)],
+            "names": pnames,
+            "humans": humans,
+            "cursors": {},
         }
         _run_agents(sess)
-        _emit(sess)
-        with open(args.state, "wb") as f:
-            pickle.dump(sess, f)
+        _emit(sess, humans[0])
+        save(sess)
         return
-
-    with open(args.state, "rb") as f:
-        sess = pickle.load(f)
 
     if args.cmd == "show":
-        cur = sess["cursor"]
-        sess["cursor"] = 0
-        s = sess["state"]
-        print(_view(sess, (s.events or [])[max(0, cur - 12):cur]))
-        sess["cursor"] = cur
+        with _Lock(args.state):
+            sess = load()
+            viewer = args.seat
+            cursors = sess.setdefault("cursors", {})
+            cur = cursors.get(viewer, sess.get("cursor", 0))
+            s = sess["state"]
+            print(_view(sess, (s.events or [])[max(0, cur - 12):cur], viewer))
         return
 
+    if args.cmd == "wait":
+        deadline = time.time() + args.max_wait
+        while True:
+            with _Lock(args.state):
+                sess = load()
+                s = sess["state"]
+                dp = None if s.phase == P_OVER else decision_player(s)
+                if s.phase == P_OVER or dp == args.seat:
+                    _emit(sess, args.seat)
+                    save(sess)
+                    return
+            if time.time() >= deadline:
+                print(f"STILL WAITING — {sess['names'][dp]} is deciding. "
+                      f"Run 'wait --as {args.seat}' again.")
+                return
+            time.sleep(args.poll)
+
     # act
-    s = sess["state"]
-    if s.phase == P_OVER:
-        sys.exit("game is over — start a new one")
-    if args.turn is not None and args.turn != sess.get("moves", 0):
-        sys.exit(f"stale view: this is move #{sess.get('moves', 0)}, you "
-                 f"expected #{args.turn} — run 'show' and re-decide")
-    acts = legal_actions(s)
-    raw = args.action.strip()
-    try:
-        if raw.lstrip("-").isdigit():
-            action = acts[int(raw)]
-        else:
-            action = tuple(json.loads(raw))
-    except (ValueError, IndexError):
-        sys.exit(f"bad action {raw!r}: give an index 0..{len(acts) - 1} "
-                 "or a JSON action")
-    try:
-        apply_action(s, action)
-    except IllegalAction as e:
-        sys.exit(str(e))
-    sess["moves"] = sess.get("moves", 0) + 1
-    _run_agents(sess)
-    _emit(sess)
-    with open(args.state, "wb") as f:
-        pickle.dump(sess, f)
+    with _Lock(args.state):
+        sess = load()
+        s = sess["state"]
+        if s.phase == P_OVER:
+            sys.exit("game is over — start a new one")
+        if args.seat not in _humans(sess):
+            sys.exit(f"seat {args.seat} is not an external player")
+        dp = decision_player(s)
+        if dp != args.seat:
+            sys.exit(f"not your turn — {sess['names'][dp]} is to act; "
+                     f"run: wait --as {args.seat}")
+        if args.turn is not None and args.turn != sess.get("moves", 0):
+            sys.exit(f"stale view: this is move #{sess.get('moves', 0)}, you "
+                     f"expected #{args.turn} — run 'show' and re-decide")
+        acts = legal_actions(s)
+        raw = args.action.strip()
+        try:
+            if raw.lstrip("-").isdigit():
+                action = acts[int(raw)]
+            else:
+                action = tuple(json.loads(raw))
+        except (ValueError, IndexError):
+            sys.exit(f"bad action {raw!r}: give an index 0..{len(acts) - 1} "
+                     "or a JSON action")
+        try:
+            apply_action(s, action)
+        except IllegalAction as e:
+            sys.exit(str(e))
+        sess["moves"] = sess.get("moves", 0) + 1
+        _run_agents(sess)
+        _emit(sess, args.seat)
+        save(sess)
 
 
 if __name__ == "__main__":
