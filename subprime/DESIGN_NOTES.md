@@ -362,6 +362,29 @@ but the margins collapsed and the texture changed completely:
   rules likely needs a different lever than the rate curve alone
   (track size, money_per_loan, card economics) — open tuning question.
 
+- **Subsidy robbery is real, structural, and bounded.** The buy phase
+  precedes income, so a player budgeting against currently-placed
+  subsidies can have them stolen by a later buyer (a tie voids a city
+  marker; one purchase can flip strict-fewest) and default on a bill
+  they had covered. Measured in mixed fields: **~9% of terminal
+  defaults** are such robberies (avg theft $3.2), even with no agent
+  hunting them deliberately. Hardening the agents' spend reserve to
+  count only theft-proof income (margins ≥ 2) barely reduces the rate
+  (9% → 8%) because most victims were already holding all their cash —
+  the attack hits income, not spending, and the only real defenses are
+  upstream (borrow a buffer loan, or keep subsidy margins ≥ 2). The
+  secure reserve still wins its A/B (27.6/22.4) and ships as default.
+  Adversarial test (designer insisted, correctly): agents now hunt the
+  exploit (`income_kills`, on for kill-instinct agents) — a buy that
+  steals enough subsidy income to flip a solvent rival into default is
+  valued as a kill when the aftermath scores well. Results: the robber
+  wins its A/B (27.8/22.2), but even a dedicated hunter lands few
+  literal kills (7 robbery-deaths in 1081 defaults vs 3 blind victims)
+  — the strike window (solvent but within ~$3, with a 1-margin marker)
+  is thin. Verdict: legitimate, thematic, *bounded* depth; the reserve
+  change didn't widen it (the hole is structural: buy-before-income +
+  flippable markers), and the AI table now both prices and plays it.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without

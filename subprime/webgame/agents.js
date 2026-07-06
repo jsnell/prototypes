@@ -17,6 +17,7 @@ const DEFAULT_PARAMS = {
   contestModel: true, denialWeight: 0.5,
   debtCooldown: 0.0, patience: 0.0, cashReserveValue: 0.0,
   initialPositionBids: true, reserveUsesProjected: true,
+  incomeKills: true,
 };
 
 class RandomAgent {
@@ -239,9 +240,46 @@ class HeuristicAgent {
   // ---- phase 2: buying ----------------------------------------------
   interestDueNow(s, pid) { return E.interestDue(s, s.players[pid]); }
 
+  secureIncome(s, pid) {
+    // printed income plus only the subsidy bonuses whose margins survive
+    // a single rival purchase (1-card leads can be tied away; ties void
+    // the marker)
+    const cfg = s.cfg;
+    const [stateSubs, citySubs] = E.determineSubsidies(s.cities);
+    const stateMargin = {};
+    for (const t of TYPES) {
+      const counts = s.cities.map(c => c[t].length).sort((a, b) => a - b);
+      stateMargin[t] = counts.length > 1 ? counts[1] - counts[0] : 99;
+    }
+    let total = 0;
+    s.cities.forEach((city, ci) => {
+      for (const t of TYPES) {
+        const mine = city[t].filter(b => b.owner === pid);
+        if (!mine.length) continue;
+        const st = stateSubs.has(E.key(ci, t)) && stateMargin[t] >= 2;
+        let cs = false;
+        if (citySubs[E.key(ci, t)] === pid) {
+          let rivalBest = 0;
+          for (const q of s.players) {
+            if (q.pid !== pid && !q.bankrupt) {
+              rivalBest = Math.max(rivalBest,
+                city[t].filter(b => b.owner === q.pid).length);
+            }
+          }
+          cs = mine.length - rivalBest >= 2;
+        }
+        const bonus = st && cs ? cfg.doubleSubsidyBonus
+                    : (st || cs) ? cfg.singleSubsidyBonus : 0;
+        total += mine.reduce((n, b) => n + b.card.income, 0)
+                 + bonus * mine.length;
+      }
+    });
+    return total;
+  }
+
   reserve(s, pid) {
     const income = this.p.reserveUsesProjected
-      ? this.projectedIncome(s, pid) : this.printedIncome(s, pid);
+      ? this.secureIncome(s, pid) : this.printedIncome(s, pid);
     const need = this.interestDueNow(s, pid) - income;
     return Math.max(0, need) * this.p.keepReserve;
   }
@@ -379,6 +417,35 @@ class HeuristicAgent {
     return false;
   }
 
+  robberyBonus(s, pid, card, cityIdx) {
+    // value of stealing enough subsidy income to flip a solvent rival
+    // into default this round (game ends), when we like the aftermath
+    if (this.p.killInstinct <= 0 || !this.p.incomeKills) return 0;
+    const rivals = s.players.filter(q => q.pid !== pid && !q.bankrupt);
+    const before = {};
+    for (const q of rivals) {
+      const due = E.interestDue(s, q);
+      const inc = this.projectedIncome(s, q.pid);
+      if (q.money + inc >= due) before[q.pid] = due;
+    }
+    if (!Object.keys(before).length) return 0;
+    const sec = s.cities[cityIdx][card.type];
+    sec.push({ card, owner: pid });
+    try {
+      for (const q of rivals) {
+        if (before[q.pid] === undefined) continue;
+        const after = this.projectedIncome(s, q.pid);
+        if (q.money + after < before[q.pid] &&
+            this.amLeading(s, pid, q.pid)) {
+          return 30 * this.p.killInstinct;
+        }
+      }
+    } finally {
+      sec.pop();
+    }
+    return 0;
+  }
+
   buy(s, pid, actions) {
     const player = s.players[pid];
     if (actions.some(a => a[0] === "repay") && this.drowning(s, pid)) {
@@ -405,7 +472,8 @@ class HeuristicAgent {
         const cell = s.display[r][c];
         const cost = cell.card.cost * s.cfg.rowCostMultipliers[r];
         if (player.money + cell.money - cost < reserve) continue;
-        const value = this.placementValue(s, pid, cell.card, cityIdx);
+        const value = this.placementValue(s, pid, cell.card, cityIdx)
+                      + this.robberyBonus(s, pid, cell.card, cityIdx);
         const out = Math.max(0, cost - cell.money);
         net = value - cost + cell.money - (cashMult - 1) * out;
         if (this.p.patience > 0 && !doomed && s.round < s.cfg.maxRounds) {

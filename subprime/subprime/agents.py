@@ -15,7 +15,8 @@ import random
 from dataclasses import dataclass
 
 from .cards import BUILDING_TYPES
-from .state import P_BID_INITIAL, P_BID_RAISE, P_BUY, P_BAILOUT, P_OVER
+from .state import (P_BID_INITIAL, P_BID_RAISE, P_BUY, P_BAILOUT, P_OVER,
+                    Building)
 from . import engine
 from .engine import PASS
 
@@ -75,6 +76,9 @@ class HeuristicParams:
                                      # displaces next round (a dollar held is
                                      # a dollar not re-borrowed at the
                                      # ratcheted rate)
+    income_kills: bool = True      # (needs kill_instinct > 0) value buys that
+                                   # steal enough subsidy income to flip a
+                                   # solvent rival into default this round
     initial_position_bids: bool = True   # when economic loan desire is 0,
                                          # still weigh a cheap opening bid
                                          # against the turn-order budget
@@ -338,10 +342,45 @@ class HeuristicAgent(Agent):
                     total += b.card.income + bonus
         return total
 
+    def _secure_income(self, s, pid):
+        """Income that later buyers this round cannot take away: printed
+        income plus only those subsidy bonuses whose margins survive a
+        single rival purchase (a 1-card city-subsidy lead can be tied —
+        ties void the marker — and a 1-building state-fewest edge can be
+        overturned; neither is safe to spend against)."""
+        cfg = s.config
+        state_subs, city_subs = engine.determine_subsidies(s.cities)
+        # state-fewest margin per type: second-lowest minus lowest count
+        state_margin = {}
+        for t in BUILDING_TYPES:
+            counts = sorted(c.type_count(t) for c in s.cities)
+            state_margin[t] = counts[1] - counts[0] if len(counts) > 1 else 99
+        total = 0
+        for ci, city in enumerate(s.cities):
+            for t in BUILDING_TYPES:
+                mine = [b for b in city.sections[t] if b.owner == pid]
+                if not mine:
+                    continue
+                st = ((ci, t) in state_subs and state_margin[t] >= 2)
+                cs_holder = city_subs.get((ci, t))
+                cs = False
+                if cs_holder == pid:
+                    rival_best = max((sum(1 for b in city.sections[t]
+                                          if b.owner == q.pid)
+                                      for q in s.players
+                                      if q.pid != pid and not q.bankrupt),
+                                     default=0)
+                    cs = len(mine) - rival_best >= 2
+                bonus = (cfg.double_subsidy_bonus if st and cs
+                         else cfg.single_subsidy_bonus if st or cs else 0)
+                total += sum(b.card.income for b in mine) + bonus * len(mine)
+        return total
+
     def _reserve(self, s, pid):
         """Cash to keep so this round's interest is payable (income arrives
-        first and offsets it)."""
-        income = (self._projected_income(s, pid)
+        first and offsets it — but only income that can't be stolen by a
+        later buyer counts)."""
+        income = (self._secure_income(s, pid)
                   if self.p.reserve_uses_projected
                   else self._printed_income(s, pid))
         need = self._interest_due(s, pid) - income
@@ -480,6 +519,37 @@ class HeuristicAgent(Agent):
             cash += income
         return False
 
+    def _robbery_bonus(self, s, pid, card, city_idx):
+        """Value of a placement that steals enough subsidy income (by tying
+        a city-subsidy lead or flipping strict-fewest) to push a currently
+        solvent rival into default this round — which ends the game. Only
+        worth it if we like the post-bankruptcy scoring."""
+        if self.p.kill_instinct <= 0 or not self.p.income_kills:
+            return 0.0
+        rivals = [q for q in s.players if q.pid != pid and not q.bankrupt]
+        before = {}
+        for q in rivals:
+            due = engine.interest_due(s, q)
+            inc = self._projected_income(s, q.pid)
+            if q.money + inc >= due:            # currently solvent
+                before[q.pid] = (due, inc)
+        if not before:
+            return 0.0
+        sec = s.cities[city_idx].sections[card.type]
+        sec.append(Building(card, pid))         # hypothetical placement
+        try:
+            for q in rivals:
+                if q.pid not in before:
+                    continue
+                due, _ = before[q.pid]
+                after = self._projected_income(s, q.pid)
+                if (q.money + after < due
+                        and self._am_leading(s, pid, exclude=q.pid)):
+                    return 30.0 * self.p.kill_instinct
+        finally:
+            sec.pop()
+        return 0.0
+
     def _buy(self, s, pid, actions):
         player = s.players[pid]
         if ("repay",) in actions and self._drowning(s, pid):
@@ -511,6 +581,7 @@ class HeuristicAgent(Agent):
                 if player.money + money_on - cost < reserve:
                     continue
                 value = self._placement_value(s, pid, card, city_idx)
+                value += self._robbery_bonus(s, pid, card, city_idx)
                 # dollars leaving the wallet are priced above face value
                 # when they'd have to be re-borrowed next round
                 out = max(0, cost - money_on)
