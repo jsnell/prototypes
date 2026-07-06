@@ -16,6 +16,7 @@ const DEFAULT_PARAMS = {
   killInstinct: 0.0, endgameAwareness: 0.0,
   contestModel: true, denialWeight: 0.5,
   debtCooldown: 0.0, patience: 0.0, cashReserveValue: 0.0,
+  initialPositionBids: true, reserveUsesProjected: true,
 };
 
 class RandomAgent {
@@ -213,9 +214,18 @@ class HeuristicAgent {
     const canPass = actions.some(a => a[0] === "pass");
     if (current === undefined) {         // initial placement
       if (atMost.length) return ["bid", atMost[atMost.length - 1]];
-      const overshootOk = this.survivable(s, pid, values[0]) &&
-                          values[0] - desired <= desired;
-      if (canPass && !overshootOk) return PASS;
+      const v = values[0];
+      if (v !== undefined && this.survivable(s, pid, v)) {
+        if (v - desired <= desired) return ["bid", v];  // mild overshoot
+        // position bid: pay above desire purely for turn order, within
+        // the raise-war budget (else a 0-desire round cedes first pick)
+        if (this.p.initialPositionBids && this.p.turnOrderValue > 0) {
+          const perLoan = Math.max(0.5, this.lifetimeRate(s) - s.cfg.moneyPerLoan);
+          const budget = this.p.turnOrderValue * (s.nPlayers - 1);
+          if ((v - desired) * perLoan <= budget) return ["bid", v];
+        }
+      }
+      if (canPass) return PASS;
       return ["bid", values[0]];
     }
     if (current < desired && atMost.length) return ["bid", atMost[0]];
@@ -230,7 +240,9 @@ class HeuristicAgent {
   interestDueNow(s, pid) { return E.interestDue(s, s.players[pid]); }
 
   reserve(s, pid) {
-    const need = this.interestDueNow(s, pid) - this.printedIncome(s, pid);
+    const income = this.p.reserveUsesProjected
+      ? this.projectedIncome(s, pid) : this.printedIncome(s, pid);
+    const need = this.interestDueNow(s, pid) - income;
     return Math.max(0, need) * this.p.keepReserve;
   }
 
@@ -440,7 +452,9 @@ class HeuristicAgent {
   }
 }
 
-const SHARK = { demandAware: true, turnOrderValue: 2.0,
+// turnOrderValue 12: under the final bid rules higher position valuations
+// beat lower ones head-to-head (12 > 6 > 2) — first pick is gold
+const SHARK = { demandAware: true, turnOrderValue: 12.0,
                 killInstinct: 1.0, endgameAwareness: 1.0 };
 
 const REGISTRY = {
@@ -451,7 +465,7 @@ const REGISTRY = {
     { loanAppetite: 1.5, rateFear: 0.2, keepReserve: 0.5 }, seed),
   sharp: (seed) => new HeuristicAgent({ demandAware: true }, seed),
   "sharp-pos": (seed) => new HeuristicAgent(
-    { demandAware: true, turnOrderValue: 2.0 }, seed),
+    { demandAware: true, turnOrderValue: 12.0 }, seed),
   shark: (seed) => new HeuristicAgent(SHARK, seed),
   digest: (seed) => new HeuristicAgent(
     Object.assign({}, SHARK,

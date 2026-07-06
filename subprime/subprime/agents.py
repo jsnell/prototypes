@@ -75,6 +75,13 @@ class HeuristicParams:
                                      # displaces next round (a dollar held is
                                      # a dollar not re-borrowed at the
                                      # ratcheted rate)
+    initial_position_bids: bool = True   # when economic loan desire is 0,
+                                         # still weigh a cheap opening bid
+                                         # against the turn-order budget
+                                         # instead of passing unconditionally
+    reserve_uses_projected: bool = True  # buy-phase reserve nets out subsidy-
+                                         # inclusive income (False: printed
+                                         # income only — over-reserves)
 
 
 class HeuristicAgent(Agent):
@@ -223,11 +230,22 @@ class HeuristicAgent(Agent):
         if current is None:                      # initial placement
             if at_most:
                 return ("bid", at_most[-1])
-            # every open space overbids; escape if the variant allows it,
-            # unless the overshoot is small and survivable
-            overshoot_ok = (self._survivable(s, pid, values[0])
-                            and values[0] - desired <= desired)
-            if PASS in actions and not overshoot_ok:
+            # every open space overbids the economic desire
+            v = values[0] if values else None
+            if v is not None and self._survivable(s, pid, v):
+                if v - desired <= desired:       # mild overshoot: take it
+                    return ("bid", v)
+                # position bid: pay above desire purely for turn order,
+                # within the same budget the raise war uses (otherwise a
+                # 0-desire round cedes first pick for free, forever)
+                if (self.p.initial_position_bids
+                        and self.p.turn_order_value > 0):
+                    per_loan = max(0.5, self._lifetime_rate(s)
+                                   - s.config.money_per_loan)
+                    budget = self.p.turn_order_value * (s.n_players - 1)
+                    if (v - desired) * per_loan <= budget:
+                        return ("bid", v)
+            if PASS in actions:
                 return PASS
             return ("bid", values[0])
         if current < desired and at_most:        # raise toward desired
@@ -322,8 +340,11 @@ class HeuristicAgent(Agent):
 
     def _reserve(self, s, pid):
         """Cash to keep so this round's interest is payable (income arrives
-        first, so conservative expected income offsets it)."""
-        need = self._interest_due(s, pid) - self._printed_income(s, pid)
+        first and offsets it)."""
+        income = (self._projected_income(s, pid)
+                  if self.p.reserve_uses_projected
+                  else self._printed_income(s, pid))
+        need = self._interest_due(s, pid) - income
         return max(0, need) * self.p.keep_reserve
 
     def _contest_capacity(self, s, pid, typ):
@@ -610,33 +631,34 @@ AGENT_REGISTRY = {
     "sharp-lev": lambda seed: HeuristicAgent(
         HeuristicParams(loan_appetite=2.0, rate_fear=0.2, keep_reserve=0.5,
                         demand_aware=True), seed=seed),
-    # turn_order_value=2 is the empirically robust setting: higher values
-    # win only when the economy is too safe to punish the extra loans
+    # turn_order_value=12: under the final bid rules (pass allowed, initial
+    # position bids) higher valuations beat lower ones head-to-head
+    # (12 > 6 > 2) — first pick is one of the game's most valuable assets
     "sharp-pos": lambda seed: HeuristicAgent(
-        HeuristicParams(demand_aware=True, turn_order_value=2.0), seed=seed),
+        HeuristicParams(demand_aware=True, turn_order_value=12.0), seed=seed),
     # the works: demand-aware, position-buying, hunts forced bankruptcies
     # and drains the loan track to end the game while ahead
     "shark": lambda seed: HeuristicAgent(
-        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+        HeuristicParams(demand_aware=True, turn_order_value=12.0,
                         kill_instinct=1.0, endgame_awareness=1.0), seed=seed),
     # shark that projects the interest ratchet two rounds out before
     # bidding — safer, builds less; loses to the reckless shark head-to-head
     "shark-h2": lambda seed: HeuristicAgent(
-        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+        HeuristicParams(demand_aware=True, turn_order_value=12.0,
                         kill_instinct=1.0, endgame_awareness=1.0,
                         survival_horizon=2), seed=seed),
     # shark that coasts after over-borrowing (cuts loan demand by its debt
     # excess over the rival average) — the "catch-up" style: rivals level
     # the loan counts while it digests the overbid
     "shark-cool": lambda seed: HeuristicAgent(
-        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+        HeuristicParams(demand_aware=True, turn_order_value=12.0,
                         kill_instinct=1.0, endgame_awareness=1.0,
                         debt_cooldown=1.0), seed=seed),
     # the full overbid-digestion kit: coast on debt excess, value the
     # slide-down option on cards, and price spent cash at the borrowing it
     # displaces next round. Strongest agent found so far.
     "digest": lambda seed: HeuristicAgent(
-        HeuristicParams(demand_aware=True, turn_order_value=2.0,
+        HeuristicParams(demand_aware=True, turn_order_value=12.0,
                         kill_instinct=1.0, endgame_awareness=1.0,
                         debt_cooldown=1.0, patience=0.5,
                         cash_reserve_value=0.4), seed=seed),
