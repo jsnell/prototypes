@@ -63,6 +63,7 @@ function makeRng(seed) {
         [arr[i], arr[j]] = [arr[j], arr[i]];
       }
     },
+    state: () => a >>> 0,   // makeRng(state()) continues the sequence
   };
 }
 

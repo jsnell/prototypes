@@ -199,8 +199,55 @@ const E = SubprimeEngine, A = SubprimeAgents;
 const COLORS = ['var(--p0)','var(--p1)','var(--p2)','var(--p3)'];
 const CSS = {residential:'res', commercial:'com', industrial:'ind'};
 const HUMAN = 0;
+const SAVE_KEY = 'subprime-save';
+const SAVE_VER = 1;   // bump when the state schema/rules change
 let G = null;        // {state, agents, names, cursor}
 let sel = null;
+
+function saveGame() {
+  if (!G) return;
+  try {
+    const s = G.state;
+    localStorage.setItem(SAVE_KEY, JSON.stringify({
+      v: SAVE_VER,
+      names: G.names, overDismissed: G.overDismissed,
+      agents: G.agents.map(a => a === null ? null : {
+        kind: a instanceof A.RandomAgent ? 'random' : 'heuristic',
+        params: a.p || null, rng: a.rng.state(),
+      }),
+      state: Object.assign({}, s, {
+        rng: s.rng.state(),
+        buyPassed: [...s.buyPassed],
+        stateSubsidies: [...s.stateSubsidies],
+        bailedOut: [...s.bailedOut],
+      }),
+    }));
+  } catch (e) { /* storage unavailable: play on without saves */ }
+}
+
+function loadGame() {
+  try {
+    const raw = localStorage.getItem(SAVE_KEY);
+    if (!raw) return false;
+    const d = JSON.parse(raw);
+    if (d.v !== SAVE_VER || !d.state || !d.state.phase) return false;
+    const s = d.state;
+    s.rng = E.makeRng(s.rng);
+    s.buyPassed = new Set(s.buyPassed);
+    s.stateSubsidies = new Set(s.stateSubsidies);
+    s.bailedOut = new Set(s.bailedOut);
+    const agents = d.agents.map(a => {
+      if (!a) return null;
+      const agent = a.kind === 'random'
+        ? new A.RandomAgent(0) : new A.HeuristicAgent(a.params, 0);
+      agent.rng = E.makeRng(a.rng);
+      return agent;
+    });
+    G = { state: s, agents, names: d.names, cursor: 0,
+          overDismissed: !!d.overDismissed };
+    return true;
+  } catch (e) { return false; }
+}
 
 function newGame() {
   const opps = document.getElementById('opps').value.split(',');
@@ -291,6 +338,7 @@ function projIncome(s, stateSubs, citySubs, pid) {
 }
 
 function render() {
+  saveGame();
   const s = G.state;
   s.events.slice(G.cursor).forEach(logLine);
   G.cursor = s.events.length;
@@ -591,7 +639,8 @@ function renderOver() {
       </td></tr>`).join('');
 }
 
-newGame();
+// resume a saved game if one exists (artifact redeploys reload the page)
+if (loadGame()) render(); else newGame();
 </script>
 </body>
 </html>
