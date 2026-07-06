@@ -61,21 +61,19 @@ class TestBidding(unittest.TestCase):
     def test_bid_flow_orders_and_loans(self):
         s = fresh(3, seed=2)
         order = list(s.turn_order)
-        # initial bids arrive in reverse turn order
+        # initial bids arrive in reverse turn order, and passing outright
+        # (instead of placing a bid) is legal
         self.assertEqual(decision_player(s), order[-1])
-        # scripted: players bid 2, 5, 0 (in reverse-order seating)...
+        self.assertIn(PASS, legal_actions(s))
         apply_action(s, ("bid", 2))
         self.assertEqual(decision_player(s), order[-2])
         apply_action(s, ("bid", 5))
-        apply_action(s, ("bid", 0))
-        # ...now the lowest bidder (bid 0) must raise or pass
-        low = decision_player(s)
-        self.assertEqual(s.bids[low], 0)
-        self.assertIn(PASS, legal_actions(s))
-        apply_action(s, PASS)                       # passes: last spot, 0 loans
-        # next lowest is bid 2
+        apply_action(s, PASS)                       # out: last spot, 0 loans
+        low = order[0]
+        # now the lowest remaining bidder (bid 2) must raise or pass
         mid = decision_player(s)
         self.assertEqual(s.bids[mid], 2)
+        self.assertIn(PASS, legal_actions(s))
         apply_action(s, PASS)
         top = decision_player(s)
         apply_action(s, PASS)
@@ -91,13 +89,13 @@ class TestBidding(unittest.TestCase):
         s = fresh(3, seed=2)
         apply_action(s, ("bid", 2))
         apply_action(s, ("bid", 5))
-        apply_action(s, ("bid", 0))
+        apply_action(s, ("bid", 1))
         raises = [a for a in legal_actions(s) if a[0] == "bid"]
         values = {v for _, v in raises}
-        self.assertNotIn(0, values)   # not higher
+        self.assertNotIn(1, values)   # not higher (own space)
         self.assertNotIn(2, values)   # occupied
         self.assertNotIn(5, values)   # occupied
-        self.assertIn(1, values)
+        self.assertIn(3, values)
         # raising re-asks the new lowest bidder
         apply_action(s, ("bid", 3))
         self.assertEqual(s.bids[decision_player(s)], 2)
@@ -329,8 +327,7 @@ class TestLoanRuling(unittest.TestCase):
         p5, p6, p0 = order[-1], order[-2], order[-3]  # reverse bid order
         apply_action(s, ("bid", 5))
         apply_action(s, ("bid", 6))
-        apply_action(s, ("bid", 0))
-        apply_action(s, PASS)   # p0 (lowest) passes: no loans
+        apply_action(s, PASS)   # p0 passes outright: no loans
         apply_action(s, PASS)   # p5 passes: only 2 markers, but 5 full loans
         apply_action(s, PASS)   # p6 passes: track already dry, 6 full loans
         self.assertEqual(s.markers_left(), 0)

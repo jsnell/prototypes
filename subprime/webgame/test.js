@@ -78,8 +78,7 @@ check(play(42) === play(42), "not deterministic for same seed");
   const [p5, p6, p0] = [order[2], order[1], order[0]];
   E.applyAction(s, ["bid", 5]);
   E.applyAction(s, ["bid", 6]);
-  E.applyAction(s, ["bid", 0]);
-  E.applyAction(s, ["pass"]);   // p0 at bid 0
+  E.applyAction(s, ["pass"]);   // p0 passes outright (no 0 space; ruling)
   E.applyAction(s, ["pass"]);   // p5: only 2 markers, full 5 loans anyway
   E.applyAction(s, ["pass"]);   // p6
   check(s.players[p5].loans === 6 && s.players[p5].money === 60,
@@ -140,9 +139,9 @@ check(play(42) === play(42), "not deterministic for same seed");
 // ---- steep-curve config -----------------------------------------------
 {
   const cfg = E.defaultConfig();
-  cfg.loanRowRates = [1, 2, 3, 4, 6, 8];
+  cfg.loanRowRates = [2, 3, 4, 6, 8, 10];
   const s = E.newGame(cfg, 4, 5, false);
-  check(E.rateAfter(s, 999) === 8, "tuned curve max rate");
+  check(E.rateAfter(s, 999) === 10, "tuned curve max rate");
 }
 
 if (failures) { console.error(`${failures} failure(s)`); process.exit(1); }

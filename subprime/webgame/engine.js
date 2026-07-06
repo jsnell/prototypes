@@ -26,8 +26,9 @@ const DEFAULT_CARDS = [
 function defaultConfig() {
   return {
     startingMoney: 10, startingLoans: 1, moneyPerLoan: 10, maxRounds: 6,
-    bidSpaces: [0, 1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
-    initialBidsInverted: true, compulsoryInitialBids: true,
+    // designer ruling: no 0 space; passing before placing a bid is allowed
+    bidSpaces: [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12],
+    initialBidsInverted: true, compulsoryInitialBids: false,
     uniqueBidSpaces: true,
     loanRowSizes: [10, 9, 9, 8, 7, 7],
     loanRowRates: [1, 2, 3, 4, 5, 6],

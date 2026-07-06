@@ -44,15 +44,16 @@ class GameConfig:
     max_rounds: int = 6              # game ends in phase 4 of this round
 
     # --- bid track (phase 1): the spaces players can put bid markers on;
-    # a bid's value = number of loans taken when passing ---
-    bid_spaces: tuple = tuple(range(0, 13))
+    # a bid's value = number of loans taken when passing. Designer ruling:
+    # there is no 0 space — a player may instead pass outright before
+    # placing a bid (0 loans, last free turn-order spot) ---
+    bid_spaces: tuple = tuple(range(1, 13))
     initial_bids_inverted: bool = True  # doc rule: initial bids placed last-
                                         # to-first in turn order. False =
                                         # first-to-last (structural variant)
-    compulsory_initial_bids: bool = True  # doc rule: everyone must place an
-                                          # initial bid. False = a player may
-                                          # pass immediately (0 loans) instead
-                                          # of being forced onto a high space
+    compulsory_initial_bids: bool = False  # designer ruling: passing before
+                                           # placing a bid is allowed. True =
+                                           # the doc's literal must-place rule
     unique_bid_spaces: bool = True  # doc rule: one marker per bid space, so
                                     # raising leapfrogs occupied spaces. False
                                     # = markers may share a space (minimal

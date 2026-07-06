@@ -29,7 +29,7 @@ tested by simulation instead of argued about.
 | **State-subsidy building counts** — do unowned (repossessed) buildings count toward a city's "fewest buildings"? | yes: a building is a building | `City.type_count` |
 | **State-subsidy scoring** ("most buildings scores 1vp per building") | 1 VP per building *the leader owns in that section*; ties all score | `_score_and_end` |
 | **Bailout auction eligibility** | every non-bankrupt player in turn order gets one chance to buy one building; bailed-out players are in the queue but have $0 by construction | `_setup_bankruptcy` |
-| **Initial bid** — may a player decline to bid? | no; but bid space 0 exists (no loans, last turn order) | `legal_actions` |
+| **Initial bid** — may a player decline to bid? | **designer ruling**: yes — a player may pass outright instead of placing (0 loans, last free turn-order spot), and there is no 0 space on the bid track (spaces 1–12). The doc's literal must-place reading remains available via `compulsory_initial_bids=True` | `legal_actions`, `bid_spaces` |
 | **City subsidy with a single owner in a section** | sole ownership is "most" — subsidy granted | `collect_income` |
 
 ## Known dynamics (from simulation — updated as experiments run)
