@@ -344,6 +344,11 @@ but the margins collapsed and the texture changed completely:
   the loan track as a game clock, and (their read) under-leveraging in
   rounds 1-2 when loans are cheapest.
 
+- **NOTE ON EVERYTHING ABOVE THIS LINE**: all findings earlier than this
+  bullet (including the LLM playtests) were measured under the doc's
+  literal bid rules — compulsory initial placement, bid track 0–12.
+  The pass-before-bid ruling below changes the baseline; directional
+  conclusions carry over, specific percentages do not.
 - **Final bid rules re-move the balance (again).** With pass-before-bid
   as the rule and no 0 space, cautious agents simply decline lethal
   debt: the (1,2,3,4,6,8) candidate collapses to 6% bankruptcy /
