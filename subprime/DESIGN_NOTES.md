@@ -344,6 +344,19 @@ but the margins collapsed and the texture changed completely:
   the loan track as a game clock, and (their read) under-leveraging in
   rounds 1-2 when loans are cheapest.
 
+- **Final bid rules re-move the balance (again).** With pass-before-bid
+  as the rule and no 0 space, cautious agents simply decline lethal
+  debt: the (1,2,3,4,6,8) candidate collapses to 6% bankruptcy /
+  full-length games. Re-tuned under the corrected rules:
+  **(2,3,4,6,8,10)** gives the mixed field 51% bankruptcy, 5.9 rounds,
+  4pp win spread, busts 10/10/15/15 — the current tuned default.
+  Pushing the bag rate higher costs fairness again ((3,4,5,7,9,11):
+  79% bankruptcy but 30pp spread with seat 4 busting 47% — under the
+  pass rule the squeeze reappears on the *trailing* seat at harsh
+  rates). Getting to ~90% bag-holding with even seats under the final
+  rules likely needs a different lever than the rate curve alone
+  (track size, money_per_loan, card economics) — open tuning question.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without
