@@ -59,6 +59,17 @@
   .bspace.legal { border-style: solid; border-color: #4f8ef7; cursor: pointer; }
   .bspace.legal:hover { background: #22304a; }
   .bspace .dot { width: 14px; height: 14px; border-radius: 50%; }
+  .tslot { min-width: 64px; height: 46px; border: 1px dashed var(--line);
+           border-radius: 6px; display: flex; flex-direction: column;
+           align-items: center; justify-content: center; gap: 2px;
+           font-size: 11px; color: var(--dim); padding: 2px 8px; }
+  .tslot .who { font-size: 12px; font-weight: 700; display: flex;
+                align-items: center; gap: 5px; }
+  .tslot .dot { width: 12px; height: 12px; border-radius: 50%; }
+  .tslot.filled { border-style: solid; }
+  .tslot.acting { border-color: #7ade8f; background: #1c2a20; }
+  .tslot.donebuy { opacity: .45; }
+  .player .tag.pass { background: #2a3040; color: #aab6d0; }
   #market { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 6px; }
   .mhead { font-size: 10.5px; color: var(--dim); text-transform: uppercase;
@@ -147,11 +158,14 @@
       <div id="hint"></div></div>
     <div class="panel" id="bidpanel"><h2>Bid track — loans wanted (+turn order)</h2>
       <div class="bidtrack" id="btrack"></div></div>
+    <div class="panel"><h2 id="tohead">Turn order</h2>
+      <div class="bidtrack" id="torder"></div></div>
     <div class="panel"><h2>Real estate market <span class="sub">(unsold cards
       slide toward row 1 each round and get cheaper)</span></h2>
       <div id="market"></div></div>
     <div class="panel"><h2>Cities <span class="sub">(★ state subsidy · ● city
-      subsidy)</span></h2><div class="cities" id="cities"></div></div>
+      subsidy — as they'd be awarded at the next income phase)</span></h2>
+      <div class="cities" id="cities"></div></div>
   </div>
   <div class="panel"><h2>Log</h2><div id="log"></div></div>
 </main>
@@ -167,7 +181,6 @@
 const E = SubprimeEngine, A = SubprimeAgents;
 const COLORS = ['var(--p0)','var(--p1)','var(--p2)','var(--p3)'];
 const CSS = {residential:'res', commercial:'com', industrial:'ind'};
-const AI_NAMES = ['Bear & Stearns', 'Lehman Sisters', 'Northern Rock'];
 const HUMAN = 0;
 let G = null;        // {state, agents, names, cursor}
 let sel = null;
@@ -181,8 +194,7 @@ function newGame() {
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const state = E.newGame(cfg, 1 + opps.length, seed, true);
   const agents = [null, ...opps.map((n, i) => A.REGISTRY[n](seed + 1 + i))];
-  const names = ['You', ...opps.map((n, i) =>
-    `${AI_NAMES[i % AI_NAMES.length]} (${n})`)];
+  const names = ['P0 (you)', ...opps.map((n, i) => `P${i + 1} (${n})`)];
   document.getElementById('log').innerHTML = '';
   G = {state, agents, names, cursor: 0};
   sel = null;
@@ -231,6 +243,33 @@ function cardHTML(cell, price, cls = '', extra = '') {
     <div class="inc">+$${cell.card.income}/rd</div></div>`;
 }
 
+// subsidies to show: the actually-placed markers while the game is being
+// scored (bailout/over), otherwise as they'd be awarded right now
+function currentSubs() {
+  const s = G.state;
+  if (s.phase === 'bailout' || s.phase === 'over') {
+    return [s.stateSubsidies, s.citySubsidies];
+  }
+  return E.determineSubsidies(s.cities);
+}
+
+function projIncome(s, stateSubs, citySubs, pid) {
+  let total = 0;
+  s.cities.forEach((city, ci) => {
+    for (const t of E.TYPES) {
+      const st = stateSubs.has(E.key(ci, t));
+      const cs = citySubs[E.key(ci, t)];
+      for (const b of city[t]) {
+        if (b.owner !== pid) continue;
+        const bonus = st && cs === pid ? s.cfg.doubleSubsidyBonus
+                    : (st || cs === pid) ? s.cfg.singleSubsidyBonus : 0;
+        total += b.card.income + bonus;
+      }
+    }
+  });
+  return total;
+}
+
 function render() {
   const s = G.state;
   s.events.slice(G.cursor).forEach(logLine);
@@ -243,23 +282,24 @@ function render() {
   document.getElementById('phase').textContent = 'phase: ' + s.phase;
 
   // players
+  const [stateSubs, citySubs] = currentSubs();
   const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
   document.getElementById('players').innerHTML = s.players.map((p, i) => {
     const due = E.interestDue(s, p);
-    const income = s.cities.reduce((n, c) => n + E.TYPES.reduce((m, t) =>
-      m + c[t].filter(b => b.owner === i)
-              .reduce((k, b) => k + b.card.income, 0), 0), 0);
+    const income = projIncome(s, stateSubs, citySubs, i);
     const bld = s.cities.reduce((n, c) => n + E.ownedCount(c, i), 0);
-    const pos = s.turnOrder.indexOf(i);
     const tags = [];
     if (p.bankrupt) tags.push('<span class="tag dead">BANKRUPT</span>');
     else if (dp === i) tags.push('<span class="tag turn">acting</span>');
+    if (s.phase === 'buy' && s.buyPassed.has(i) && !p.bankrupt) {
+      tags.push('<span class="tag pass">passed</span>');
+    }
     if (s.bailedOut.has(i)) tags.push('<span class="tag">bailed out</span>');
     return `<div class="player ${p.bankrupt?'dead':''}"
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${esc(G.names[i])}</span><span>${tags.join(' ')}</span></div>
       <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
-        ${bld} bldgs (+$${income}/rd)${pos >= 0 ? ' · turn ' + (pos+1) : ''}
+        ${bld} bldgs (+$${income}/rd incl. subsidies)
       </div></div>`;
   }).join('');
 
@@ -276,7 +316,32 @@ function render() {
         <div class="n">${left}/${size}</div></div>`;
     }).join('');
 
-  renderBids(); renderMarket(); renderCities(); renderActions(); renderOver();
+  renderBids(); renderOrder(); renderMarket(); renderCities();
+  renderActions(); renderOver();
+}
+
+function renderOrder() {
+  const s = G.state;
+  const inBid = s.phase === 'bid_initial' || s.phase === 'bid_raise';
+  const order = inBid ? s.nextOrder : s.turnOrder;
+  document.getElementById('tohead').textContent = inBid
+    ? 'Next round turn order — fills from the back as players pass'
+    : (s.phase === 'buy' ? 'Turn order — buy phase' : 'Turn order');
+  const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
+  document.getElementById('torder').innerHTML = order.map((pid, i) => {
+    const cls = ['tslot'];
+    let who = '<span class="who" style="color:var(--dim)">—</span>';
+    if (pid !== null && pid !== undefined) {
+      cls.push('filled');
+      const passed = s.phase === 'buy' && s.buyPassed.has(pid);
+      if (passed) cls.push('donebuy');
+      if (!inBid && dp === pid) cls.push('acting');
+      who = `<span class="who"><span class="dot"
+        style="background:${COLORS[pid]}"></span>P${pid}${passed ? ' ✓' : ''}</span>`;
+    }
+    return `<div class="${cls.join(' ')}"><span>${i + 1}${
+      ['st','nd','rd'][i] || 'th'}</span>${who}</div>`;
+  }).join('');
 }
 
 function renderBids() {
@@ -337,11 +402,12 @@ function renderMarket() {
 
 function renderCities() {
   const s = G.state;
+  const [stateSubs, citySubs] = currentSubs();
   document.getElementById('cities').innerHTML = s.cities.map((city, ci) => {
     const sects = E.TYPES.map(t => {
       const marks = [];
-      if (s.stateSubsidies.has(E.key(ci, t))) marks.push('★');
-      const cs = s.citySubsidies[E.key(ci, t)];
+      if (stateSubs.has(E.key(ci, t))) marks.push('★');
+      const cs = citySubs[E.key(ci, t)];
       if (cs !== undefined)
         marks.push(`<span style="color:${COLORS[cs]}">●</span>`);
       const target = sel && sel.cities.includes(ci);

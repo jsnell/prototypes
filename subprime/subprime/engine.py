@@ -378,6 +378,8 @@ def collect_income(s):
     s.state_subsidies, s.city_subsidies = determine_subsidies(s.cities)
 
     # Payout.
+    gained = [0] * s.n_players
+    sub_gained = [0] * s.n_players
     for ci, city in enumerate(s.cities):
         for typ in BUILDING_TYPES:
             state_sub = (ci, typ) in s.state_subsidies
@@ -394,11 +396,17 @@ def collect_income(s):
                          else cfg.single_subsidy_bonus if single else 0)
                 p.money += bonus
                 p.subsidy_earned += bonus
+                gained[b.owner] += b.card.income + bonus
+                sub_gained[b.owner] += bonus
     subs = ([f"City {c + 1} {t[:3].upper()} state-subsidized"
              for c, t in sorted(s.state_subsidies)] +
             [f"City {c + 1} {t[:3].upper()} city subsidy to P{p}"
              for (c, t), p in sorted(s.city_subsidies.items())])
-    s.log("income collected; " + ("; ".join(subs) if subs else "no subsidies"))
+    if subs:
+        s.log("; ".join(subs))
+    s.log("income: " + " | ".join(
+        f"P{i} +${g}" + (f" (incl ${sg} subsidies)" if sg else "")
+        for i, (g, sg) in enumerate(zip(gained, sub_gained))))
 
 
 def pay_interest(s):

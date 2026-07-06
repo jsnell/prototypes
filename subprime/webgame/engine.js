@@ -438,6 +438,8 @@ function determineSubsidies(cities) {
 function collectIncome(s) {
   const cfg = s.cfg;
   [s.stateSubsidies, s.citySubsidies] = determineSubsidies(s.cities);
+  const gained = new Array(s.nPlayers).fill(0);
+  const subGained = new Array(s.nPlayers).fill(0);
   s.cities.forEach((city, ci) => {
     for (const typ of TYPES) {
       const stateSub = s.stateSubsidies.has(key(ci, typ));
@@ -453,10 +455,25 @@ function collectIncome(s) {
                     : single ? cfg.singleSubsidyBonus : 0;
         p.money += bonus;
         p.subsidyEarned += bonus;
+        gained[b.owner] += b.card.income + bonus;
+        subGained[b.owner] += bonus;
       }
     }
   });
-  log(s, "income collected");
+  const subs = [];
+  for (const k of s.stateSubsidies) {
+    const [ci, t] = splitKey(k);
+    subs.push(`City ${ci + 1} ${t.slice(0, 3).toUpperCase()} state-subsidized`);
+  }
+  for (const k of Object.keys(s.citySubsidies)) {
+    const [ci, t] = splitKey(k);
+    subs.push(`City ${ci + 1} ${t.slice(0, 3).toUpperCase()} city subsidy ` +
+              `to P${s.citySubsidies[k]}`);
+  }
+  if (subs.length) log(s, subs.join("; "));
+  log(s, "income: " + gained.map((g, i) =>
+      `P${i} +$${g}${subGained[i] ? ` (incl $${subGained[i]} subsidies)` : ""}`)
+      .join(" | "));
 }
 
 function payInterest(s) {
