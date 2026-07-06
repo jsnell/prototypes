@@ -385,6 +385,68 @@ but the margins collapsed and the texture changed completely:
   change didn't widen it (the hole is structural: buy-before-income +
   flippable markers), and the AI table now both prices and plays it.
 
+### Blind experience playtest (2 Claude + 2 digest, identities hidden)
+
+First *experience-focused* playtest under the final rules + tuned curve
+(seed 31337). Two Claude subagents in seats P0/P1, two digests in P2/P3;
+nobody was told who was what ("opponents could be human, claude, or
+classical ai"). Result: **P0 26 VP $6 beats P1 26 VP $1 on the money
+tiebreak**; digests 6 (bailed out) and 0 (bankrupt), round-4 bankruptcy
+ending. Both LLMs filed detailed reports afterwards.
+
+- **Experience verdict: strongly positive on agency.** Both called it
+  tense and decision-driven — P1: "a game decided by decisions, not
+  dice"; P1 could trace its loss to a single identifiable sequencing
+  error (buying a COM $6 before denying P0 the $3 RES that both defended
+  P0's City 2 majority *and* activated his +3VP state subsidy). The
+  round-4 endgame — computing whether a rival's bankruptcy is forcible,
+  then pivoting to a majority war funded by a deliberate rate detonation
+  — was praised as a first-class "cornered-animal" puzzle. The subsidy
+  system again singled out as "the hidden gem."
+- **The money tiebreak is invisible — fix in rules + UI.** Neither
+  player knew VP ties break on remaining cash until the game ended on
+  exactly that (26-26, $6 vs $1). P1 optimized its final cash to $1 and
+  lost to a rule it couldn't have known; P0 independently flagged the
+  same gap. Cheap fix: state it in the rulebook and show it wherever
+  VP-if-scored-now appears.
+- **Austerity stalemate.** Rounds 3-4 froze into all-pass bids: trailing
+  players won't touch lethal debt, so quiet rounds accrue to the leader.
+  P0 claimed "cleanup expired 0 markers every round, so the ratchet
+  never fired on its own" — verified against the engine: expiry *does*
+  fire unconditionally (rows below the round marker die each cleanup),
+  but in this game borrowing had already emptied every cheap row before
+  it could expire, and the *current* round's row never expires, so the
+  rate genuinely plateaus for a round during a pass-standoff. Real
+  design question: is a 1-2 round leader-favoring freeze acceptable
+  tension, or does the ratchet need a component that passes can't slow
+  (e.g. expire through the round row, or a demand-independent bump)?
+- **Bankruptcy-order shield, third sighting.** Both reports re-derived
+  the meta already in the notes: bailout costs only cash, so low bids
+  double as elimination armor and engineered late defaults are nearly
+  free. Recurring across every LLM cohort now — this wants a designer
+  decision (bailout scoring penalty vs. intended turn-order reward)
+  rather than more measurement.
+- **Dead-player problem.** P2/P3 spent the last two rounds
+  mathematically dead with zero counterplay (P3 spent its last $4 on a
+  building while facing an unpayable $30 bill). Elimination-adjacent
+  states may need an out (distress sales?) — or the game wants to end
+  faster once deaths are locked in.
+- **Rules-text gap**: whether state-subsidy income pays all owners in
+  the section or only the leader had to be reverse-engineered from the
+  income log mid-game. Clarify in the rulebook.
+- **Identity guesses: 4/4 correct.** Each LLM pegged the other as
+  LLM-or-strong-human (citing multi-purpose moves and tiebreak-aware
+  play) and both digests as classical scripts — the tell was not
+  weak play but *non-reactive* play: neither digest ever fought its
+  visible death spiral. Matches the known no-terminal-model gap.
+- **Scaffolding note** (tooling, not design): the run was slow and
+  token-heavy (P0 130k / P1 211k tokens) because every `act` reprinted
+  the full ~2k-token board and every `wait` timeout cost an LLM
+  round-trip. Fixed in `llmcli`: `act` now prints only caused events +
+  status, the full board arrives only when it's actually your turn, and
+  `act <i> --wait` does move-and-block in one command (max-wait 240s).
+  Future probes should be materially cheaper and likely stronger.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without

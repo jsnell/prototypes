@@ -5,7 +5,7 @@ pickle file, so each move is a single command:
   python3 -m subprime.llmcli new --state /tmp/game.pkl \\
       --agents digest,shark,greedy [--seed N] [--doc-rates] [--humans 1]
   python3 -m subprime.llmcli show --state /tmp/game.pkl [--as N]
-  python3 -m subprime.llmcli act 3 --state /tmp/game.pkl [--as N]
+  python3 -m subprime.llmcli act 3 --state /tmp/game.pkl [--as N] --wait
   python3 -m subprime.llmcli wait --state /tmp/game.pkl --as N
 
 Seats 0..humans-1 are externally controlled; the rest are AI agents and
@@ -13,6 +13,12 @@ play automatically. With --humans 2+ all player names are hidden (just
 P0..P3) and each external player acts with --as SEAT, using `wait` to
 block until it is their turn. File locking makes concurrent players from
 separate processes safe.
+
+Token economy (matters when the player is an LLM): `act` prints only the
+events your move caused plus a one-line status — the full board is shown
+only when it is actually your turn, by `wait` or `show`. The intended
+loop is a single `act <i> --wait` per turn; do not interleave extra
+`show` calls, the board you got is current until the game moves on.
 """
 
 import argparse
@@ -202,7 +208,8 @@ def _view(sess, events, viewer):
     add("CITIES (income phase: city subsidy = strictly most in a section, "
         "+$1/card; state subsidy = city with strictly fewest of a type, "
         "+$1/card; both = +$3/card. Scoring: 1VP/bldg, 3VP most in city, "
-        "state-subsidized sections score 1VP/bldg to the leader)")
+        "state-subsidized sections score 1VP/bldg to the leader; VP ties "
+        "break on remaining cash)")
     for ci, city in enumerate(s.cities):
         parts = []
         for t in BUILDING_TYPES:
@@ -234,7 +241,9 @@ def _view(sess, events, viewer):
         add(f"  {i}: {_describe(s, a, viewer)}")
     add("")
     add(f"Move with: python3 -m subprime.llmcli act <index> --as {viewer} "
-        f"--state <file>   (add --turn {move} to guard against stale views)")
+        f"--state <file> --turn {move} --wait   (--wait blocks until your "
+        f"next turn and prints the fresh board — one command per turn, no "
+        f"'show' needed in between)")
     return "\n".join(out)
 
 
@@ -245,6 +254,31 @@ def _emit(sess, viewer):
     events = (s.events or [])[cur:]
     cursors[viewer] = len(s.events or [])
     print(_view(sess, events, viewer))
+
+
+def _emit_brief(sess, viewer):
+    """After `act`: just the events the move caused plus a status line.
+    The full board is printed only when it is actually the viewer's turn
+    (by `wait` or `show`) — keeps per-move output small for LLM players."""
+    s = sess["state"]
+    cursors = sess.setdefault("cursors", {})
+    cur = cursors.get(viewer, sess.get("cursor", 0))
+    events = (s.events or [])[cur:]
+    cursors[viewer] = len(s.events or [])
+    out = []
+    if events:
+        out.append("--- your move caused ---")
+        out += ["  " + e for e in events]
+    dp = decision_player(s)
+    if dp == viewer:
+        out.append(f"OK — it is your turn again (move "
+                   f"#{sess.get('moves', 0)}); `wait` returns the fresh "
+                   f"board immediately.")
+    else:
+        out.append(f"OK — now waiting on {sess['names'][dp]}. Run: "
+                   f"python3 -m subprime.llmcli wait --as {viewer} "
+                   f"--state <file>  (or use act ... --wait next time)")
+    print("\n".join(out))
 
 
 def main(argv=None):
@@ -269,12 +303,18 @@ def main(argv=None):
     p.add_argument("--as", dest="seat", type=int, default=0)
     p.add_argument("--turn", type=int, default=None,
                    help="expected move number; errors if the game has moved on")
+    p.add_argument("--wait", action="store_true",
+                   help="after acting, block until it is your turn again and "
+                        "print the fresh board (recommended: one command per "
+                        "turn)")
+    p.add_argument("--poll", type=float, default=2.0)
+    p.add_argument("--max-wait", type=float, default=240.0)
     p = sub.add_parser("wait",
                        help="block until it is your seat's turn (or game over)")
     p.add_argument("--state", required=True)
     p.add_argument("--as", dest="seat", type=int, default=0)
     p.add_argument("--poll", type=float, default=2.0)
-    p.add_argument("--max-wait", type=float, default=45.0)
+    p.add_argument("--max-wait", type=float, default=240.0)
 
     args = ap.parse_args(argv)
 
@@ -330,22 +370,26 @@ def main(argv=None):
             print(_view(sess, (s.events or [])[max(0, cur - 12):cur], viewer))
         return
 
-    if args.cmd == "wait":
-        deadline = time.time() + args.max_wait
+    def do_wait(seat, poll, max_wait):
+        deadline = time.time() + max_wait
         while True:
             with _Lock(args.state):
                 sess = load()
                 s = sess["state"]
                 dp = None if s.phase == P_OVER else decision_player(s)
-                if s.phase == P_OVER or dp == args.seat:
-                    _emit(sess, args.seat)
+                if s.phase == P_OVER or dp == seat:
+                    _emit(sess, seat)
                     save(sess)
                     return
             if time.time() >= deadline:
                 print(f"STILL WAITING — {sess['names'][dp]} is deciding. "
-                      f"Run 'wait --as {args.seat}' again.")
+                      f"Run 'wait --as {seat}' again.")
                 return
-            time.sleep(args.poll)
+            time.sleep(poll)
+
+    if args.cmd == "wait":
+        do_wait(args.seat, args.poll, args.max_wait)
+        return
 
     # act
     with _Lock(args.state):
@@ -378,8 +422,18 @@ def main(argv=None):
             sys.exit(str(e))
         sess["moves"] = sess.get("moves", 0) + 1
         _run_agents(sess)
-        _emit(sess, args.seat)
+        s = sess["state"]
+        if s.phase == P_OVER:
+            _emit(sess, args.seat)          # game-over view is short
+        elif not args.wait:
+            _emit_brief(sess, args.seat)
+        else:
+            # events stay unconsumed: the wait below prints them with the board
+            print(f"move #{sess['moves'] - 1} applied; waiting for your "
+                  f"next turn...")
         save(sess)
+    if args.cmd == "act" and args.wait and sess["state"].phase != P_OVER:
+        do_wait(args.seat, args.poll, args.max_wait)
 
 
 if __name__ == "__main__":

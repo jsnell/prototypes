@@ -164,7 +164,7 @@
   <div>
     <div class="panel"><h2>Players <span class="sub">(income as base+subsidy;
       net = cash + income − interest, the money left after this round's
-      bills)</span></h2><div id="players"></div></div>
+      bills; VP ties break on remaining cash)</span></h2><div id="players"></div></div>
     <div class="panel"><h2>Loan track <span class="sub" id="lnote"></span></h2>
       <div id="ltrack"></div></div>
   </div>
@@ -651,12 +651,15 @@ function renderOver() {
     i, vp: p.vp, money: p.money, bankrupt: p.bankrupt,
     bld: s.cities.reduce((n, c) => n + E.ownedCount(c, i), 0),
   })).sort((a, b) => b.vp - a.vp || b.money - a.money);
+  const vpTie = rows.length > 1 && rows[0].vp === rows[1].vp;
   document.getElementById('scores').innerHTML =
     '<tr><th></th><th>VP</th><th>$</th><th>bldgs</th><th></th></tr>' +
     rows.map(p => `<tr><td style="color:${COLORS[p.i]}">${esc(G.names[p.i])}</td>
       <td><b>${p.vp}</b></td><td>${p.money}</td><td>${p.bld}</td>
       <td>${p.bankrupt ? '💥 bankrupt' : (s.winners.includes(p.i) ? '🏆' : '')}
-      </td></tr>`).join('');
+      </td></tr>`).join('') +
+    `<tr><td colspan="5" class="sub">VP ties break on remaining cash` +
+    (vpTie ? ' — and that decided this game!' : '') + '</td></tr>';
 }
 
 // restore new-game settings, then resume a saved game if one exists
