@@ -159,7 +159,8 @@
 
 <main>
   <div>
-    <div class="panel"><h2>Players</h2><div id="players"></div></div>
+    <div class="panel"><h2>Players <span class="sub">(income shown as
+      base+subsidy)</span></h2><div id="players"></div></div>
     <div class="panel"><h2>Loan track</h2><div id="ltrack"></div></div>
   </div>
   <div>
@@ -302,6 +303,10 @@ function render() {
   document.getElementById('players').innerHTML = s.players.map((p, i) => {
     const due = E.interestDue(s, p);
     const income = projIncome(s, stateSubs, citySubs, i);
+    const base = s.cities.reduce((n, c) => n + E.TYPES.reduce((m, t) =>
+      m + c[t].filter(b => b.owner === i)
+              .reduce((k, b) => k + b.card.income, 0), 0), 0);
+    const subs = income - base;
     const bld = s.cities.reduce((n, c) => n + E.ownedCount(c, i), 0);
     const tags = [];
     if (p.bankrupt) tags.push('<span class="tag dead">BANKRUPT</span>');
@@ -320,7 +325,7 @@ function render() {
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${esc(G.names[i])}</span><span>${tags.join(' ')}</span></div>
       <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
-        ${bld} bldgs (+$${income}/rd incl. subsidies)</div>
+        ${bld} bldgs · income $${base}${subs ? `<b>+$${subs}</b>` : ''}/rd</div>
       <div class="st">${vpLine}</div></div>`;
   }).join('');
 
@@ -420,8 +425,10 @@ function renderMarket() {
   document.querySelectorAll('.card.buyable').forEach(el => {
     el.onclick = () => {
       const key = el.dataset.key;
+      const rc = key.split(',').map(Number);
       sel = (sel && sel.key === key) ? null :
-        {key, cities: buyable[key], rc: key.split(',').map(Number)};
+        {key, cities: buyable[key], rc,
+         type: G.state.display[rc[0]][rc[1]].card.type};
       render();
     };
   });
@@ -462,7 +469,7 @@ function renderCities() {
         marks.push(`<span style="color:${COLORS[cs]}">●</span>`);
       const tip = esc(sectTooltip(s, ci, t, stateSubs, citySubs))
         .replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
-      const target = sel && sel.cities.includes(ci);
+      const target = sel && sel.cities.includes(ci) && t === sel.type;
       const bs = city[t].map(b =>
         `<span class="b"><span class="own" style="background:${
           b.owner===null?'#555':COLORS[b.owner]}"></span>$${b.card.income}</span>`

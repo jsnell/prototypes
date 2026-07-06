@@ -512,8 +512,8 @@ function collectIncome(s) {
               `to P${s.citySubsidies[k]}`);
   }
   if (subs.length) log(s, subs.join("; "));
-  log(s, "income: " + gained.map((g, i) =>
-      `P${i} +$${g}${subGained[i] ? ` (incl $${subGained[i]} subsidies)` : ""}`)
+  log(s, "income (base+subsidy): " + gained.map((g, i) =>
+      `P${i} +$${g - subGained[i]}${subGained[i] ? `+$${subGained[i]}` : ""}`)
       .join(" | "));
 }
 

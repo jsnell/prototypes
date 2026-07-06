@@ -404,8 +404,8 @@ def collect_income(s):
              for (c, t), p in sorted(s.city_subsidies.items())])
     if subs:
         s.log("; ".join(subs))
-    s.log("income: " + " | ".join(
-        f"P{i} +${g}" + (f" (incl ${sg} subsidies)" if sg else "")
+    s.log("income (base+subsidy): " + " | ".join(
+        f"P{i} +${g - sg}" + (f"+${sg}" if sg else "")
         for i, (g, sg) in enumerate(zip(gained, sub_gained))))
 
 

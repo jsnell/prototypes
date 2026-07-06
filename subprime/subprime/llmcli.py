@@ -120,16 +120,20 @@ def _view(sess, events):
     from .engine import score_snapshot
     snap = score_snapshot(s)
     add("PLAYERS (turn order: " +
-        ", ".join(sess["names"][p] for p in s.turn_order) + ")")
+        ", ".join(sess["names"][p] for p in s.turn_order) +
+        ") — income shown as base+subsidy")
     for p in s.players:
         due = interest_due(s, p)
         bld = sum(c.owned_count(p.pid) for c in s.cities)
+        base = sum(b.card.income for c in s.cities for t in BUILDING_TYPES
+                   for b in c.sections[t] if b.owner == p.pid)
+        sub = proj[p.pid] - base
         status = " BANKRUPT" if p.bankrupt else ""
         bid = f" | bid marker on {s.bids[p.pid]}" if p.pid in s.bids else ""
         vp = f" | {snap[p.pid]} VP if scored now" if p.pid in snap else ""
         add(f"  {sess['names'][p.pid]:<22} ${p.money:<4} {p.loans} loans "
-            f"(owes ${due}/rd) | {bld} bldgs, ~${proj[p.pid]}/rd income "
-            f"incl. current subsidies{vp}{bid}{status}")
+            f"(owes ${due}/rd) | {bld} bldgs, income ${base}"
+            f"{f'+${sub}' if sub else ''}/rd{vp}{bid}{status}")
     add("")
 
     if s.phase in ("bid_initial", "bid_raise"):
