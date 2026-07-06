@@ -37,8 +37,9 @@
   .lrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
   .lrow .r { width: 46px; color: var(--dim); font-size: 12px; }
   .lrow .bar { flex: 1; height: 12px; background: #3a2a2a; border-radius: 3px;
-               overflow: hidden; }
+               overflow: hidden; display: flex; }
   .lrow .fill { height: 100%; background: #7a5cd6; }
+  .lrow .commit { height: 100%; background: #ecc35a; }
   .lrow.expired .bar { opacity: .25; }
   .lrow .n { width: 42px; text-align: right; font-size: 12px; color: var(--dim); }
   .player { border-left: 4px solid; border-radius: 4px; background: var(--panel2);
@@ -70,6 +71,8 @@
   .tslot.acting { border-color: #7ade8f; background: #1c2a20; }
   .tslot.donebuy { opacity: .45; }
   .player .tag.pass { background: #2a3040; color: #aab6d0; }
+  .net-pos { color: #7ade8f; }
+  .net-neg { color: #ff8a8a; font-weight: 700; }
   #market { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
             gap: 6px; }
   .mhead { font-size: 10.5px; color: var(--dim); text-transform: uppercase;
@@ -159,9 +162,11 @@
 
 <main>
   <div>
-    <div class="panel"><h2>Players <span class="sub">(income shown as
-      base+subsidy)</span></h2><div id="players"></div></div>
-    <div class="panel"><h2>Loan track</h2><div id="ltrack"></div></div>
+    <div class="panel"><h2>Players <span class="sub">(income as base+subsidy;
+      net = cash + income − interest, the money left after this round's
+      bills)</span></h2><div id="players"></div></div>
+    <div class="panel"><h2>Loan track <span class="sub" id="lnote"></span></h2>
+      <div id="ltrack"></div></div>
   </div>
   <div>
     <div class="panel"><h2 id="acthead">Your move</h2><div id="actions"></div>
@@ -325,20 +330,32 @@ function render() {
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${esc(G.names[i])}</span><span>${tags.join(' ')}</span></div>
       <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
-        ${bld} bldgs · income $${base}${subs ? `<b>+$${subs}</b>` : ''}/rd</div>
+        ${bld} bldgs · income $${base}${subs ? `<b>+$${subs}</b>` : ''}/rd ·
+        <span class="${p.money + income - due < 0 ? 'net-neg' : 'net-pos'}">net
+        ${p.money + income - due >= 0 ? '+' : '−'}$${Math.abs(p.money + income - due)}</span></div>
       <div class="st">${vpLine}</div></div>`;
   }).join('');
 
-  // loan track
+  // loan track — during bidding, markers claimed by bids still on the
+  // bid track show in amber (they vanish, cheapest first, as players pass)
+  const inBidPhase = s.phase === 'bid_initial' || s.phase === 'bid_raise';
+  let pending = inBidPhase
+    ? Object.values(s.bids).reduce((a, b) => a + b, 0) : 0;
+  document.getElementById('lnote').textContent =
+    inBidPhase && pending ? `(amber = claimed by bids on the track: ${pending})` : '';
   let idx = 0;
   document.getElementById('ltrack').innerHTML =
     s.cfg.loanRowSizes.map((size, i) => {
       let left = 0;
       for (let k = 0; k < size; k++) if (s.loanMarkers[idx + k]) left++;
       idx += size;
+      const claimed = Math.min(left, pending);
+      pending -= claimed;
+      const remain = left - claimed;
       return `<div class="lrow ${left===0?'expired':''}">
         <div class="r">rate $${s.cfg.loanRowRates[i]}</div>
-        <div class="bar"><div class="fill" style="width:${100*left/size}%"></div></div>
+        <div class="bar"><div class="fill" style="width:${100*remain/size}%"></div>
+          <div class="commit" style="width:${100*claimed/size}%"></div></div>
         <div class="n">${left}/${size}</div></div>`;
     }).join('');
 

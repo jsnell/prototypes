@@ -131,12 +131,19 @@ def _view(sess, events):
         status = " BANKRUPT" if p.bankrupt else ""
         bid = f" | bid marker on {s.bids[p.pid]}" if p.pid in s.bids else ""
         vp = f" | {snap[p.pid]} VP if scored now" if p.pid in snap else ""
+        net = p.money + proj[p.pid] - due
         add(f"  {sess['names'][p.pid]:<22} ${p.money:<4} {p.loans} loans "
             f"(owes ${due}/rd) | {bld} bldgs, income ${base}"
-            f"{f'+${sub}' if sub else ''}/rd{vp}{bid}{status}")
+            f"{f'+${sub}' if sub else ''}/rd | net {net:+d} after interest"
+            f"{' <== DEFAULT RISK' if net < 0 else ''}{vp}{bid}{status}")
     add("")
 
     if s.phase in ("bid_initial", "bid_raise"):
+        committed = sum(s.bids.values())
+        if committed:
+            add(f"COMMITTED: bids on the track claim {committed} more "
+                f"markers (cheapest first) when their owners pass -> rate "
+                f"heads for ${s.rate_after(committed)}")
         hints = ", ".join(f"+{k} taken -> ${s.rate_after(k)}"
                           for k in (1, 3, 5, 8))
         add(f"RATE PROJECTION (rate = deepest uncovered track space; "
