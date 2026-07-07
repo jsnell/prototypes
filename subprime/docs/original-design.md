@@ -19,12 +19,12 @@ while others get bailed out by the government.
 - Loan*10 chits (5)
 - Money (indeterminate amount)
 - Player markers (2 per player; 1 bid marker, 1 turn order marker)
-- Insolvent! cards (4)
+- Insolvent! cards (5)
 - 4 city boards, each split into three *zones* (commercial, industrial
   and residential), and each *zone* having a *block* for each player.
-- 1 round marker
-- 3 state subsidy markers
-- 12 city subsidy markers
+- Round marker (1)
+- State subsidy markers (3)
+- City subsidy markers (12)
 
 ### Setup
 
@@ -156,8 +156,7 @@ buying one of these buildings for its base price. There is only
 one round of buying. Any bought buildings are moved to buyers' blocks in
 the same zone. All other buildings stay in the same block.
 
-Recompute the subsidies as described in the Update Subsidies section. The
-bankrupt player's buildings are considered as normal.
+The subsidy markers are not moved.
 
 **End of game scoring**
 
@@ -170,6 +169,9 @@ go bankrupt count points. Scoring is as follows:
 - For each zone with a state subsidy marker: the player with the
   most buildings scores 1vp per building. If tied, all tied players score
   the points.
+
+A bankrupt player's buildings still count for the majorities: if the
+bankrupt player is the sole winner of a city/zone, nobody will score points.
 
 Tiebreaker: if multiple players have the same number of vps, the tied player
 with the most money wins. If this did not break the tie, the players rejoice
