@@ -318,9 +318,13 @@ bankruptcy ending) and vs 3x digest (round-4). Convergent findings:
 - **Meta discovered by both playtesters independently**: "maximize
   buildings, engineer your default behind someone else's" — the bailout
   costs nothing but cash, so only the earliest-in-turn-order defaulter
-  is punished. Design question: should bailed-out players suffer a
-  scoring penalty (e.g. -VP or lose a building), or is the shield an
-  intended reward for turn-order play?
+  is punished. ~~Design question: should bailed-out players suffer a
+  scoring penalty?~~ **Designer ruling (2026-07-07): the shield is
+  design intent** — an intended reward for turn-order play. It must NOT
+  be explained in player-facing materials (rulebook states the
+  mechanic, players discover the strategy); the fact that three
+  independent LLM cohorts each re-derived it is evidence the discovery
+  works.
 
 ### Re-probe after the agent fixes (tuned 1,2,3,4,6,8 curve)
 
@@ -392,7 +396,9 @@ First *experience-focused* playtest under the final rules + tuned curve
 nobody was told who was what ("opponents could be human, claude, or
 classical ai"). Result: **P0 26 VP $6 beats P1 26 VP $1 on the money
 tiebreak**; digests 6 (bailed out) and 0 (bankrupt), round-4 bankruptcy
-ending. Both LLMs filed detailed reports afterwards.
+ending. Both LLMs filed detailed reports afterwards — the raw, unedited
+reports and the exact briefing they played under are archived in
+`playtests/blind-2026-07-06/`.
 
 - **Experience verdict: strongly positive on agency.** Both called it
   tense and decision-driven — P1: "a game decided by decisions, not
@@ -416,16 +422,18 @@ ending. Both LLMs filed detailed reports afterwards.
   fire unconditionally (rows below the round marker die each cleanup),
   but in this game borrowing had already emptied every cheap row before
   it could expire, and the *current* round's row never expires, so the
-  rate genuinely plateaus for a round during a pass-standoff. Real
-  design question: is a 1-2 round leader-favoring freeze acceptable
-  tension, or does the ratchet need a component that passes can't slow
-  (e.g. expire through the round row, or a demand-independent bump)?
+  rate genuinely plateaus for a round during a pass-standoff.
+  **Designer ruling (2026-07-07): working as intended** — the expiry
+  ratchet is a backstop for overly timid tables, not a pacing mechanism
+  expected to fire in normal play; demand emptying the rows first *is*
+  the normal case, and the 1-round plateau during a pass-standoff is
+  accepted tension.
 - **Bankruptcy-order shield, third sighting.** Both reports re-derived
   the meta already in the notes: bailout costs only cash, so low bids
   double as elimination armor and engineered late defaults are nearly
-  free. Recurring across every LLM cohort now — this wants a designer
-  decision (bailout scoring penalty vs. intended turn-order reward)
-  rather than more measurement.
+  free. **Ruled: design intent** (see the ruling bullet in the strength
+  probe section above) — intended to be discovered, never spoonfed in
+  player materials. No changes.
 - **Dead-player problem.** P2/P3 spent the last two rounds
   mathematically dead with zero counterplay (P3 spent its last $4 on a
   building while facing an unpayable $30 bill). Elimination-adjacent
