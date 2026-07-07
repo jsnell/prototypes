@@ -587,6 +587,35 @@ earliest-in-turn-order Sonnet died, margin 1 VP.
   cost nothing: the pickle held every move and transcript-resumes
   restored each player's strategy intact.
 
+### Rulebook revision implemented (zones/blocks, 2026-07-07)
+
+The designer rewrote the doc (e40ae0d): sections became per-player
+*blocks* inside *zones*, every item on the playtester rules-issues list
+got addressed, and one rule changed. Implemented in engine/JS/UI/tests:
+
+- **$1-on-stale-row-1-cards removed** (designer: "never triggers
+  anyway"). Config knob deleted; agents' wait-valuation updated (row-1
+  cards now keep their price when waited on).
+- **Bankruptcy no longer repossesses to the bank.** The bankrupt
+  player's buildings stay in their blocks; one per city goes to the
+  auction, a sale reassigns the owner in place; unsold lots stay put.
+  Nothing is ever unowned anymore. Insolvent (bailed-out) players are
+  excluded from the auction per the new text (they auto-passed with $0
+  before, so no behavioral change). Subsidies are recomputed
+  post-auction per the new text — verified a scoring no-op (sales stay
+  in-zone, so zone totals can't change), kept for board honesty.
+- Scoring reading implemented for the one genuinely open question:
+  bankrupt buildings do NOT compete for majorities/state-zone leads
+  (conservative, matches prior behavior) — see docs/rules-issues.md #1
+  for the pending ruling.
+- Balance re-verified: 4x digest2 self-play identical to pre-change
+  (100% bankruptcy endings, 3.6 rounds, seat spread 20-27%). Expected:
+  the rework moves ownership around, not alive players' counts.
+- Web save format bumped to v2 (serializes the `unable` set — a
+  pre-existing gap — and re-links auction-lot Building references on
+  load). Old saves are invalidated, which the rules change makes
+  correct anyway.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without

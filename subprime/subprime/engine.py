@@ -173,8 +173,8 @@ def legal_actions(s):
         pid = s.bailout_queue[0]
         player = s.players[pid]
         actions = []
-        for i, (_city, card) in enumerate(s.bailout_lots):
-            if card is not None and player.money >= card.cost * cfg.bailout_price_multiplier:
+        for i, (_city, b) in enumerate(s.bailout_lots):
+            if b is not None and player.money >= b.card.cost * cfg.bailout_price_multiplier:
                 actions.append(("bailout_buy", i))
         actions.append(PASS)
         return actions
@@ -468,53 +468,51 @@ def _setup_bankruptcy(s):
             s.players[pid].money = 0  # bailed out, but stripped of cash
     s.log(f"P{s.bankrupt_pid} goes bankrupt; bailed out: {sorted(s.bailed_out)}")
 
-    # Repossess: per city, one random building goes up for sale, the rest
-    # return to the city unowned.
+    # Bankruptcy auction (rules rev. 2026-07-07): the bankrupt player's
+    # buildings all STAY in their blocks; per city one random one goes up
+    # for sale, and a sale just moves it to the buyer's block in the same
+    # zone. Nothing ever becomes unowned.
     s.bailout_lots = []
     for ci, city in enumerate(s.cities):
-        mine = []
-        for typ in BUILDING_TYPES:
-            keep = []
-            for b in city.sections[typ]:
-                (mine if b.owner == s.bankrupt_pid else keep).append(b)
-            city.sections[typ] = keep
+        mine = [b for typ in BUILDING_TYPES for b in city.sections[typ]
+                if b.owner == s.bankrupt_pid]
         if mine:
-            pick = s.rng.randrange(len(mine))
-            for i, b in enumerate(mine):
-                if i == pick:
-                    s.bailout_lots.append((ci, b.card))
-                else:
-                    b.owner = None
-                    city.sections[b.card.type].append(b)
+            s.bailout_lots.append((ci, mine[s.rng.randrange(len(mine))]))
 
-    if s.bailout_lots:
-        s.bailout_queue = [pid for pid in s.turn_order
-                           if not s.players[pid].bankrupt]
+    # only players who are not insolvent may take part
+    s.bailout_queue = [pid for pid in s.turn_order
+                       if pid not in s.unable]
+    if s.bailout_lots and s.bailout_queue:
         s.phase = P_BAILOUT
     else:
+        s.bailout_lots = []
         _score_and_end(s)
 
 
 def _do_bailout_buy(s, pid, lot_index):
-    ci, card = s.bailout_lots[lot_index]
-    price = card.cost * s.config.bailout_price_multiplier
+    ci, b = s.bailout_lots[lot_index]
+    price = b.card.cost * s.config.bailout_price_multiplier
     s.players[pid].money -= price
-    s.cities[ci].sections[card.type].append(Building(card, pid))
+    b.owner = pid                       # moves to the buyer's block
     s.bailout_lots[lot_index] = (ci, None)  # sold
-    s.log(f"P{pid} buys repossessed {card.short()} in City {ci + 1} for ${price}")
+    s.log(f"P{pid} buys foreclosed {b.card.short()} in City {ci + 1} "
+          f"for ${price}")
 
 
 def _finish_bailout(s):
-    # Unsold lots return to their city, unowned.
-    for ci, card in s.bailout_lots:
-        if card is not None:
-            s.cities[ci].sections[card.type].append(Building(card, None))
+    # Unsold lots simply stay in the bankrupt player's block.
     s.bailout_lots = []
     _score_and_end(s)
 
 
 def _score_and_end(s):
     cfg = s.config
+    # rules rev. 2026-07-07: recompute subsidies after the bankruptcy
+    # auction, the bankrupt player's buildings counting as normal. (Zone
+    # totals can't have changed — sales stay in the same zone — so state
+    # markers land where the income phase put them; this keeps the final
+    # board's markers honest.)
+    s.state_subsidies, s.city_subsidies = determine_subsidies(s.cities)
     for p in s.players:
         if p.bankrupt:
             p.vp = 0
@@ -627,11 +625,6 @@ def cleanup(s):
     cfg = s.config
     s.state_subsidies = set()
     s.city_subsidies = {}
-
-    # $1 on every unpicked card in row 1
-    for cell in s.display[0]:
-        if cell is not None:
-            cell[1] += cfg.stale_card_money
 
     # slide cards down to the lowest free row of their column
     for col in range(len(s.display[0])):

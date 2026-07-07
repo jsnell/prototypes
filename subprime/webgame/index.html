@@ -201,7 +201,7 @@ const COLORS = ['var(--p0)','var(--p1)','var(--p2)','var(--p3)'];
 const CSS = {residential:'res', commercial:'com', industrial:'ind'};
 const HUMAN = 0;
 const SAVE_KEY = 'subprime-save';
-const SAVE_VER = 1;   // bump when the state schema/rules change
+const SAVE_VER = 2;   // bump when the state schema/rules change
 const PREFS_KEY = 'subprime-prefs';
 
 function savePrefs() {
@@ -241,6 +241,13 @@ function saveGame() {
         buyPassed: [...s.buyPassed],
         stateSubsidies: [...s.stateSubsidies],
         bailedOut: [...s.bailedOut],
+        unable: [...s.unable],
+        // lots reference Buildings inside cities; store their position so
+        // load can re-link instead of JSON duplicating them
+        bailoutLots: s.bailoutLots.map(l => ({ city: l.city,
+          ref: l.bldg ? { t: l.bldg.card.type,
+                          i: s.cities[l.city][l.bldg.card.type].indexOf(l.bldg) }
+                      : null })),
       }),
     }));
   } catch (e) { /* storage unavailable: play on without saves */ }
@@ -257,6 +264,9 @@ function loadGame() {
     s.buyPassed = new Set(s.buyPassed);
     s.stateSubsidies = new Set(s.stateSubsidies);
     s.bailedOut = new Set(s.bailedOut);
+    s.unable = new Set(s.unable || []);
+    s.bailoutLots = (s.bailoutLots || []).map(l => ({ city: l.city,
+      bldg: l.ref ? s.cities[l.city][l.ref.t][l.ref.i] : null }));
     const agents = d.agents.map(a => {
       if (!a) return null;
       const agent = a.kind === 'random'
@@ -495,7 +505,7 @@ function renderMarket() {
   const cfg = s.cfg;
   let html = rows.map(r =>
     `<div class="mhead">row ${r+1} ×${cfg.rowCostMultipliers[r]}` +
-    `${r === 0 ? ' — stale cards gain $1' : ''}</div>`).join('');
+    `</div>`).join('');
   for (let c = 0; c < s.display[0].length; c++) {
     for (const r of rows) {
       const cell = s.display[r][c];
@@ -618,10 +628,10 @@ function renderActions() {
     hint.textContent = 'Foreclosure sale: you may buy ONE repossessed ' +
       'building at its printed cost (no row markup). The market is closed.';
     s.bailoutLots.forEach((lot, i) => {
-      if (!lot.card) return;   // already sold
-      const price = lot.card.cost * s.cfg.bailoutPriceMultiplier;
-      const label = `Buy ${lot.card.type.slice(0,3).toUpperCase()} ` +
-        `+$${lot.card.income}/rd in City ${lot.city+1} — $${price}`;
+      if (!lot.bldg) return;   // already sold
+      const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
+      const label = `Buy ${lot.bldg.card.type.slice(0,3).toUpperCase()} ` +
+        `+$${lot.bldg.card.income}/rd in City ${lot.city+1} — $${price}`;
       if (acts.some(a => a[0]==='bailout_buy' && a[1]===i)) {
         mk(label, ['bailout_buy', i]);
       } else {

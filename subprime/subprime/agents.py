@@ -563,15 +563,10 @@ class HeuristicAgent(Agent):
 
     def _wait_net(self, s, card, r, money_on, value_now):
         """Net value of buying this card NEXT round instead: one income
-        round less, but a row cheaper (or +$1 stale money on row 1)."""
+        round less, but a row cheaper (row-1 cards stay at the same price)."""
         cfg = s.config
-        if r == 0:
-            cost_next = card.cost * cfg.row_cost_multipliers[0]
-            money_next = money_on + cfg.stale_card_money
-        else:
-            cost_next = card.cost * cfg.row_cost_multipliers[r - 1]
-            money_next = money_on
-        return (value_now - card.income) - cost_next + money_next
+        cost_next = card.cost * cfg.row_cost_multipliers[max(0, r - 1)]
+        return (value_now - card.income) - cost_next + money_on
 
     def _drowning(self, s, pid):
         """Even hoarding every dollar, would we default within two rounds
@@ -686,7 +681,7 @@ class HeuristicAgent(Agent):
                 if (self.p.patience > 0 and not doomed and not last_round
                         and s.round < s.config.max_rounds):
                     # option value of waiting: same card one row cheaper
-                    # next round (row-1 cards stay put and accrue $1)
+                    # next round (row-1 cards keep their price)
                     wait = self._wait_net(s, card, r, money_on, value)
                     if wait > net:
                         net -= self.p.patience * (wait - net)
@@ -702,7 +697,8 @@ class HeuristicAgent(Agent):
         for a in actions:
             if a[0] != "bailout_buy":
                 continue
-            ci, card = s.bailout_lots[a[1]]
+            ci, b = s.bailout_lots[a[1]]
+            card = b.card
             price = card.cost * s.config.bailout_price_multiplier
             if s.players[pid].money < price:
                 continue

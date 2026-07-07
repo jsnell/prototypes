@@ -108,7 +108,10 @@ class GameState:
         self.unable = set()           # pids that couldn't pay full interest
         self.bailed_out = set()       # pids rescued by the government (any round)
         self.bankrupt_pid = None
-        self.bailout_lots = []        # [(city_idx, card)] buildings up for auction
+        self.bailout_lots = []        # [(city_idx, Building)] up for auction
+                                      # (None once sold); buildings stay in
+                                      # the bankrupt player's block until
+                                      # bought — a sale reassigns the owner
         self.bailout_queue = []       # pids still to act in the auction
 
         self.end_cause = None         # 'bankruptcy' | 'loans_exhausted' | 'rounds'
@@ -178,7 +181,14 @@ class GameState:
         s.unable = set(self.unable)
         s.bailed_out = set(self.bailed_out)
         s.bankrupt_pid = self.bankrupt_pid
-        s.bailout_lots = list(self.bailout_lots)
+        # lots reference Building objects; remap them into the copied
+        # cities or a rollout's auction sale would mutate the original
+        def _lot(ci, b):
+            if b is None:
+                return (ci, None)
+            idx = self.cities[ci].sections[b.card.type].index(b)
+            return (ci, s.cities[ci].sections[b.card.type][idx])
+        s.bailout_lots = [_lot(ci, b) for ci, b in self.bailout_lots]
         s.bailout_queue = list(self.bailout_queue)
         s.end_cause = self.end_cause
         s.winners = list(self.winners)

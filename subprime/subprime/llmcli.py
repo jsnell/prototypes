@@ -100,7 +100,8 @@ def _describe(s, a, viewer):
     if a[0] == "repay":
         return f"repay one loan for ${s.config.loan_repayment_cost}"
     if a[0] == "bailout_buy":
-        ci, card = s.bailout_lots[a[1]]
+        ci, b = s.bailout_lots[a[1]]
+        card = b.card
         return (f"foreclosure: buy {card.type[:3].upper()} (+${card.income}/rd)"
                 f" in City {ci + 1} for "
                 f"${card.cost * s.config.bailout_price_multiplier}")
@@ -202,8 +203,7 @@ def _view(sess, events, viewer):
         add("")
 
     add("MARKET (prices shown are FINAL prices, multiplier included; unsold "
-        "cards slide DOWN a row each cleanup and get cheaper, row-1 "
-        "leftovers gain $1)")
+        "cards slide DOWN a row each cleanup and get cheaper)")
     for r in range(cfg.display_rows - 1, -1, -1):
         mult = cfg.row_cost_multipliers[r]
         cells = []

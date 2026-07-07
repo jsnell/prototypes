@@ -438,7 +438,7 @@ class HeuristicAgent {
     let costNext, moneyNext;
     if (r === 0) {
       costNext = card.cost * cfg.rowCostMultipliers[0];
-      moneyNext = moneyOn + cfg.staleCardMoney;
+      moneyNext = moneyOn;
     } else {
       costNext = card.cost * cfg.rowCostMultipliers[r - 1];
       moneyNext = moneyOn;
@@ -561,7 +561,7 @@ class HeuristicAgent {
     for (const a of actions) {
       if (a[0] !== "bailout_buy") continue;
       const lot = s.bailoutLots[a[1]];
-      const price = lot.card.cost * s.cfg.bailoutPriceMultiplier;
+      const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
       if (s.players[pid].money < price) continue;
       const cfg = s.cfg;
       const city = s.cities[lot.city];

@@ -226,15 +226,16 @@ class TestInterest(unittest.TestCase):
 
 
 class TestCleanup(unittest.TestCase):
-    def test_stale_money_slide_refill_and_expiry(self):
+    def test_slide_refill_and_expiry(self):
         s = fresh(3, seed=5)
         col0_row0 = s.display[0][0][0]
         s.display[1][0] = None            # hole in column 0, row 2
         row3_card = s.display[2][0][0]
         deck_before = len(s.deck)
         cleanup(s)
-        # row-1 card got $1 and stayed put
-        self.assertEqual(s.display[0][0], [col0_row0, 1])
+        # row-1 card stays put at the same price (rules rev. 2026-07-07
+        # removed the $1-on-stale-cards rule)
+        self.assertEqual(s.display[0][0], [col0_row0, 0])
         # row-3 card slid down into row 2
         self.assertEqual(s.display[1][0][0], row3_card)
         # the hole (now at row 3) was refilled from the deck
@@ -268,22 +269,31 @@ class TestBankruptcyAndScoring(unittest.TestCase):
         engine._resolve_round_end(s)
         self.assertEqual(s.bankrupt_pid, 2)
         self.assertTrue(s.players[2].bankrupt)
-        # exactly one of P2's buildings went to auction, two returned unowned
+        # rules rev. 2026-07-07: buildings STAY in the bankrupt player's
+        # block; exactly one per city goes up for sale
         self.assertEqual(len(s.bailout_lots), 1)
         self.assertEqual(
             sum(1 for b in s.cities[0].sections[RESIDENTIAL]
-                if b.owner is None), 2)
-        # auction: P0 buys the lot, P1 (broke) can only pass
+                if b.owner == 2), 3)
+        # auction: P0 buys the lot (ownership moves in place), P1 (broke)
+        # can only pass — which the engine auto-resolves
         self.assertEqual(decision_player(s), 0)
         buys = [a for a in legal_actions(s) if a[0] == "bailout_buy"]
         self.assertEqual(len(buys), 1)
         apply_action(s, buys[0])
-        apply_action(s, PASS)
+        if s.phase != P_OVER:
+            apply_action(s, PASS)
         self.assertEqual(s.phase, P_OVER)
         self.assertEqual(s.end_cause, "bankruptcy")
+        self.assertEqual(
+            sum(1 for b in s.cities[0].sections[RESIDENTIAL]
+                if b.owner == 2), 2)
+        self.assertEqual(
+            sum(1 for b in s.cities[0].sections[RESIDENTIAL]
+                if b.owner == 0), 1)
         self.assertNotIn(2, s.winners)
         self.assertEqual(s.players[2].vp, 0)
-        # P0: 1 commercial + 1 repossessed res = 2 buildings + majorities
+        # P0: 1 commercial + 1 bought foreclosure = 2 buildings + majorities
         self.assertGreater(s.players[0].vp, 0)
 
     def test_multiple_defaulters_one_bankruptcy(self):

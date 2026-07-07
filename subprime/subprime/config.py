@@ -81,8 +81,7 @@ class GameConfig:
     # --- card display (phase 2) ---
     display_rows: int = 3
     display_cols_extra: int = 1      # columns = players + this
-    row_cost_multipliers: tuple = (1, 2, 3)  # index 0 = row 1 (cheap, stale row)
-    stale_card_money: int = 1        # $ put on unpicked row-1 cards at cleanup
+    row_cost_multipliers: tuple = (1, 2, 3)  # index 0 = row 1 (cheapest)
 
     # --- subsidies (phase 3) ---
     single_subsidy_bonus: int = 1    # per owned card, state OR city subsidy

@@ -34,7 +34,6 @@ function defaultConfig() {
     loanRowRates: [1, 2, 3, 4, 5, 6],
     interestPerLoan: true, baseInterestRate: 0, fixedRateLoans: false,
     displayRows: 3, displayColsExtra: 1, rowCostMultipliers: [1, 2, 3],
-    staleCardMoney: 1,
     singleSubsidyBonus: 1, doubleSubsidyBonus: 3,
     bailoutPriceMultiplier: 1, bankruptcyPick: "earliest",
     loanRepaymentCost: 0,
@@ -324,7 +323,7 @@ function legalActions(s) {
     const player = s.players[pid];
     const acts = [];
     s.bailoutLots.forEach((lot, i) => {
-      if (lot.card && player.money >= lot.card.cost * cfg.bailoutPriceMultiplier) {
+      if (lot.bldg && player.money >= lot.bldg.card.cost * cfg.bailoutPriceMultiplier) {
         acts.push(["bailout_buy", i]);
       }
     });
@@ -562,49 +561,46 @@ function setupBankruptcy(s) {
   }
   log(s, `P${s.bankruptPid} goes bankrupt; bailed out: ` +
          `[${[...s.bailedOut].join(", ")}]`);
+  // rules rev. 2026-07-07: the bankrupt player's buildings STAY in their
+  // blocks; per city one random one goes up for sale, a sale just moves
+  // it to the buyer's block. Nothing ever becomes unowned.
   s.bailoutLots = [];
   s.cities.forEach((city, ci) => {
     const mine = [];
     for (const typ of TYPES) {
-      const keep = [];
-      for (const b of city[typ]) {
-        (b.owner === s.bankruptPid ? mine : keep).push(b);
-      }
-      city[typ] = keep;
+      for (const b of city[typ]) if (b.owner === s.bankruptPid) mine.push(b);
     }
     if (mine.length) {
-      const pick = s.rng.randrange(mine.length);
-      mine.forEach((b, i) => {
-        if (i === pick) s.bailoutLots.push({ city: ci, card: b.card });
-        else { b.owner = null; city[b.card.type].push(b); }
-      });
+      s.bailoutLots.push({ city: ci, bldg: mine[s.rng.randrange(mine.length)] });
     }
   });
-  if (s.bailoutLots.length) {
-    s.bailoutQueue = s.turnOrder.filter(pid => !s.players[pid].bankrupt);
+  // only players who are not insolvent take part in the auction
+  s.bailoutQueue = s.turnOrder.filter(pid => !s.unable.has(pid));
+  if (s.bailoutLots.length && s.bailoutQueue.length) {
     s.phase = "bailout";
-  } else scoreAndEnd(s);
+  } else { s.bailoutLots = []; scoreAndEnd(s); }
 }
 
 function doBailoutBuy(s, pid, lotIndex) {
   const lot = s.bailoutLots[lotIndex];
-  const price = lot.card.cost * s.cfg.bailoutPriceMultiplier;
+  const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
   s.players[pid].money -= price;
-  s.cities[lot.city][lot.card.type].push({ card: lot.card, owner: pid });
-  log(s, `P${pid} buys repossessed building in city ${lot.city + 1} for $${price}`);
-  lot.card = null;
+  lot.bldg.owner = pid;               // moves to the buyer's block
+  log(s, `P${pid} buys foreclosed building in city ${lot.city + 1} for $${price}`);
+  lot.bldg = null;
 }
 
 function finishBailout(s) {
-  for (const lot of s.bailoutLots) {
-    if (lot.card) s.cities[lot.city][lot.card.type].push({ card: lot.card, owner: null });
-  }
+  // unsold lots simply stay in the bankrupt player's block
   s.bailoutLots = [];
   scoreAndEnd(s);
 }
 
 function scoreAndEnd(s) {
   const cfg = s.cfg;
+  // rules rev. 2026-07-07: recompute subsidies post-auction, the bankrupt
+  // player's buildings counting as normal
+  [s.stateSubsidies, s.citySubsidies] = determineSubsidies(s.cities);
   const alive = s.players.filter(p => !p.bankrupt);
   for (const p of s.players) {
     p.vp = p.bankrupt ? 0
@@ -653,7 +649,6 @@ function cleanup(s) {
   const cfg = s.cfg;
   s.stateSubsidies = new Set();
   s.citySubsidies = {};
-  for (const cell of s.display[0]) if (cell) cell.money += cfg.staleCardMoney;
   const cols = s.display[0].length;
   for (let c = 0; c < cols; c++) {
     const stack = [];

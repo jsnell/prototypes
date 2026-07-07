@@ -1,96 +1,59 @@
-# Rules-text issues reported by playtesters
+# Rules-text issues (living list)
 
-Compiled from the six archived LLM playtest reports
-(`playtests/blind-2026-07-06/`, `playtests/models-2026-07-07/`),
-cross-checked against `original-design.md` and the engine. Scope:
-ambiguous, misleading, or missing RULES TEXT only — strategic
-implications of correct rules are deliberately excluded (designer
-policy: implications are for players to discover).
+STATUS 2026-07-07: the rulebook revision (e40ae0d, zones/blocks
+terminology) resolved every item in the original playtester-compiled
+list — winner + money tiebreak now stated, per-loan interest explicit,
+pass-before-bid and turn-order-equals-bid-order in the text, "running
+out of loan markers" written out (loan chits), city-subsidy recipient
+disambiguated by blocks, Insolvent! cards make default state explicit,
+starting loans come off row 1, auction at base price. The $1-on-stale-
+cards cleanup rule was removed outright (implemented in engine rev.
+that accompanied this file).
 
-## A. Reported ambiguities / gaps (each cost or confused a player)
+Remaining items from the consistency review of the revised text:
 
-1. **Winner and tiebreak are never stated.** The scoring section lists
-   point sources but never says "most VP wins," and the money tiebreak
-   appears nowhere. A blind-game player lost 26-26 on cash without
-   knowing the rule existed; both players in that game flagged it.
-   Implemented rule: most VP wins; VP ties break on remaining money;
-   still-tied players share the win. (The elevator pitch also cuts off
-   mid-sentence at exactly this point: "The player with the largest".)
+## Needs a ruling (genuinely open)
 
-2. **City-subsidy income: who gets the $1/card?** The marker is placed
-   "next to that player's cards," but the income bullet says "$1 per
-   owned card in that section" — readable as paying every owner in the
-   section. Implemented: ONLY the marker holder (the strict-most
-   player) collects the city-subsidy bonus. A blind-game player had to
-   reverse-engineer this from the income log mid-game.
+1. **Do the bankrupt player's buildings compete at scoring?** They now
+   stay in the bankrupt player's blocks, and "considered as normal" is
+   stated for the subsidy recompute — but the scoring section is
+   silent on whether those buildings contest "most buildings in the
+   city" (3vp) and "most buildings in a state-subsidized zone"
+   (1vp/bldg). If they compete, a dead player can deny majorities from
+   beyond the grave. The engine currently implements the conservative
+   reading: only non-bankrupt players' counts compete. One sentence
+   either way settles it.
+2. **Insolvent! cards: 4 in the components, up to 5 players.** Our
+   four-player game ended with all four players insolvent; a 5-player
+   game can plausibly need 5 cards.
 
-3. **State-subsidy income vs. VP asymmetry.** Income: every owner in a
-   state-subsidized section gets +$1/card (the text does say this, but
-   only implicitly by omitting a leader restriction). VP: only the
-   strict-most player scores. Two playtesters (one per game) said the
-   asymmetry took a careful re-read / never fully resolved. One
-   explicit sentence contrasting the two would settle it.
+## Observations (no action strictly required)
 
-4. **Do subsidy markers persist to scoring after a bankruptcy?**
-   Markers are placed in phase 3; the bankrupt player's buildings are
-   removed in phase 4; scoring then references "each city section with
-   a state subsidy marker." Nothing says whether markers are
-   re-evaluated after the removals. Implemented (and supported by the
-   physical-marker reading): markers stay exactly as placed at income
-   time. A player built its final — potentially game-winning — play on
-   the opposite reading and lost by 1 VP.
+3. **The post-auction subsidy recompute is a scoring no-op**: auction
+   sales move a building to the buyer's block *in the same zone*, so
+   zone totals never change between the income phase and scoring —
+   state markers land exactly where they already were, and city
+   markers don't score. Implemented as written (it keeps the physical
+   board honest); flagging in case the designer expected it to have
+   scoring consequences.
+4. **Bid track range (1-12, no 0) still unstated** — the components
+   list doesn't give the space count, and it mattered (a playtester
+   bid 12).
+5. **Income bullet phrasing**: "modified by the subsidy tokens in the
+   zone/block" — consider "in that zone and in the player's own block"
+   to fully exclude reading a rival's block marker as paying you. The
+   block model otherwise makes this unambiguous in spirit.
+6. **Elevator pitch no longer states the goal** — the dangling "The
+   player with the largest" was deleted rather than completed; the
+   pitch now ends without a win condition (scoring has it, but the
+   pitch is where a reader looks first).
 
-5. **Do unowned buildings count toward city totals?** Repossessed
-   buildings "are returned to the appropriate section... without
-   ownership markers" — but do they still count when determining the
-   city with "the fewest buildings of that type" (and city majorities)?
-   Implemented: yes for section/type counts (they are buildings in the
-   city), no for any income, VP, or majority credit (no owner). One
-   player flagged this as "unclear, and it ended up mattering."
+## Typos / nits
 
-6. **"Running out of loan markers." is a dangling fragment** — a
-   heading with no body. The designer ruling that fills it: bids are
-   always honored in full even when markers run out, and an emptied
-   track ends the game that round. Two games have now ended through
-   exactly this interaction; the text for it doesn't exist.
-
-7. **Interest: per loan, or flat?** The doc says "Each player must pay
-   this amount in interest" — literally a flat payment per player.
-   The intended (ruled, implemented, and briefed) rule is rate × loans
-   held. Playtesters never reported this one only because every
-   briefing states the ruling explicitly; a cold reader of the doc
-   gets the game-breakingly wrong version.
-
-## B. Designer rulings in effect but absent from the doc
-
-(Sourced from the rulings log in DESIGN_NOTES; a cold reader cannot
-learn these from the doc at all.)
-
-- **Passing without an initial bid** is allowed (0 loans, last free
-  turn-order spot); initial bid placement is otherwise compulsory in
-  the text.
-- **Bid track spaces are 1-12, no 0 space** (components list doesn't
-  give the range).
-- **Loans can never be repaid** (the doc never says either way; ruled:
-  permanent, repricing every round).
-- **Starting loans come off the track** (setup gives each player a
-  marker right after placing "all" markers on the track — ambiguous
-  which pile they come from; ruled: off the track, cheapest spaces).
-- **Bailout auction price** — "its normal purchase price" doesn't say
-  which row multiplier; ruled: base card cost (×1).
-
-## C. Correct but worth an example (legibility, not errors)
-
-- **Rate = highest visible (uncovered) number** + row expiry under the
-  round marker: two strong players initially mis-modeled the combined
-  behavior; one asked whether a fully-empty row keeps the rate at its
-  printed number (it does — the number is visible). The text is right;
-  a one-line worked example ("row 4 empty, row 5 full → rate is row
-  4's $6") would prevent the misreads.
-- **Bid/turn-order mechanism**: the text is complete and correct
-  (lowest-may-act, pass takes the last free spot ⇒ turn order is bid
-  order). One playtester still invented a wrong model ("a high bidder
-  who passes early goes late" — impossible). Consider stating the
-  consequence outright: "the final turn order always equals bid order,
-  highest bid first." That's a derived fact, but it's mechanical, not
-  strategic — stating it doesn't spoonfeed play.
+7. Setup: "Give each player one loan markers" → "one loan marker".
+8. Phase 1: "the lowest current bid is given the opportunity" → "the
+   player with the lowest current bid".
+9. Phase list says "4. Bailout and end of the game"; the section is
+   titled "Phase 4 - Bankruptcy and end of game" — pick one.
+10. Phase 1 doesn't state that a player who passed without placing an
+    initial bid takes zero loans (clearly implied, never said).
