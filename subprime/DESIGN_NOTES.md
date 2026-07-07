@@ -506,6 +506,78 @@ steals subsidy income to flip an *earlier* defaulter into the fall guy.
 Thin window, but it's the last reactive play the LLMs had that the
 scripts lack.
 
+### Four-model blind playtest (Fable / Opus / Haiku / Sonnet)
+
+First all-LLM table (seed 20260707, final rules, tuned curve): one
+seat per Claude tier, identities hidden, raw reports archived in
+`playtests/models-2026-07-07/`. **Result: Fable 20, Opus 19, Haiku
+17, Sonnet 0 (bankrupt)** — round-4 quadruple default: the bid war
+(9/8/7/6) drained the loan track, rate hit $10, everyone defaulted,
+earliest-in-turn-order Sonnet died, margin 1 VP.
+
+- **Model strength tracked tier, with one exception.** Fable won on a
+  low-debt subsidy-dense City 3 monopoly plus three endgame reads
+  (rival's insolvency = game clock; bid exactly one under the biggest
+  borrower; a 2-card IND tie that deleted exactly 3 VP from Opus).
+  Opus ran the mirror strategy in City 2 but carried heavier debt and
+  lost the tactical exchanges. Haiku was the surprise: it correctly
+  identified its own loss condition (an over-cautious R2 loan pass),
+  decoded the crash geometry, and executed an 8-VP endgame swing —
+  "solid intermediate," far above its price class. Sonnet played a
+  competent early game, then made the game's one fatal blunder:
+  opening bid 9 and RAISING to 12 while certain to default —
+  volunteering for the bankruptcy slot. Its own report shows it
+  understood the trap ("pass at 0 = guaranteed safe but guaranteed
+  loss") and gambled on being outbid; the raise remains unexplainable
+  even by its own logic.
+- **Identity guesses: one blunder outweighs three rounds of skill.**
+  All three opponents identified Fable as the strong LLM. All three
+  called Sonnet a *classical scripted AI* on the strength of the
+  bid-12 suicide alone; Sonnet called Opus a greedy script. Nobody
+  suspected a human anywhere ("machine-like cadence, no table talk,
+  no hate-drafting").
+- **Rate ceiling = money_per_loan makes final-round loans exactly
+  free.** All four reports flagged it: at $10/loan rate and $10/loan
+  cash, terminal borrowing is cost-neutral, so the last round becomes
+  an unbounded borrow-and-buy scramble gated only by the bankruptcy
+  shield. Thematic (their word: "subprime!") but worth a designer
+  look: top rate $11-12, or new loans paying their first interest
+  immediately, would restore a price on terminal money.
+- **The quadruple default made the bailout auction vestigial** —
+  every bailed-out player had $0 by construction, so the repossessed
+  building went to the only... nobody; lots returned unowned. If
+  all-default endings are common at this curve, the auction subsystem
+  rarely gets to matter (it decided the PREVIOUS game, so: sometimes).
+- **Scoring-order confusion, verified NOT a bug.** Opus built its
+  final play on state-subsidy markers being *recomputed after* the
+  bankrupt player's buildings leave — and lost the 1-point game partly
+  on that read. Engine verified against the doc: markers are placed at
+  the last income phase and persist to scoring, and repossessed
+  buildings return to their sections unowned (still counting toward
+  city type totals). The doc supports the engine on both, but only by
+  inference from the physical-marker model — add one explicit sentence
+  to the rulebook. Related UI wish from two seats: VP-if-scored-now
+  should simulate the pending bankruptcy in the final round, when the
+  displayed number is misleading exactly at peak stakes.
+- **Bid-track header text was actively misleading** ("higher bid also
+  means earlier turn order" — it's pass order that decides; a high
+  bidder who passes early goes late). Two seats mis-modeled it early.
+  Fixed in llmcli.
+- **bid_raise is a near-phantom phase**: across 4 rounds the only
+  raise anyone made was Sonnet's fatal 9→12. Designer question:
+  does the raise phase earn its complexity, or should initial
+  placement be final? (Sonnet also noted initial bids in inverse turn
+  order make the leader commit blind — intended catch-up per config,
+  but in the endgame chicken it decides who dies.)
+- **Scaffolding: fixes working.** Token use per seat: Opus 147k/33
+  calls, Haiku 107k/33, Sonnet 115k/33, Fable 156k/44 (including two
+  crash-resumes) vs 130-211k in the 2-player probe under the old CLI —
+  ~30% down with twice the human seats. Auto-forced moves and the
+  act--wait loop drew explicit praise in three reports. A mid-game
+  mass agent outage (all four subagent sessions died the same second)
+  cost nothing: the pickle held every move and transcript-resumes
+  restored each player's strategy intact.
+
 ## Questions the framework can answer next
 
 1. What loan-track rate curve makes *some* bankruptcies happen without

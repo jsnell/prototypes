@@ -195,8 +195,10 @@ def _view(sess, events, viewer):
         occ = {v: pid for pid, v in s.bids.items()}
         spaces = " ".join(f"[{v}{':' + sess['names'][occ[v]][:6] if v in occ else ''}]"
                           for v in cfg.bid_spaces)
-        add("BID TRACK (a bid = loans you take on passing; higher bid also "
-            "means earlier turn order): " + spaces)
+        add("BID TRACK (a bid = loans you take on passing; passing claims "
+            "the LATEST free turn-order spot, so staying in the auction "
+            "longer earns an earlier spot — a high bidder who passes early "
+            "still goes late): " + spaces)
         add("")
 
     add("MARKET (prices shown are FINAL prices, multiplier included; unsold "
