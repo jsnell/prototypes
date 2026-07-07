@@ -4,7 +4,7 @@
 
 Players (3-5) take on increasingly large amounts of loans to build their
 real estate empire. As interest rates rise, some players might go bankrupt
-while others get bailed out by the government. The player with the largest
+while others get bailed out by the government.
 
 ## Game
 
@@ -16,10 +16,12 @@ while others get bailed out by the government. The player with the largest
   combined, and the current interest rate
 - Deck of real estate cards (100)
 - Loan markers (50)
+- Loan*10 chits (5)
 - Money (indeterminate amount)
-- Player markers (14 per player; 1 bid marker, 1 turn order marker;
-  12 ownership markers)
-- 4 city boards
+- Player markers (2 per player; 1 bid marker, 1 turn order marker)
+- Insolvent! cards (4)
+- 4 city boards, each split into three *zones* (commercial, industrial
+  and residential), and each *zone* having a *block* for each player.
 - 1 round marker
 - 3 state subsidy markers
 - 12 city subsidy markers
@@ -31,13 +33,14 @@ while others get bailed out by the government. The player with the largest
 - Deal three rows of real estate cards to the centre of the table face up,
   each row having the number of players plus one cards.
 - Place all the loan markers on the loan track
+- Place the loan*10 chits to the side
 - Place the round marker on spot 1 on the round track (next to the loan
   track)
-- Give each player one loan marker and $10 money
+- Give each player one loan markers from the first row of the loan track
+  and $10 money
 - Place the turn order marker of each player on the turn order track in
   random order.
-- Place the bid marker of each player near the bid track.
-- Give each player their ownership markers
+- Place the bid markers near the bid track.
 
 ### Phases
 
@@ -53,20 +56,24 @@ In this phase, players decide how many loans they want to take, and
 determine the new turn order.
 
 In the inverse of the existing turn order (last to first), players place
-their bid marker on an empty space on the bid track to mark their initial
-bid. Once all players have placed their initial bid, the player with the
-lowest current bid is given the opportunity to increase their bid to a
-higher empty space or to pass.
+their bid marker on an empty space on the bid track or pass. Once all players
+have done this, the lowest current bid is given the opportunity to increase
+their bid to a higher empty space or to pass.
 
-If a player passes, their turn order marker goes to the last free spot on
+When a player passes, their turn order marker goes to the last free spot on
 the turn order track. They take the number of loans indicated by their
 bid; one loan marker and $10 per bid loan. The player's bid marker is then
 removed from the bid track.
 
 The process of the lowest bid either being raised or the player passing
-continues until all players have passed.
+continues until all players have passed. In this way, the highest bidder will
+go first, the second higher bidder will go second, etc.
 
-Running out of loan markers.
+**Running out of loan markers.**
+
+If the supply of loan markers is exhausted, players can still take loans
+in excess of the provided markers (use the provided loan chits). This will
+trigger the game end.
 
 ### Phase 2 - Buy
 
@@ -76,92 +83,101 @@ passed. The possible actions are:
 **Pass** — The player is out of the round. Mark this by moving the
 player's turn order marker to the side of the turn order track.
 
-**Buy** — The player takes one card from the card display and any money on
-it, and pays for it. The cost is the number printed on the lower right
+**Buy** — The player takes one card from the card display and pays for it.
+The cost is the number printed on the lower right
 corner of the card, multiplied by the card row they took the card from.
-Players are not allowed to buy a card if they cannot pay the cost. The
-money on a building may be used to pay for the building.
+Players are not allowed to buy a card if they cannot pay the cost.
 
-The player then places the card into the appropriate section (residential,
-commercial or industrial) on a city board of their choice, and marks it
-with their ownership marker. Buildings of the same type owned by the same
-player may be stacked.
+The player then places the card into the appropriate zone (residential,
+commercial or industrial) on a city board of their choice. The card will
+always go to that player's block in that zone.
 
 ### Phase 3 - Collect income
 
 Players collect income and then pay interest for their loans.
 
-**Determining income**
+**Update subsidies**
 
 For each of the three building types, determine which city has the fewest
-building of that type. Place a state subsidy marker on the appropriate
-section in the city. If there's a tie for the fewest buildings, don't
-place a subsidy marker on any city.
+building of that type. Place a state subsidy marker in the appropriate
+*zone* in the city. If there's a tie for the fewest buildings, don't
+place a subsidy marker in any city.
 
-For each section of each city, determine which player has the most
-buildings in that section. Place a city subsidy marker next to that
-player's cards in that city section. If there is a tie for most buildings,
-don't place a subsidy marker for that section.
+For each zone of each city, determine which player has the most
+buildings in that zone. Place a city subsidy marker in that player's *block*
+in that zone. If there is a tie for most buildings, don't place a subsidy
+marker in that zone.
+
+**Collect income**
 
 Each player then receives the income stated on the building cards they
-own, possibly modified by the subsidy tokens in that section:
+own, possibly modified by the subsidy tokens in the zone/block:
 
 - No subsidy: Receive the printed income for each card.
 - Just a state subsidy: Receive the printed income for each card.
-  Additionally receive $1 per owned card in that section.
+  Additionally receive $1 per owned card in that zone.
 - Just a city subsidy: Receive the printed income for each card.
-  Additionally receive $1 per owned card in that section.
+  Additionally receive $1 per owned card in that zone.
 - Both city and state subsidies: Receive the printed income for each card.
-  Additionally receive $3 per owned card in that section.
+  Additionally receive $3 per owned card in that zone.
 
 **Pay interest**
 
 Find the highest interest rate number visible on the loan track (not
-covered by a loan marker). Each player must pay this amount in interest.
-If a player is unable to pay the full interest, they should pay as much as
-they can.
+covered by a loan marker). Each player must pay this amount in interest
+for each loan they have.
+
+If a player is unable to pay the full interest, they must pay as much as they
+can, and are then declared insolvent. Mark this by giving the player an Insolvent!
+card. The game will end in phase 4.
 
 ### Phase 4 - Bankruptcy and end of game
 
 The game ends in this phase if any of the following conditions holds:
 
-- A player was unable to pay their loans. See bankruptcy.
+- One or more players is insolvent.
 - The loan track is empty.
 - The round marker is on space 6.
 
 **Bankruptcy**
 
-The player earliest in turn order who was unable to pay their loans has
-gone bankrupt. They are out of the game and cannot win. Any other players
-who were unable to pay their loans are bailed out by the government, but
-cannot at this point have any money left for the bankruptcy auction.
+The player earliest in turn order who is insolvent has gone *bankrupt*.
+They are out of the game and cannot win. Any other insolvent players
+are *bailed out* by the government. As they have no cash, they will not
+be able to take part in the bankruptcy auction.
 
-For each city in the game, remove all the buildings owned by the bankrupt
-player. Randomly choose one of the cards to place next to the city. This
-building is available for sale. The other buildings are returned to the
-appropriate section on the city board without ownership markers.
+**Bankruptcy auction**
 
-In player order, all players who are not bankrupt have the chance of
-buying one of these buildings for its normal purchase price. There is only
-one round of buying. Any buildings that were not bought are returned to
-the appropriate city section of the city board without ownership markers.
+For each city in the game, randomly choose one of the buildings of the
+bankrupt player. This building is available for sale.
+
+In turn order, all players who are not insolvent have the chance of
+buying one of these buildings for its base price. There is only
+one round of buying. Any bought buildings are moved to buyers' blocks in
+the same zone. All other buildings stay in the same block.
+
+Recompute the subsidies as described in the Update Subsidies section. The
+bankrupt player's buildings are considered as normal.
 
 **End of game scoring**
 
-After any possible bankruptcy has been resolved, the players who are still
-in the game count points. Scoring is as follows:
+After any possible bankruptcy has been resolved, the players who did not
+go bankrupt count points. Scoring is as follows:
 
 - 1vp per building
 - For each city, the player with the most buildings scores 3vp. If tied,
   all tied players get 3vp.
-- For each city section with a state subsidy marker: the player with the
+- For each zone with a state subsidy marker: the player with the
   most buildings scores 1vp per building. If tied, all tied players score
   the points.
+
+Tiebreaker: if multiple players have the same number of vps, the tied player
+with the most money wins. If this did not break the tie, the players rejoice
+in a shared victory.
 
 ### Phase 5 - Cleanup
 
 - Remove all subsidy markers from the board.
-- Put $1 on any unpicked cards in row 1.
 - Slide all cards down to the lowest available row in their column
 - Fill the card display
 - Advance the round marker to the next spot
