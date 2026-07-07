@@ -185,28 +185,30 @@ function scoreBreakdown(s, exclude) {
   // scoreSnapshot split by source: buildings, city majorities,
   // state-subsidized sections
   const cfg = s.cfg;
-  const pids = s.players.filter(p => !p.bankrupt && p.pid !== exclude)
-                        .map(p => p.pid);
+  const contenders = s.players.filter(p => !p.bankrupt).map(p => p.pid);
+  const pids = contenders.filter(pid => pid !== exclude);
   const out = {};
   pids.forEach(pid => out[pid] = { buildings: 0, majorities: 0, state: 0 });
   const [stateSubs] = determineSubsidies(s.cities);
   for (const city of s.cities) {
     const counts = {};
     let best = 0;
-    for (const pid of pids) {
+    for (const pid of contenders) {
       counts[pid] = ownedCount(city, pid);
-      out[pid].buildings += cfg.vpPerBuilding * counts[pid];
       best = Math.max(best, counts[pid]);
     }
-    if (best > 0) for (const pid of pids) {
-      if (counts[pid] === best) out[pid].majorities += cfg.vpCityMajority;
+    for (const pid of pids) {
+      out[pid].buildings += cfg.vpPerBuilding * counts[pid];
+      if (best > 0 && counts[pid] === best) {
+        out[pid].majorities += cfg.vpCityMajority;
+      }
     }
   }
   for (const k of stateSubs) {
     const [ci, typ] = splitKey(k);
     const counts = {};
     let best = 0;
-    for (const pid of pids) {
+    for (const pid of contenders) {
       counts[pid] = ownedCount(s.cities[ci], pid, typ);
       best = Math.max(best, counts[pid]);
     }
@@ -223,29 +225,31 @@ function scoreBreakdown(s, exclude) {
 }
 
 function scoreSnapshot(s, exclude) {
+  // exclude previews a bankruptcy: they score nothing but their
+  // buildings still contest majorities (deny-from-the-grave ruling)
   const cfg = s.cfg;
-  const pids = s.players.filter(p => !p.bankrupt && p.pid !== exclude)
-                        .map(p => p.pid);
+  const contenders = s.players.filter(p => !p.bankrupt).map(p => p.pid);
+  const pids = contenders.filter(pid => pid !== exclude);
   const vp = {};
   pids.forEach(pid => vp[pid] = 0);
   const [stateSubs] = determineSubsidies(s.cities);
   for (const city of s.cities) {
     const counts = {};
     let best = 0;
-    for (const pid of pids) {
+    for (const pid of contenders) {
       counts[pid] = ownedCount(city, pid);
-      vp[pid] += cfg.vpPerBuilding * counts[pid];
       best = Math.max(best, counts[pid]);
     }
-    if (best > 0) for (const pid of pids) {
-      if (counts[pid] === best) vp[pid] += cfg.vpCityMajority;
+    for (const pid of pids) {
+      vp[pid] += cfg.vpPerBuilding * counts[pid];
+      if (best > 0 && counts[pid] === best) vp[pid] += cfg.vpCityMajority;
     }
   }
   for (const key of stateSubs) {
     const [ci, typ] = splitKey(key);
     const counts = {};
     let best = 0;
-    for (const pid of pids) {
+    for (const pid of contenders) {
       counts[pid] = ownedCount(s.cities[ci], pid, typ);
       best = Math.max(best, counts[pid]);
     }
@@ -598,9 +602,10 @@ function finishBailout(s) {
 
 function scoreAndEnd(s) {
   const cfg = s.cfg;
-  // rules rev. 2026-07-07: recompute subsidies post-auction, the bankrupt
-  // player's buildings counting as normal
-  [s.stateSubsidies, s.citySubsidies] = determineSubsidies(s.cities);
+  // subsidy markers stay where the income phase put them ("The subsidy
+  // markers are not moved"). Majorities include the bankrupt player's
+  // buildings (ruling: a dead player can WIN a majority — then nobody
+  // scores it), but only non-bankrupt players collect points.
   const alive = s.players.filter(p => !p.bankrupt);
   for (const p of s.players) {
     p.vp = p.bankrupt ? 0
@@ -609,7 +614,7 @@ function scoreAndEnd(s) {
   for (const city of s.cities) {
     let best = 0;
     const counts = {};
-    for (const p of alive) {
+    for (const p of s.players) {
       counts[p.pid] = ownedCount(city, p.pid);
       best = Math.max(best, counts[p.pid]);
     }
@@ -621,7 +626,7 @@ function scoreAndEnd(s) {
     const [ci, typ] = splitKey(k);
     let best = 0;
     const counts = {};
-    for (const p of alive) {
+    for (const p of s.players) {
       counts[p.pid] = ownedCount(s.cities[ci], p.pid, typ);
       best = Math.max(best, counts[p.pid]);
     }

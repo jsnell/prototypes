@@ -604,10 +604,19 @@ got addressed, and one rule changed. Implemented in engine/JS/UI/tests:
   before, so no behavioral change). Subsidies are recomputed
   post-auction per the new text — verified a scoring no-op (sales stay
   in-zone, so zone totals can't change), kept for board honesty.
-- Scoring reading implemented for the one genuinely open question:
-  bankrupt buildings do NOT compete for majorities/state-zone leads
-  (conservative, matches prior behavior) — see docs/rules-issues.md #1
-  for the pending ruling.
+- ~~Scoring reading implemented for the one genuinely open question~~
+  **Ruled (c46b85b): deny-from-the-grave is IN.** A bankrupt player's
+  buildings still count for majorities — sole dead winner of a
+  city/zone means nobody scores it. Implemented in scoring AND in the
+  agents' bankruptcy previews (score_snapshot/score_breakdown exclude
+  semantics: the excluded player scores nothing but still contests),
+  so kill evaluation prices the denial correctly. The post-auction
+  subsidy recompute was likewise dropped from the doc ("the subsidy
+  markers are not moved" — the no-op observation was right; the
+  original design deliberately avoided it) and reverted in the engine.
+  Balance: still identical (100% bankruptcy endings, 3.6 rounds, seats
+  20-27%) — digest tables rarely leave a dead player holding a strict
+  majority.
 - Balance re-verified: 4x digest2 self-play identical to pre-change
   (100% bankruptcy endings, 3.6 rounds, seat spread 20-27%). Expected:
   the rework moves ownership around, not alive players' counts.

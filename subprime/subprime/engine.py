@@ -507,12 +507,8 @@ def _finish_bailout(s):
 
 def _score_and_end(s):
     cfg = s.config
-    # rules rev. 2026-07-07: recompute subsidies after the bankruptcy
-    # auction, the bankrupt player's buildings counting as normal. (Zone
-    # totals can't have changed — sales stay in the same zone — so state
-    # markers land where the income phase put them; this keeps the final
-    # board's markers honest.)
-    s.state_subsidies, s.city_subsidies = determine_subsidies(s.cities)
+    # Subsidy markers stay exactly where the income phase put them
+    # (rulebook: "The subsidy markers are not moved").
     for p in s.players:
         if p.bankrupt:
             p.vp = 0
@@ -522,28 +518,27 @@ def _score_and_end(s):
             vp += cfg.vp_per_building * city.owned_count(p.pid)
         p.vp = vp
 
+    # Majorities include the bankrupt player's buildings (ruling: a dead
+    # player can WIN a majority — then nobody scores it), but only
+    # non-bankrupt players collect the points.
     # City majorities: most owned buildings in each city, ties all score.
     for city in s.cities:
-        counts = {p.pid: city.owned_count(p.pid) for p in s.alive_players()}
-        if not counts:
-            continue
-        best = max(counts.values())
+        counts = {p.pid: city.owned_count(p.pid) for p in s.players}
+        best = max(counts.values(), default=0)
         if best > 0:
-            for pid, n in counts.items():
-                if n == best:
-                    s.players[pid].vp += cfg.vp_city_majority
+            for p in s.alive_players():
+                if counts[p.pid] == best:
+                    p.vp += cfg.vp_city_majority
 
-    # State-subsidized sections: most buildings there scores 1vp/building.
+    # State-subsidized zones: most buildings there scores 1vp/building.
     for (ci, typ) in s.state_subsidies:
         city = s.cities[ci]
-        counts = {p.pid: city.owned_count(p.pid, typ) for p in s.alive_players()}
-        if not counts:
-            continue
-        best = max(counts.values())
+        counts = {p.pid: city.owned_count(p.pid, typ) for p in s.players}
+        best = max(counts.values(), default=0)
         if best > 0:
-            for pid, n in counts.items():
-                if n == best:
-                    s.players[pid].vp += cfg.vp_state_subsidy_per_building * n
+            for p in s.alive_players():
+                if counts[p.pid] == best:
+                    p.vp += cfg.vp_state_subsidy_per_building * counts[p.pid]
 
     alive = s.alive_players()
     if alive:
@@ -560,27 +555,29 @@ def score_breakdown(s, exclude=None):
     state-subsidized sections. Returns {pid: {buildings, majorities,
     state, total}} for non-bankrupt players."""
     cfg = s.config
-    pids = [p.pid for p in s.players if not p.bankrupt and p.pid != exclude]
+    contenders = [p.pid for p in s.players if not p.bankrupt]
+    pids = [pid for pid in contenders if pid != exclude]
     out = {pid: {"buildings": 0, "majorities": 0, "state": 0} for pid in pids}
     state_subs, _ = determine_subsidies(s.cities)
 
     for city in s.cities:
-        counts = {pid: city.owned_count(pid) for pid in pids}
-        for pid, n in counts.items():
-            out[pid]["buildings"] += cfg.vp_per_building * n
+        counts = {pid: city.owned_count(pid) for pid in contenders}
+        for pid in pids:
+            out[pid]["buildings"] += cfg.vp_per_building * counts[pid]
         best = max(counts.values(), default=0)
         if best > 0:
-            for pid, n in counts.items():
-                if n == best:
+            for pid in pids:
+                if counts[pid] == best:
                     out[pid]["majorities"] += cfg.vp_city_majority
 
     for (ci, typ) in state_subs:
-        counts = {pid: s.cities[ci].owned_count(pid, typ) for pid in pids}
+        counts = {pid: s.cities[ci].owned_count(pid, typ)
+                  for pid in contenders}
         best = max(counts.values(), default=0)
         if best > 0:
-            for pid, n in counts.items():
-                if n == best:
-                    out[pid]["state"] += cfg.vp_state_subsidy_per_building * n
+            for pid in pids:
+                if counts[pid] == best:
+                    out[pid]["state"] += cfg.vp_state_subsidy_per_building * counts[pid]
 
     for pid in pids:
         out[pid]["total"] = (out[pid]["buildings"] + out[pid]["majorities"]
@@ -591,31 +588,34 @@ def score_breakdown(s, exclude=None):
 def score_snapshot(s, exclude=None):
     """VPs per non-bankrupt player if the game ended right now, with the
     state-subsidy markers placed as they would be this round. `exclude`
-    previews a player's bankruptcy: they are dropped and their buildings
-    count for nobody. Read-only — agents use this to decide whether
-    forcing the game to end (track drain, induced default) favors them."""
+    previews a player's bankruptcy: they score nothing, but their
+    buildings still contest majorities (ruling: a dead player can WIN a
+    majority — then nobody scores it). Read-only — agents use this to
+    decide whether forcing the game to end favors them."""
     cfg = s.config
-    pids = [p.pid for p in s.players if not p.bankrupt and p.pid != exclude]
+    contenders = [p.pid for p in s.players if not p.bankrupt]
+    pids = [pid for pid in contenders if pid != exclude]
     vp = {pid: 0 for pid in pids}
     state_subs, _ = determine_subsidies(s.cities)
 
     for city in s.cities:
-        counts = {pid: city.owned_count(pid) for pid in pids}
-        for pid, n in counts.items():
-            vp[pid] += cfg.vp_per_building * n
+        counts = {pid: city.owned_count(pid) for pid in contenders}
+        for pid in pids:
+            vp[pid] += cfg.vp_per_building * counts[pid]
         best = max(counts.values(), default=0)
         if best > 0:
-            for pid, n in counts.items():
-                if n == best:
+            for pid in pids:
+                if counts[pid] == best:
                     vp[pid] += cfg.vp_city_majority
 
     for (ci, typ) in state_subs:
-        counts = {pid: s.cities[ci].owned_count(pid, typ) for pid in pids}
+        counts = {pid: s.cities[ci].owned_count(pid, typ)
+                  for pid in contenders}
         best = max(counts.values(), default=0)
         if best > 0:
-            for pid, n in counts.items():
-                if n == best:
-                    vp[pid] += cfg.vp_state_subsidy_per_building * n
+            for pid in pids:
+                if counts[pid] == best:
+                    vp[pid] += cfg.vp_state_subsidy_per_building * counts[pid]
     return vp
 
 

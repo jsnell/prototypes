@@ -133,7 +133,8 @@ check(play(42) === play(42), "not deterministic for same seed");
   check(snap[0] === 5 && snap[1] === 1 && snap[2] === 0,
         `snapshot ${JSON.stringify(snap)}`);
   const ex = E.scoreSnapshot(s, 0);
-  check(ex[1] === 4 && ex[2] === 0, "exclude preview hands majority to P1");
+  // deny-from-the-grave: P0's buildings still contest the majority
+  check(ex[1] === 1 && ex[2] === 0, "exclude preview keeps majority denied");
 }
 
 // ---- steep-curve config -----------------------------------------------

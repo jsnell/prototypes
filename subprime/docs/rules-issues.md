@@ -12,30 +12,21 @@ that accompanied this file).
 
 Remaining items from the consistency review of the revised text:
 
-## Needs a ruling (genuinely open)
+## Resolved by the c46b85b doc update
 
-1. **Do the bankrupt player's buildings compete at scoring?** They now
-   stay in the bankrupt player's blocks, and "considered as normal" is
-   stated for the subsidy recompute — but the scoring section is
-   silent on whether those buildings contest "most buildings in the
-   city" (3vp) and "most buildings in a state-subsidized zone"
-   (1vp/bldg). If they compete, a dead player can deny majorities from
-   beyond the grave. The engine currently implements the conservative
-   reading: only non-bankrupt players' counts compete. One sentence
-   either way settles it.
-2. **Insolvent! cards: 4 in the components, up to 5 players.** Our
-   four-player game ended with all four players insolvent; a 5-player
-   game can plausibly need 5 cards.
+1. ~~Do the bankrupt player's buildings compete at scoring?~~ **Ruled
+   and implemented**: they still count for majorities — a sole dead
+   winner of a city/zone means nobody scores it; ties including the
+   bankrupt player still pay the living tied players. Agents'
+   bankruptcy previews (score_snapshot exclude) updated to match.
+2. ~~Insolvent! cards: 4 vs 5 players~~ — components now say 5.
+3. ~~Post-auction subsidy recompute~~ — replaced with "The subsidy
+   markers are not moved" (designer: the original design deliberately
+   avoided post-bankruptcy subsidy updates). Engine reverted to
+   income-phase markers persisting to scoring.
 
 ## Observations (no action strictly required)
 
-3. **The post-auction subsidy recompute is a scoring no-op**: auction
-   sales move a building to the buyer's block *in the same zone*, so
-   zone totals never change between the income phase and scoring —
-   state markers land exactly where they already were, and city
-   markers don't score. Implemented as written (it keeps the physical
-   board honest); flagging in case the designer expected it to have
-   scoring consequences.
 4. **Bid track range (1-12, no 0) still unstated** — the components
    list doesn't give the space count, and it mattered (a playtester
    bid 12).

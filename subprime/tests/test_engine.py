@@ -447,8 +447,30 @@ class TestSnapshotsAndProjections(unittest.TestCase):
         snap = engine.score_snapshot(s)
         # P0: 2 buildings + 3vp city-0 majority; P1: 1 building; P2: nothing
         self.assertEqual(snap, {0: 5, 1: 1, 2: 0})
-        # previewing P0's bankruptcy hands the majority to P1
-        self.assertEqual(engine.score_snapshot(s, exclude=0), {1: 4, 2: 0})
+        # previewing P0's bankruptcy: P0's buildings still contest the
+        # majority from the grave, so P1 does NOT inherit the 3vp
+        self.assertEqual(engine.score_snapshot(s, exclude=0), {1: 1, 2: 0})
+
+    def test_bankrupt_majority_denies_everyone(self):
+        # ruling 2026-07-07: a bankrupt player's buildings still count for
+        # majorities — sole dead winner means nobody scores it
+        s = bare_state(3)
+        for i in range(2):
+            s.cities[0].sections[RESIDENTIAL].append(
+                Building(Card(i, RESIDENTIAL, 2, 1), 2))
+        s.cities[0].sections[COMMERCIAL].append(
+            Building(Card(9, COMMERCIAL, 2, 1), 0))
+        s.turn_order = [2, 0, 1]
+        s.unable = {2}
+        s.players[0].money = 0
+        s.players[1].money = 0
+        engine._resolve_round_end(s)          # P2 bankrupt
+        while s.phase == engine.P_BAILOUT:    # broke players pass the auction
+            apply_action(s, PASS)
+        self.assertEqual(s.phase, P_OVER)
+        # P2 (dead, 2 RES) beats P0 (1 COM) in city 0: nobody gets the 3vp
+        self.assertEqual(s.players[0].vp, 1)  # 1 building, no majority
+        self.assertEqual(s.players[2].vp, 0)
 
 
 class TestEndConditions(unittest.TestCase):
