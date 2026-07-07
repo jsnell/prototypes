@@ -237,8 +237,25 @@ def _view(sess, events, viewer):
     acts = legal_actions(s)
     add(f"YOUR LEGAL ACTIONS (you are {sess['names'][viewer]}; this is "
         f"move #{move} — indices are only valid for this move):")
+    # group buy actions by card: each display card spawns one action per
+    # city, which flat-listed reads as a 45-item wall (15 cards x 3)
+    lines, buy_groups = [], {}
     for i, a in enumerate(acts):
-        add(f"  {i}: {_describe(s, a, viewer)}")
+        if a[0] == "buy":
+            r, c = a[1], a[2]
+            if (r, c) not in buy_groups:
+                card, money = s.display[r][c]
+                cost = card.cost * s.config.row_cost_multipliers[r]
+                extra = f", ${money} on card" if money else ""
+                buy_groups[(r, c)] = [
+                    f"buy row{r + 1} col{c + 1} [{card.type[:3].upper()} "
+                    f"cost ${cost}, +${card.income}/rd{extra}] ->"]
+                lines.append(buy_groups[(r, c)])
+            buy_groups[(r, c)].append(f"{i}:City{a[3] + 1}")
+        else:
+            lines.append(f"  {i}: {_describe(s, a, viewer)}")
+    for ln in lines:
+        add("  " + " ".join(ln) if isinstance(ln, list) else ln)
     add("")
     add(f"Move with: python3 -m subprime.llmcli act <index> --as {viewer} "
         f"--state <file> --turn {move} --wait   (--wait blocks until your "

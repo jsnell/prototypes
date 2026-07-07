@@ -18,6 +18,9 @@ const DEFAULT_PARAMS = {
   debtCooldown: 0.0, patience: 0.0, cashReserveValue: 0.0,
   initialPositionBids: true, reserveUsesProjected: true,
   incomeKills: true,
+  // blind-playtest fixes (see agents.py for the full rationale)
+  lifeline: false, pickAware: false,
+  shieldAwareness: false, defaultClock: false,
 };
 
 class RandomAgent {
@@ -112,6 +115,42 @@ class HeuristicAgent {
     return true;
   }
 
+  projectedDefaulters(s) {
+    // players whose resources — counted generously, subsidies included —
+    // still can't cover this round's bill: locked into default
+    return s.players
+      .filter(q => !q.bankrupt &&
+              q.money + this.projectedIncome(s, q.pid) < E.interestDue(s, q))
+      .map(q => q.pid);
+  }
+
+  bankruptcyPick(s, defaulters) {
+    // mirror the engine's pick rule: who dies if `defaulters` all fail
+    const pick = s.cfg.bankruptcyPick;
+    let order;
+    if (pick === "latest") order = [...s.turnOrder].reverse();
+    else if (pick === "most_loans") {
+      order = [...s.turnOrder].sort(
+        (a, b) => s.players[b].loans - s.players[a].loans);
+    } else order = s.turnOrder;            // "earliest" (doc rule)
+    for (const q of order) if (defaulters.includes(q)) return q;
+    return null;
+  }
+
+  endangered(s, pid, d) {
+    // shield: at this bid we default THIS round and some rival is also
+    // drowning — early turn order is then a death warrant (the pick rule
+    // eats the earliest defaulter); with no fall-guy, position keeps its
+    // normal value
+    if (!this.p.shieldAwareness) return false;
+    if (this.survivable(s, pid, d, 1)) return false;
+    const drowning = new Set(this.projectedDefaulters(s));
+    return s.players.some(q =>
+      q.pid !== pid && !q.bankrupt &&
+      (drowning.has(q.pid) ||
+       !this.survivable(s, q.pid, s.bids[q.pid] || 0, 1)));
+  }
+
   amLeading(s, pid, exclude) {
     const snap = E.scoreSnapshot(s, exclude);
     const mine = snap[pid] || 0;
@@ -189,6 +228,13 @@ class HeuristicAgent {
     }
     d = Math.max(0, Math.min(Math.round(d), maxBid));
     while (d > 0 && !this.survivable(s, pid, d)) d--;
+    if (this.p.lifeline && !this.survivable(s, pid, d)) {
+      // loan cash is exactly what covers a bill we otherwise can't pay:
+      // hunt upward for the smallest borrow that survives
+      for (let k = d + 1; k <= maxBid; k++) {
+        if (this.survivable(s, pid, k)) { d = k; break; }
+      }
+    }
     if (this.p.killInstinct > 0 || this.p.endgameAwareness > 0) {
       const force = this.forcingBid(s, pid, maxBid);
       if (force !== null && force > d) d = force;
@@ -201,6 +247,7 @@ class HeuristicAgent {
     const rivals = Object.keys(s.bids).length - 1;
     if (rivals <= 0) return false;
     if (!this.survivable(s, pid, raiseTo)) return false;
+    if (this.endangered(s, pid, raiseTo)) return false; // late order = armor
     const extra = raiseTo - desired;   // whole premium over economic desire
     if (extra <= 0) return true;
     const perLoan = Math.max(0.5, this.lifetimeRate(s) - s.cfg.moneyPerLoan);
@@ -220,7 +267,8 @@ class HeuristicAgent {
         if (v - desired <= desired) return ["bid", v];  // mild overshoot
         // position bid: pay above desire purely for turn order, within
         // the raise-war budget (else a 0-desire round cedes first pick)
-        if (this.p.initialPositionBids && this.p.turnOrderValue > 0) {
+        if (this.p.initialPositionBids && this.p.turnOrderValue > 0 &&
+            !this.endangered(s, pid, v)) {
           const perLoan = Math.max(0.5, this.lifetimeRate(s) - s.cfg.moneyPerLoan);
           const budget = this.p.turnOrderValue * (s.nPlayers - 1);
           if ((v - desired) * perLoan <= budget) return ["bid", v];
@@ -316,9 +364,10 @@ class HeuristicAgent {
     return afford;
   }
 
-  placementValue(s, pid, card, cityIdx) {
+  placementValue(s, pid, card, cityIdx, remainingOverride) {
     const cfg = s.cfg;
-    const remaining = cfg.maxRounds - s.round + 1;
+    const remaining = remainingOverride === undefined
+      ? cfg.maxRounds - s.round + 1 : remainingOverride;
     let val = card.income * remaining;
     const city = s.cities[cityIdx];
     const mineSec = E.ownedCount(city, pid, card.type) + 1;
@@ -455,8 +504,24 @@ class HeuristicAgent {
     // convert every dying dollar into VP instead of hoarding
     const doomed = player.money + this.projectedIncome(s, pid) <
                    E.interestDue(s, player);
+    const defaulters = ((doomed && this.p.pickAware) || this.p.defaultClock)
+      ? this.projectedDefaulters(s) : [];
+    if (doomed && this.p.pickAware &&
+        this.bankruptcyPick(s, defaulters) === pid) {
+      // WE are the one the pick rule eats: buildings are repossessed with
+      // us and VP zeroed — buying converts doomed cash into doomed
+      // buildings, don't feed the bank
+      return PASS;
+    }
+    // a rival locked into default ends the game this round: income streams
+    // have one payout left and saved dollars have no future
+    let lastRound = s.round >= s.cfg.maxRounds;
+    if (this.p.defaultClock && defaulters.some(q => q !== pid)) {
+      lastRound = true;
+    }
+    const remaining = lastRound ? 1 : undefined;
     const reserve = doomed ? 0 : this.reserve(s, pid);
-    const cashMult = doomed ? 1.0 : this.cashMult(s, pid);
+    const cashMult = (doomed || lastRound) ? 1.0 : this.cashMult(s, pid);
     let best = PASS, bestNet = this.p.buyThreshold;
     for (const a of actions) {
       let net;
@@ -472,11 +537,15 @@ class HeuristicAgent {
         const cell = s.display[r][c];
         const cost = cell.card.cost * s.cfg.rowCostMultipliers[r];
         if (player.money + cell.money - cost < reserve) continue;
-        const value = this.placementValue(s, pid, cell.card, cityIdx)
+        const value = this.placementValue(s, pid, cell.card, cityIdx, remaining)
                       + this.robberyBonus(s, pid, cell.card, cityIdx);
         const out = Math.max(0, cost - cell.money);
         net = value - cost + cell.money - (cashMult - 1) * out;
-        if (this.p.patience > 0 && !doomed && s.round < s.cfg.maxRounds) {
+        // scores tie-break on remaining cash: on near-equal value, keep
+        // the dollar
+        if (lastRound) net -= 0.02 * out;
+        if (this.p.patience > 0 && !doomed && !lastRound &&
+            s.round < s.cfg.maxRounds) {
           const wait = this.waitNet(s, cell.card, r, cell.money, value);
           if (wait > net) net -= this.p.patience * (wait - net);
         }
@@ -538,6 +607,13 @@ const REGISTRY = {
   digest: (seed) => new HeuristicAgent(
     Object.assign({}, SHARK,
       { debtCooldown: 1.0, patience: 0.5, cashReserveValue: 0.4 }), seed),
+  // digest + the blind-playtest lessons: lifeline borrowing, pick-aware
+  // doomed spending, the bankruptcy shield, and the default game clock
+  digest2: (seed) => new HeuristicAgent(
+    Object.assign({}, SHARK,
+      { debtCooldown: 1.0, patience: 0.5, cashReserveValue: 0.4,
+        lifeline: true, pickAware: true,
+        shieldAwareness: true, defaultClock: true }), seed),
 };
 
 const Agents = { RandomAgent, HeuristicAgent, REGISTRY, DEFAULT_PARAMS };

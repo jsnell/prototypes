@@ -454,6 +454,57 @@ reports and the exact briefing they played under are archived in
   status, the full board arrives only when it's actually your turn, and
   `act <i> --wait` does move-and-block in one command (max-wait 240s).
   Future probes should be materially cheaper and likely stronger.
+  (The "45-item buy list" complaint was also presentation, not rules:
+  the display holds at most 15 cards, but each spawns one action per
+  city — the flat 45-action wall is now grouped one line per card.)
+
+### digest2: the classical AIs learn the playtest lessons
+
+Each blind-playtest tell became a `HeuristicParams` flag, A/B'd
+individually (2v2 seat-rotated mirror, 600 games each) before shipping
+as the `digest2` registry entry (Python + JS, web dropdown "3 × digest2
+(harder)", regression tests in `tests/test_agents.py`):
+
+- **`lifeline` — the big one: 66/34 win split, busts 154 vs 446.** The
+  survivability walk-down assumed fewer loans is always safer, so a
+  drowning agent shed its bid to 0 and died. But loan cash is exactly
+  what covers a bill you can't otherwise pay: when even the walked-down
+  plan defaults, hunt UPWARD for the smallest borrow that survives.
+  This alone erases the "marched into a coverable default" tell.
+- **`pick_aware` — neutral in mirror play (50/50), ships anyway.** A
+  doomed player now models WHO the bankruptcy rule picks: if a
+  co-defaulter ahead in turn order takes the fall, spend every dying
+  dollar on VP (bailout keeps buildings); if WE are the pick, buying
+  converts doomed cash into doomed buildings — pass. Fixes P3's
+  "spent its last $4 while facing an unpayable $30 bill" embarrassment.
+- **`shield_awareness` — neutral (49.5/50.5) after a hard lesson.** The
+  first cut triggered on a 2-round survival check and LOST 31/69: the
+  horizon-2 projection is systematically pessimistic (same lesson as
+  shark-h2), so it traded real first-pick value for imaginary danger.
+  Re-scoped to trigger only on same-round death with a co-drowner in
+  sight — position bids off, late order as armor. Rarely fires because
+  passing (which a broke agent does anyway) already grants the latest
+  spot; kept because it prices the designer-intended shield correctly.
+- **`default_clock` — neutral (49.6/50.4), ships for correctness.** A
+  rival locked into default ends the game this round: value purchases
+  at ONE remaining income round, stop hoarding cash for a future that
+  isn't coming, and prefer the cheaper of near-equal buys (the money
+  tiebreak). This is the "loan track as game clock" read both LLMs
+  used to win, minus the loan track: defaults are the clock that
+  actually fired.
+
+Combined: **digest2 beats digest ~2:1 in mirror 2v2** (66-70% across
+seeds/seatings — all of it from lifeline) and in the mixed field
+(digest2/shark/sharp-pos/greedy) takes 53.6% of wins while going
+bankrupt in only 2% of games (digest in the same seat: 37.4% / 8%).
+Table-level pacing is untouched: digest-family metas still end 100% in
+bankruptcy at ~3.5 rounds — the fixes redistribute who dies, not
+whether. Self-play stays seat-balanced (23-27%).
+
+Not built (noted for later): self-rescue robbery — a doomed pick that
+steals subsidy income to flip an *earlier* defaulter into the fall guy.
+Thin window, but it's the last reactive play the LLMs had that the
+scripts lack.
 
 ## Questions the framework can answer next
 

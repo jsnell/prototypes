@@ -86,6 +86,25 @@ class HeuristicParams:
     reserve_uses_projected: bool = True  # buy-phase reserve nets out subsidy-
                                          # inclusive income (False: printed
                                          # income only — over-reserves)
+    lifeline: bool = False         # when even 0 new loans defaults within the
+                                   # horizon, hunt UPWARD for the smallest
+                                   # borrow whose cash covers the bill instead
+                                   # of passing into a certain death
+    pick_aware: bool = False       # doomed spending models WHO the bankruptcy
+                                   # rule picks: spend freely only when a
+                                   # co-defaulter takes the fall; if we are
+                                   # the pick, our buildings are repossessed
+                                   # with us — buying converts doomed cash
+                                   # into doomed buildings
+    shield_awareness: bool = False # when we can't survive 2 rounds at the
+                                   # planned bid, stop paying for early turn
+                                   # order — late turn order is bankruptcy
+                                   # armor, early is a death warrant
+    default_clock: bool = False    # buy phase: a rival locked into default
+                                   # ends the game this round — value
+                                   # purchases at 1 remaining income round
+                                   # and stop saving for a future that
+                                   # isn't coming
 
 
 class HeuristicAgent(Agent):
@@ -159,6 +178,49 @@ class HeuristicAgent(Agent):
             taken += others                      # rivals keep borrowing
         return True
 
+    def _projected_defaulters(self, s):
+        """Players whose resources — counted generously, subsidies included
+        — still can't cover this round's bill. Barring a purchase miracle
+        (buys cost more cash than the income they add), they are locked in."""
+        return [q.pid for q in s.players
+                if not q.bankrupt
+                and (q.money + self._projected_income(s, q.pid)
+                     < engine.interest_due(s, q))]
+
+    def _bankruptcy_pick(self, s, defaulters):
+        """Mirror the engine's pick rule: who actually goes bankrupt if
+        `defaulters` all fail this round (the rest are bailed out)."""
+        pick = s.config.bankruptcy_pick
+        if pick == "latest":
+            order = list(reversed(s.turn_order))
+        elif pick == "most_loans":
+            order = sorted(s.turn_order, key=lambda q: -s.players[q].loans)
+        else:                                    # "earliest" (doc rule)
+            order = s.turn_order
+        for q in order:
+            if q in defaulters:
+                return q
+        return None
+
+    def _endangered(self, s, pid, d):
+        """Shield check: at this bid we default THIS round AND some rival
+        is also drowning — then a dollar spent on early turn order buys a
+        better seat at our own bankruptcy hearing (the pick rule eats the
+        earliest defaulter), while sitting late lets the other drowner
+        take the fall. Longer horizons proved too pessimistic here (same
+        lesson as shark-h2): they trade real position value for imaginary
+        danger. With no co-defaulter in sight the shield is pointless and
+        position keeps its normal value."""
+        if not self.p.shield_awareness:
+            return False
+        if self._survivable(s, pid, d, horizon=1):
+            return False
+        drowning = set(self._projected_defaulters(s))
+        return any(q.pid in drowning or
+                   not self._survivable(s, q.pid, s.bids.get(q.pid, 0),
+                                        horizon=1)
+                   for q in s.players if q.pid != pid and not q.bankrupt)
+
     def _am_leading(self, s, pid, exclude=None):
         snap = engine.score_snapshot(s, exclude=exclude)
         mine = snap.get(pid, 0)
@@ -221,6 +283,15 @@ class HeuristicAgent(Agent):
         d = max(0, min(int(round(d)), max_bid))
         while d > 0 and not self._survivable(s, pid, d):
             d -= 1
+        if self.p.lifeline and not self._survivable(s, pid, d):
+            # the walk-down assumed fewer loans is always safer, but loan
+            # cash is exactly what covers a bill we otherwise can't pay:
+            # hunt upward for the smallest borrow that survives, instead
+            # of passing into a certain default
+            for k in range(d + 1, max_bid + 1):
+                if self._survivable(s, pid, k):
+                    d = k
+                    break
         if self.p.kill_instinct > 0 or self.p.endgame_awareness > 0:
             force = self._forcing_bid(s, pid, max_bid)
             if force is not None and force > d:
@@ -243,7 +314,8 @@ class HeuristicAgent(Agent):
                 # within the same budget the raise war uses (otherwise a
                 # 0-desire round cedes first pick for free, forever)
                 if (self.p.initial_position_bids
-                        and self.p.turn_order_value > 0):
+                        and self.p.turn_order_value > 0
+                        and not self._endangered(s, pid, v)):
                     per_loan = max(0.5, self._lifetime_rate(s)
                                    - s.config.money_per_loan)
                     budget = self.p.turn_order_value * (s.n_players - 1)
@@ -272,6 +344,8 @@ class HeuristicAgent(Agent):
             return False
         if not self._survivable(s, pid, raise_to):
             return False
+        if self._endangered(s, pid, raise_to):
+            return False                         # late order is armor now
         cfg = s.config
         # charge the WHOLE premium over economic desire, not the marginal
         # step — otherwise minimal counter-raises look individually free
@@ -406,11 +480,12 @@ class HeuristicAgent(Agent):
             afford += 1
         return afford
 
-    def _placement_value(self, s, pid, card, city_idx):
+    def _placement_value(self, s, pid, card, city_idx, remaining=None):
         """Rough $ value of owning this card in this city until game end,
         including what the placement does to rivals' positions."""
         cfg = s.config
-        remaining = cfg.max_rounds - s.round + 1  # income phases left, incl. now
+        if remaining is None:
+            remaining = cfg.max_rounds - s.round + 1  # income phases left, incl. now
         val = card.income * remaining
         city = s.cities[city_idx]
         mine_sec = city.owned_count(pid, card.type) + 1
@@ -552,6 +627,7 @@ class HeuristicAgent(Agent):
 
     def _buy(self, s, pid, actions):
         player = s.players[pid]
+        cfg = s.config
         if ("repay",) in actions and self._drowning(s, pid):
             return ("repay",)   # lifeline: survival outranks profit
         # if this round's interest is unpayable even with generous income,
@@ -559,8 +635,24 @@ class HeuristicAgent(Agent):
         # anyway — convert every dying dollar into VP instead of hoarding
         doomed = (player.money + self._projected_income(s, pid)
                   < self._interest_due(s, pid))
+        defaulters = (self._projected_defaulters(s)
+                      if (doomed and self.p.pick_aware) or self.p.default_clock
+                      else [])
+        if doomed and self.p.pick_aware:
+            if self._bankruptcy_pick(s, defaulters) == pid:
+                # WE are the one the pick rule eats: buildings are
+                # repossessed with us and VP zeroed, so buying converts
+                # doomed cash into doomed buildings — don't feed the bank
+                return PASS
+        # a rival locked into default ends the game this round: income
+        # streams have one payout left and saved dollars have no future
+        last_round = s.round >= cfg.max_rounds
+        if self.p.default_clock and any(q != pid for q in defaulters):
+            last_round = True
+        remaining = 1 if last_round else None
         reserve = 0 if doomed else self._reserve(s, pid)
-        cash_mult = 1.0 if doomed else self._cash_mult(s, pid)
+        cash_mult = (1.0 if doomed or last_round
+                     else self._cash_mult(s, pid))
         best, best_net = PASS, self.p.buy_threshold
         for a in actions:
             if a[0] == "repay":
@@ -580,13 +672,18 @@ class HeuristicAgent(Agent):
                 cost = card.cost * s.config.row_cost_multipliers[r]
                 if player.money + money_on - cost < reserve:
                     continue
-                value = self._placement_value(s, pid, card, city_idx)
+                value = self._placement_value(s, pid, card, city_idx,
+                                              remaining=remaining)
                 value += self._robbery_bonus(s, pid, card, city_idx)
                 # dollars leaving the wallet are priced above face value
                 # when they'd have to be re-borrowed next round
                 out = max(0, cost - money_on)
                 net = value - cost + money_on - (cash_mult - 1.0) * out
-                if (self.p.patience > 0 and not doomed
+                if last_round:
+                    # scores tie-break on remaining cash: on near-equal
+                    # value, keep the dollar
+                    net -= 0.02 * out
+                if (self.p.patience > 0 and not doomed and not last_round
                         and s.round < s.config.max_rounds):
                     # option value of waiting: same card one row cheaper
                     # next round (row-1 cards stay put and accrue $1)
@@ -733,6 +830,18 @@ AGENT_REGISTRY = {
                         kill_instinct=1.0, endgame_awareness=1.0,
                         debt_cooldown=1.0, patience=0.5,
                         cash_reserve_value=0.4), seed=seed),
+    # digest + the four lessons from the blind LLM playtest: fight death
+    # spirals with lifeline borrowing, don't buy buildings the bankruptcy
+    # pick is about to repossess, treat late turn order as armor when
+    # endangered, and read locked-in rival defaults as the game clock
+    "digest2": lambda seed: HeuristicAgent(
+        HeuristicParams(demand_aware=True, turn_order_value=12.0,
+                        kill_instinct=1.0, endgame_awareness=1.0,
+                        debt_cooldown=1.0, patience=0.5,
+                        cash_reserve_value=0.4,
+                        lifeline=True, pick_aware=True,
+                        shield_awareness=True, default_clock=True),
+        seed=seed),
     "mc": lambda seed: MonteCarloAgent(seed=seed),
     "mc-fast": lambda seed: MonteCarloAgent(rollouts=6, max_actions=8, seed=seed),
 }
