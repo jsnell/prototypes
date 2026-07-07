@@ -559,10 +559,19 @@ earliest-in-turn-order Sonnet died, margin 1 VP.
   to the rulebook. Related UI wish from two seats: VP-if-scored-now
   should simulate the pending bankruptcy in the final round, when the
   displayed number is misleading exactly at peak stakes.
-- **Bid-track header text was actively misleading** ("higher bid also
-  means earlier turn order" — it's pass order that decides; a high
-  bidder who passes early goes late). Two seats mis-modeled it early.
-  Fixed in llmcli.
+- **Bid-track header: correct but under-explained (correction).** The
+  header's "higher bid also means earlier turn order" is exactly true
+  — only the LOWEST bidder may act in the raise phase, so passes
+  resolve lowest-first and final turn order is descending bid order.
+  Haiku's report claimed "a high bidder who passes early gets a late
+  spot," which is a situation the rules make impossible — it misread
+  why the low bidders were shield-protected (they bid low; they did
+  not "pass early"). I briefly shipped Haiku's wrong model into the
+  header before the designer caught it. The header now states the
+  mechanism (lowest-may-act, pass = latest free spot, turn order =
+  bid order) so players can't invent a wrong one. Lesson for the lab:
+  playtester reports are evidence about *experience*, not authority
+  about *rules* — verify against the engine before "fixing" anything.
 - **bid_raise is a near-phantom phase**: across 4 rounds the only
   raise anyone made was Sonnet's fatal 9→12. Designer question:
   does the raise phase earn its complexity, or should initial
