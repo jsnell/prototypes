@@ -59,11 +59,22 @@ def _humans(sess):
 
 
 def _run_agents(sess):
+    """Advance the game until it needs an external player's actual choice:
+    AI seats play their turns, and a human seat with exactly ONE legal
+    action has it auto-played (making an LLM player spend a whole round
+    trip to 'choose' nothing was ~10% of all moves)."""
     s = sess["state"]
     humans = _humans(sess)
-    while s.phase != P_OVER and decision_player(s) not in humans:
+    while s.phase != P_OVER:
         pid = decision_player(s)
-        apply_action(s, sess["agents"][pid].act(s, pid, legal_actions(s)))
+        acts = legal_actions(s)
+        if pid in humans:
+            if len(acts) > 1:
+                return
+            s.log(f"{sess['names'][pid]}'s move was forced (only legal "
+                  f"action) and auto-played:")
+        apply_action(s, acts[0] if pid in humans
+                     else sess["agents"][pid].act(s, pid, acts))
 
 
 def _describe(s, a, viewer):
@@ -325,13 +336,13 @@ def main(argv=None):
                         "print the fresh board (recommended: one command per "
                         "turn)")
     p.add_argument("--poll", type=float, default=2.0)
-    p.add_argument("--max-wait", type=float, default=240.0)
+    p.add_argument("--max-wait", type=float, default=100.0)
     p = sub.add_parser("wait",
                        help="block until it is your seat's turn (or game over)")
     p.add_argument("--state", required=True)
     p.add_argument("--as", dest="seat", type=int, default=0)
     p.add_argument("--poll", type=float, default=2.0)
-    p.add_argument("--max-wait", type=float, default=240.0)
+    p.add_argument("--max-wait", type=float, default=100.0)
 
     args = ap.parse_args(argv)
 
