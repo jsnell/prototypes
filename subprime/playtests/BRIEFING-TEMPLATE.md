@@ -44,11 +44,13 @@ applies your move and blocks until your next turn, printing the fresh
 board. Do not run extra `show` calls — the board `--wait` prints is
 current.
 Mechanics of the loop:
-- Run every wait/act command with a Bash timeout of 580000 ms AND pass
-  `--max-wait 540`: staying inside the blocking wait means your turn
-  starts the moment it arrives, instead of costing you a think-and-retry
-  round trip. (Timing analysis of past games: agents who polled with
-  short waits burned ~30 extra round trips per game.)
+- Run every wait/act command with a Bash timeout of 300000 ms AND pass
+  `--max-wait 270`: staying inside the blocking wait means your turn
+  starts the moment it arrives instead of costing a think-and-retry
+  round trip, and 270s keeps your prompt cache warm across calls
+  (timing analysis: ~100s polls burned ~30 retry round trips per seat
+  per game; waits longer than ~5 minutes expire the cache and make
+  every turn re-read your whole history).
 - If you do see "STILL WAITING", just run the `wait` command again —
   opponents may think slowly. It is not an error.
 - Moves with only one legal action are auto-played for you; you are
