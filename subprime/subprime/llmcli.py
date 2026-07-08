@@ -134,14 +134,37 @@ def _view(sess, events, viewer):
     rate = s.current_rate()
     add(f"=== SUBPRIME | round {s.round}/{cfg.max_rounds} | phase: {s.phase} "
         f"| interest ${rate}/loan | loan markers left {s.markers_left()} ===")
-    track = []
+    track, rows = [], []
     idx = 0
     for size, rrate in zip(cfg.loan_row_sizes, cfg.loan_row_rates):
         left = sum(1 for i in range(idx, idx + size) if s.loan_markers[i])
         track.append(f"${rrate}:{left}/{size}")
+        rows.append((rrate, left))
         idx += size
-    add("loan track (rate:markers, cheapest first; rows below the round "
-        "marker expire each cleanup): " + "  ".join(track))
+    add("loan track (rate:markers, cheapest first; the rate is the deepest "
+        "row with an uncovered space — an emptied row keeps showing its "
+        "rate): " + "  ".join(track))
+    # exact thresholds: markers leave cheapest-first, so the rate steps up
+    # the moment the first marker of a deeper row is taken
+    steps, cum = [], 0
+    for rrate, left in rows:
+        if left == 0:
+            continue
+        if rrate > rate:
+            steps.append(f"${rrate} after {cum + 1} more")
+        cum += left
+    add(f"RATE THRESHOLDS: ${rate} now"
+        + (f"; rises to {', '.join(steps)}" if steps else "")
+        + f"; track empty after {cum} more (ends the game this round)")
+    if s.round < cfg.max_rounds:
+        i = min(s.round - 1, len(cfg.loan_row_rates) - 1)
+        floor = cfg.loan_row_rates[i]
+        expiring = sum(1 for j in range(len(s.loan_markers))
+                       if s.loan_markers[j] and s.loan_rows[j] <= s.round)
+        if expiring or floor > rate:
+            add(f"EXPIRY: at this round's cleanup rows 1-{s.round} lose "
+                f"their remaining {expiring} marker(s) — next round's rate "
+                f"is at least ${floor} even if nobody borrows")
     add("")
 
     # projected income including the subsidies as they'd be placed now
@@ -186,13 +209,10 @@ def _view(sess, events, viewer):
     if s.phase in ("bid_initial", "bid_raise"):
         committed = sum(s.bids.values())
         if committed:
-            add(f"COMMITTED: bids on the track claim {committed} more "
-                f"markers (cheapest first) when their owners pass -> rate "
-                f"heads for ${s.rate_after(committed)}")
-        hints = ", ".join(f"+{k} taken -> ${s.rate_after(k)}"
-                          for k in (1, 3, 5, 8))
-        add(f"RATE PROJECTION (rate = deepest uncovered track space; "
-            f"if more markers leave the track: {hints})")
+            add(f"COMMITTED: bids on the track already claim {committed} "
+                f"more markers (cheapest first) when their owners pass -> "
+                f"rate heads for ${s.rate_after(committed)} before counting "
+                f"YOUR bid (see RATE THRESHOLDS above for the exact steps)")
         occ = {v: pid for pid, v in s.bids.items()}
         spaces = " ".join(f"[{v}{':' + sess['names'][occ[v]][:6] if v in occ else ''}]"
                           for v in cfg.bid_spaces)
