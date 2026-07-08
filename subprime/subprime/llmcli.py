@@ -3,7 +3,8 @@ designed for LLM agents and terminal die-hards. The game persists to a
 pickle file, so each move is a single command:
 
   python3 -m subprime.llmcli new --state /tmp/game.pkl \\
-      --agents digest,shark,greedy [--seed N] [--doc-rates] [--humans 1]
+      --agents digest,shark,greedy [--seed N] [--doc-rates] [--humans 1] \\
+      [--names Alice,Bob]   # display names for the external seats
   python3 -m subprime.llmcli show --state /tmp/game.pkl [--as N]
   python3 -m subprime.llmcli act 3 --state /tmp/game.pkl [--as N] --wait
   python3 -m subprime.llmcli wait --state /tmp/game.pkl --as N
@@ -96,14 +97,14 @@ def _describe(s, a, viewer):
         extra = f", ${money} on card" if money else ""
         return (f"buy row{r + 1} col{c + 1} "
                 f"[{card.type[:3].upper()} cost ${cost}, +${card.income}/rd"
-                f"{extra}] -> City {city + 1}")
+                f"{extra}] -> {s.city_name(city)}")
     if a[0] == "repay":
         return f"repay one loan for ${s.config.loan_repayment_cost}"
     if a[0] == "bailout_buy":
         ci, b = s.bailout_lots[a[1]]
         card = b.card
         return (f"foreclosure: buy {card.type[:3].upper()} (+${card.income}/rd)"
-                f" in City {ci + 1} for "
+                f" in {s.city_name(ci)} for "
                 f"${card.cost * s.config.bailout_price_multiplier}")
     return str(a)
 
@@ -257,7 +258,7 @@ def _view(sess, events, viewer):
                 marks += f"*city:{sess['names'][s.city_subsidies[(ci, t)]][:6]}"
             body = ",".join(f"{k}x{v}" for k, v in owners.items()) or "-"
             parts.append(f"{t[:3].upper()}[{body}]{marks}")
-        add(f"  City {ci + 1}: " + "  ".join(parts))
+        add(f"  {s.city_name(ci)}: " + "  ".join(parts))
     add("")
 
     dp = decision_player(s)
@@ -284,11 +285,12 @@ def _view(sess, events, viewer):
                     f"buy row{r + 1} col{c + 1} [{card.type[:3].upper()} "
                     f"cost ${cost}, +${card.income}/rd{extra}] ->"]
                 lines.append(buy_groups[(r, c)])
-            buy_groups[(r, c)].append(f"{i}:City{a[3] + 1}")
+            buy_groups[(r, c)].append(f"{i}:{s.city_name(a[3])}")
         else:
             lines.append(f"  {i}: {_describe(s, a, viewer)}")
     for ln in lines:
-        add("  " + " ".join(ln) if isinstance(ln, list) else ln)
+        add("  " + ln[0] + " " + " | ".join(ln[1:])
+            if isinstance(ln, list) else ln)
     add("")
     add(f"Move with: python3 -m subprime.llmcli act <index> --as {viewer} "
         f"--state <file> --turn {move} --wait   (--wait blocks until your "
@@ -341,6 +343,9 @@ def main(argv=None):
     p.add_argument("--humans", type=int, default=1,
                    help="externally controlled seats 0..N-1 (default 1). "
                         "With 2+, player identities are hidden (P0..Pn)")
+    p.add_argument("--names", default=None,
+                   help="comma-separated display names for the external "
+                        "seats (evals: name each agent); defaults to Px")
     p.add_argument("--seed", type=int, default=None)
     p.add_argument("--doc-rates", action="store_true",
                    help="use the design doc's 1-6 curve instead of the tuned one")
@@ -390,12 +395,21 @@ def main(argv=None):
         if seed is None:
             import os
             seed = int.from_bytes(os.urandom(4), "big")
-        state = new_game(cfg, n_players, seed=seed, collect_events=True)
         if len(humans) > 1:
             pnames = [f"P{i}" for i in range(n_players)]   # identities hidden
         else:
             pnames = ["P0-YOU"] + [f"P{i + 1}-{n}"
                                    for i, n in enumerate(names)]
+        if args.names:
+            given = [x.strip() for x in args.names.split(",")]
+            if len(given) > len(humans):
+                sys.exit(f"--names lists {len(given)} names but only "
+                         f"{len(humans)} external seat(s)")
+            for i, nm in enumerate(given):
+                if nm:
+                    pnames[i] = nm
+        state = new_game(cfg, n_players, seed=seed, collect_events=True,
+                         player_names=pnames)
         sess = {
             "state": state,
             "agents": [None] * len(humans) +

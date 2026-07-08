@@ -34,12 +34,14 @@ class IllegalAction(Exception):
 
 # ---------------------------------------------------------------- setup
 
-def new_game(config, n_players, seed=None, collect_events=False):
+def new_game(config, n_players, seed=None, collect_events=False,
+             player_names=None):
     config.validate(n_players)
     s = GameState()
     s.config = config
     s.n_players = n_players
     s.rng = random.Random(seed)
+    s.player_names = player_names
     if collect_events:
         s.events = []
 
@@ -72,7 +74,8 @@ def new_game(config, n_players, seed=None, collect_events=False):
     # random initial turn order
     s.turn_order = list(range(n_players))
     s.rng.shuffle(s.turn_order)
-    s.log(f"setup: turn order {s.turn_order}, interest rate {s.current_rate()}")
+    s.log("setup: turn order [" + ", ".join(s.pname(q) for q in s.turn_order)
+          + f"], interest rate {s.current_rate()}")
 
     _start_bid_phase(s)
     _advance(s)
@@ -193,25 +196,25 @@ def apply_action(s, action):
             _pass_out(s, pid, 0)
         else:
             _set_bid(s, pid, action[1])
-            s.log(f"P{pid} opens bid at {action[1]}")
+            s.log(f"{s.pname(pid)} opens bid at {action[1]}")
 
     elif s.phase == P_BID_RAISE:
         if action == PASS:
             _bid_pass(s, pid)
         else:
-            s.log(f"P{pid} raises bid {s.bids[pid]} -> {action[1]}")
+            s.log(f"{s.pname(pid)} raises bid {s.bids[pid]} -> {action[1]}")
             _set_bid(s, pid, action[1])
 
     elif s.phase == P_BUY:
         if action == PASS:
             s.buy_passed.add(pid)
-            s.log(f"P{pid} passes")
+            s.log(f"{s.pname(pid)} passes")
         elif action == ("repay",):
             p = s.players[pid]
             p.money -= s.config.loan_repayment_cost
             p.loans -= 1
             p.loan_rates.remove(max(p.loan_rates))  # retire the dearest loan
-            s.log(f"P{pid} repays a loan for ${s.config.loan_repayment_cost} "
+            s.log(f"{s.pname(pid)} repays a loan for ${s.config.loan_repayment_cost} "
                   f"({p.loans} left)")
         else:
             _do_buy(s, pid, *action[1:])
@@ -303,7 +306,7 @@ def _pass_out(s, pid, bid):
     taken = _grant_loans(s, player, bid)
     player.money += bid * s.config.money_per_loan
     dry = f" (track dry: only {taken} markers removed)" if taken < bid else ""
-    s.log(f"P{pid} passes at bid {bid}: +{bid} loans, "
+    s.log(f"{s.pname(pid)} passes at bid {bid}: +{bid} loans, "
           f"+${bid * s.config.money_per_loan}{dry}; turn order spot {slot + 1}")
 
 
@@ -326,9 +329,9 @@ def _do_buy(s, pid, row, col, city_idx):
     player.money -= cost
     s.display[row][col] = None
     s.cities[city_idx].sections[card.type].append(Building(card, pid))
-    s.log(f"P{pid} buys {card.short()} from row {row + 1} for ${cost}"
+    s.log(f"{s.pname(pid)} buys {card.short()} from row {row + 1} for ${cost}"
           f"{f' (+${money_on} on card)' if money_on else ''} "
-          f"-> City {city_idx + 1}")
+          f"-> {s.city_name(city_idx)}")
 
 
 def _snapshot_market(s):
@@ -398,14 +401,14 @@ def collect_income(s):
                 p.subsidy_earned += bonus
                 gained[b.owner] += b.card.income + bonus
                 sub_gained[b.owner] += bonus
-    subs = ([f"City {c + 1} {t[:3].upper()} state-subsidized"
+    subs = ([f"{s.city_name(c)} {t[:3].upper()} state-subsidized"
              for c, t in sorted(s.state_subsidies)] +
-            [f"City {c + 1} {t[:3].upper()} city subsidy to P{p}"
+            [f"{s.city_name(c)} {t[:3].upper()} city subsidy to {s.pname(p)}"
              for (c, t), p in sorted(s.city_subsidies.items())])
     if subs:
         s.log("; ".join(subs))
     s.log("income (base+subsidy): " + " | ".join(
-        f"P{i} +${g - sg}" + (f"+${sg}" if sg else "")
+        f"{s.pname(i)} +${g - sg}" + (f"+${sg}" if sg else "")
         for i, (g, sg) in enumerate(zip(gained, sub_gained))))
 
 
@@ -421,9 +424,9 @@ def pay_interest(s):
         p.interest_paid += paid
         if paid < due:
             s.unable.add(p.pid)
-            s.log(f"P{p.pid} owes ${due} interest, can only pay ${paid} — DEFAULT")
+            s.log(f"{s.pname(p.pid)} owes ${due} interest, can only pay ${paid} — DEFAULT")
         else:
-            s.log(f"P{p.pid} pays ${due} interest (rate {rate} x {p.loans} loans)")
+            s.log(f"{s.pname(p.pid)} pays ${due} interest (rate {rate} x {p.loans} loans)")
 
 
 # --------------------------------------- phase 4: bankruptcy / game end
@@ -466,7 +469,8 @@ def _setup_bankruptcy(s):
         if pid != s.bankrupt_pid:
             s.bailed_out.add(pid)
             s.players[pid].money = 0  # bailed out, but stripped of cash
-    s.log(f"P{s.bankrupt_pid} goes bankrupt; bailed out: {sorted(s.bailed_out)}")
+    s.log(f"{s.pname(s.bankrupt_pid)} goes bankrupt; bailed out: "
+          f"{[s.pname(q) for q in sorted(s.bailed_out)]}")
 
     # Bankruptcy auction (rules rev. 2026-07-07): the bankrupt player's
     # buildings all STAY in their blocks; per city one random one goes up
@@ -495,7 +499,8 @@ def _do_bailout_buy(s, pid, lot_index):
     s.players[pid].money -= price
     b.owner = pid                       # moves to the buyer's block
     s.bailout_lots[lot_index] = (ci, None)  # sold
-    s.log(f"P{pid} buys foreclosed {b.card.short()} in City {ci + 1} "
+    s.log(f"{s.pname(pid)} buys foreclosed {b.card.short()} in "
+          f"{s.city_name(ci)} "
           f"for ${price}")
 
 

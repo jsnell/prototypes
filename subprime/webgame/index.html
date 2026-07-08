@@ -575,7 +575,7 @@ function renderCities() {
         <div class="hd"><b>${t.slice(0,3)}</b>
         <span>${marks.join(' ')}</span></div>${bs}</div>`;
     }).join('');
-    return `<div class="city"><h3>City ${ci+1}</h3>${sects}</div>`;
+    return `<div class="city"><h3>${E.cityName(ci)}</h3>${sects}</div>`;
   }).join('');
   if (sel) {
     document.querySelectorAll('.sect.target').forEach(el => {
@@ -631,7 +631,7 @@ function renderActions() {
       if (!lot.bldg) return;   // already sold
       const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
       const label = `Buy ${lot.bldg.card.type.slice(0,3).toUpperCase()} ` +
-        `+$${lot.bldg.card.income}/rd in City ${lot.city+1} — $${price}`;
+        `+$${lot.bldg.card.income}/rd in ${E.cityName(lot.city)} — $${price}`;
       if (acts.some(a => a[0]==='bailout_buy' && a[1]===i)) {
         mk(label, ['bailout_buy', i]);
       } else {

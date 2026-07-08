@@ -12,6 +12,8 @@
 
 const RES = "residential", COM = "commercial", IND = "industrial";
 const TYPES = [RES, COM, IND];
+const CITY_NAMES = ["New York", "London", "Chicago", "Tokyo"];
+function cityName(ci) { return CITY_NAMES[ci] || `City ${ci + 1}`; }
 
 // (type, printed cost, printed income, count) — mirrors config.py
 const DEFAULT_CARDS = [
@@ -448,7 +450,7 @@ function doBuy(s, pid, r, c, cityIdx) {
   s.cities[cityIdx][cell.card.type].push({ card: cell.card, owner: pid });
   log(s, `P${pid} buys ${cell.card.type.slice(0, 3)}(c${cell.card.cost}/` +
          `i${cell.card.income}) from row ${r + 1} for $${cost}` +
-         `${cell.money ? ` (+$${cell.money} on card)` : ""} -> city ${cityIdx + 1}`);
+         `${cell.money ? ` (+$${cell.money} on card)` : ""} -> ${cityName(cityIdx)}`);
 }
 
 // ----------------------------------------------------- phase 3: income
@@ -508,11 +510,11 @@ function collectIncome(s) {
   const subs = [];
   for (const k of s.stateSubsidies) {
     const [ci, t] = splitKey(k);
-    subs.push(`City ${ci + 1} ${t.slice(0, 3).toUpperCase()} state-subsidized`);
+    subs.push(`${cityName(ci)} ${t.slice(0, 3).toUpperCase()} state-subsidized`);
   }
   for (const k of Object.keys(s.citySubsidies)) {
     const [ci, t] = splitKey(k);
-    subs.push(`City ${ci + 1} ${t.slice(0, 3).toUpperCase()} city subsidy ` +
+    subs.push(`${cityName(ci)} ${t.slice(0, 3).toUpperCase()} city subsidy ` +
               `to P${s.citySubsidies[k]}`);
   }
   if (subs.length) log(s, subs.join("; "));
@@ -590,7 +592,7 @@ function doBailoutBuy(s, pid, lotIndex) {
   const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
   s.players[pid].money -= price;
   lot.bldg.owner = pid;               // moves to the buyer's block
-  log(s, `P${pid} buys foreclosed building in city ${lot.city + 1} for $${price}`);
+  log(s, `P${pid} buys foreclosed building in ${cityName(lot.city)} for $${price}`);
   lot.bldg = null;
 }
 
@@ -691,7 +693,7 @@ const Engine = {
   TYPES, RES, COM, IND, PASS,
   defaultConfig, makeRng, newGame, legalActions, applyAction, decisionPlayer,
   currentRate, rateAfter, markersLeft, interestDue, ownedCount, scoreSnapshot,
-  scoreBreakdown, determineSubsidies, key, splitKey, same,
+  scoreBreakdown, determineSubsidies, key, splitKey, same, cityName,
 };
 if (typeof module !== "undefined") module.exports = Engine;
 if (typeof globalThis !== "undefined") globalThis.SubprimeEngine = Engine;

@@ -4,6 +4,11 @@ The standard briefing for LLM players in blind multi-seat probes. Fill
 in `{SEAT}` and `{STATEFILE}`; launch one agent per seat. Keep the
 fairness list in sync with what's actually in the repo.
 
+Seats can be given display names with `new --names A,B,C,D` (shown in
+the board and event log instead of P0..Pn). For blind runs use neutral
+names; if you name the seats, adjust "as player P{SEAT}" below to
+match.
+
 ---
 
 You are about to play a live 4-player board game of "Subprime" through

@@ -17,6 +17,10 @@ P_RESOLVE = "resolve"
 P_BAILOUT = "bailout"
 P_OVER = "over"
 
+# flavor: the cities on the table, in board order (games use players-1
+# of them, max 4)
+CITY_NAMES = ("New York", "London", "Chicago", "Tokyo")
+
 
 @dataclass
 class Building:
@@ -118,6 +122,7 @@ class GameState:
         self.winners = []             # pids (ties possible)
         self.events = None            # list[str] when event logging is on
         self.round_stats = []         # per-round market snapshots (see engine)
+        self.player_names = None      # optional display names (see pname)
 
     # -- convenience ---------------------------------------------------
     def current_rate(self):
@@ -142,6 +147,18 @@ class GameState:
 
     def alive_players(self):
         return [p for p in self.players if not p.bankrupt]
+
+    def pname(self, pid):
+        """Display name for a player (default P0..Pn; evals may name the
+        seats — e.g. model names — via llmcli new --names)."""
+        if self.player_names and pid < len(self.player_names):
+            return self.player_names[pid]
+        return f"P{pid}"
+
+    def city_name(self, ci):
+        if ci < len(CITY_NAMES):
+            return CITY_NAMES[ci]
+        return f"City {ci + 1}"
 
     def log(self, msg):
         if self.events is not None:
@@ -194,4 +211,5 @@ class GameState:
         s.winners = list(self.winners)
         s.events = None
         s.round_stats = list(self.round_stats)  # snapshots are immutable
+        s.player_names = self.player_names
         return s
