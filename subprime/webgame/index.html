@@ -1212,8 +1212,15 @@ function renderOver(s) {
     (vpTie ? ' — and that decided this game!' : '') + '</td></tr>';
 }
 
-// click anywhere to fast-forward a replay
-document.addEventListener('click', () => { if (playing) skipReq = true; });
+// click anywhere to fast-forward a replay — but NOT the click that
+// initiated the action: it bubbles here after act() starts the playback
+// and would instantly self-skip every replay
+document.addEventListener('click', (e) => {
+  if (!playing) return;
+  if (e.target.closest('button, select, label, .bspace.legal, ' +
+                       '.card.buyable, .sect.target')) return;
+  skipReq = true;
+});
 
 // restore new-game settings, then resume a saved game if one exists
 // (artifact redeploys reload the page)
