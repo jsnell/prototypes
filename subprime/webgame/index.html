@@ -8,7 +8,7 @@
   :root {
     --bg: #14161c; --panel: #1e222c; --panel2: #262b38; --text: #e8eaf0;
     --dim: #9aa3b5; --line: #333a4a;
-    --p0: #4f8ef7; --p1: #e05555; --p2: #e0a832; --p3: #a86ee0;
+    --p0: #f0e9d2; --p1: #e5544e; --p2: #b06cf0; --p3: #f07fc0;
     --res: #58b368; --com: #5aa7d6; --ind: #d98a4a;
   }
   * { box-sizing: border-box; }
@@ -87,25 +87,25 @@
   .net-pos { color: #7ade8f; }
   .net-neg { color: #ff8a8a; font-weight: 700; }
   #market { display: grid;
-            grid-template-columns: repeat(3, minmax(140px, 210px));
-            gap: 3px 10px; }
+            grid-template-columns: repeat(3, minmax(88px, 108px));
+            gap: 3px 22px; }
   .mhead { font-size: 10.5px; color: var(--dim); text-transform: uppercase;
            letter-spacing: .5px; padding: 0 2px; }
-  .card { border-radius: 6px; padding: 2px 7px; cursor: default;
+  .card { border-radius: 6px; padding: 2px 5px; cursor: default;
           border: 2px solid transparent; color: #10131a; position: relative;
-          display: flex; align-items: center; gap: 7px; }
+          display: flex; align-items: center; gap: 5px; }
   .card .cm { display: flex; flex-direction: column; line-height: 1.15; }
   .card.res { background: var(--res); } .card.com { background: var(--com); }
   .card.ind { background: var(--ind); }
   .card .t { font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
-  .card .pr { font-size: 13.5px; font-weight: 800; }
-  .card .pr .mk { font-size: 12px; opacity: .7; }
-  .card .inc { font-size: 10.5px; }
+  .card .pr { font-size: 12px; font-weight: 800; }
+  .card .pr .mk { font-size: 10.5px; opacity: .7; }
+  .card .inc { font-size: 10px; }
   .card.buyable { cursor: pointer; box-shadow: 0 0 0 2px #ffffff55; }
   .card.buyable:hover { box-shadow: 0 0 0 3px #fff; }
   .card.sel { border-color: #fff; box-shadow: 0 0 0 3px #4f8ef7; }
   .card.empty { background: #20242e; border: 1px dashed var(--line);
-                min-height: 33px; box-shadow: none; }
+                min-height: 30px; box-shadow: none; }
   .cash { position: absolute; top: -7px; right: -7px; background: #ecc35a;
           color: #201703; font-size: 11px; font-weight: 800; padding: 1px 6px;
           border-radius: 9px; }
@@ -152,8 +152,8 @@
   main > div, .panel { min-width: 0; }
   .player .st, .player .nm { overflow-wrap: anywhere; }
   .px { image-rendering: pixelated; vertical-align: middle; }
-  .csprite { flex: none; width: 20px; height: 20px; }
-  .card { min-height: 33px; }
+  .csprite { flex: none; width: 16px; height: 16px; }
+  .card { min-height: 30px; }
   .bwrap { display: inline-flex; flex-direction: column; align-items: center;
            margin: 1px; }
   .binc { font-size: 9px; color: var(--dim); line-height: 1.1; }
@@ -271,7 +271,7 @@
 <script src="agents.js"></script>
 <script>
 const E = SubprimeEngine, A = SubprimeAgents;
-const PCOLS = ['#4f8ef7', '#e05555', '#e0a832', '#a86ee0'];
+const PCOLS = ['#f0e9d2', '#e5544e', '#b06cf0', '#f07fc0'];
 const COLORS = PCOLS;
 const CSS = {residential: 'res', commercial: 'com', industrial: 'ind'};
 const HUMAN = 0;
@@ -878,7 +878,7 @@ function cardHTML(cell, mult, cls = '', extra = '') {
                         : `$${base}`;
   return `<div class="card ${CSS[cell.card.type]} ${cls}" ${extra}>${money}
     <img class="px csprite" src="${bSprite(cell.card.type, null)}"
-         width="20" height="20" alt="">
+         width="16" height="16" alt="">
     <div class="cm"><span class="pr">${pr}</span>
     <span class="inc">+$${cell.card.income}/rd</span></div></div>`;
 }
