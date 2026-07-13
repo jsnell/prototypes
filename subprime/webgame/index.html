@@ -86,12 +86,15 @@
   .player .tag.pass { background: #2a3040; color: #aab6d0; }
   .net-pos { color: #7ade8f; }
   .net-neg { color: #ff8a8a; font-weight: 700; }
-  #market { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 4px; }
+  #market { display: grid;
+            grid-template-columns: repeat(3, minmax(140px, 210px));
+            gap: 3px 10px; }
   .mhead { font-size: 10.5px; color: var(--dim); text-transform: uppercase;
            letter-spacing: .5px; padding: 0 2px; }
-  .card { border-radius: 6px; padding: 3px 6px; cursor: default;
-          border: 2px solid transparent; color: #10131a; position: relative; }
+  .card { border-radius: 6px; padding: 2px 7px; cursor: default;
+          border: 2px solid transparent; color: #10131a; position: relative;
+          display: flex; align-items: center; gap: 7px; }
+  .card .cm { display: flex; flex-direction: column; line-height: 1.15; }
   .card.res { background: var(--res); } .card.com { background: var(--com); }
   .card.ind { background: var(--ind); }
   .card .t { font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
@@ -102,7 +105,7 @@
   .card.buyable:hover { box-shadow: 0 0 0 3px #fff; }
   .card.sel { border-color: #fff; box-shadow: 0 0 0 3px #4f8ef7; }
   .card.empty { background: #20242e; border: 1px dashed var(--line);
-                min-height: 44px; box-shadow: none; }
+                min-height: 33px; box-shadow: none; }
   .cash { position: absolute; top: -7px; right: -7px; background: #ecc35a;
           color: #201703; font-size: 11px; font-weight: 800; padding: 1px 6px;
           border-radius: 9px; }
@@ -117,14 +120,12 @@
   .sect.ind .hd b { color: var(--ind); }
   .sect.target { border-color: #4f8ef7; cursor: pointer; background: #22304a; }
   .sect.target:hover { background: #2a3c5e; }
-  [data-tip] { position: relative; cursor: help; }
-  [data-tip]:hover::after {
-    content: attr(data-tip); position: absolute; left: 0; top: 100%;
-    z-index: 20; width: 270px; background: #0c0e13; color: var(--text);
-    border: 1px solid #46506a; border-radius: 7px; padding: 8px 10px;
-    font-size: 12px; line-height: 1.4; white-space: pre-line;
-    box-shadow: 0 6px 18px #000c; pointer-events: none; }
-  .sect.target[data-tip]:hover::after { content: none; }
+  [data-tip] { cursor: help; }
+  #tip { position: fixed; z-index: 60; display: none; width: 300px;
+         background: #0c0e13; color: var(--text); border: 1px solid #46506a;
+         border-radius: 7px; padding: 8px 10px; font-size: 12px;
+         line-height: 1.4; white-space: pre-line;
+         box-shadow: 0 6px 18px #000c; pointer-events: none; }
   .b { display: inline-flex; align-items: center; gap: 3px; font-size: 11px;
        border-radius: 4px; padding: 1px 5px; margin: 2px 2px 0 0;
        background: #171a22; }
@@ -151,8 +152,8 @@
   main > div, .panel { min-width: 0; }
   .player .st, .player .nm { overflow-wrap: anywhere; }
   .px { image-rendering: pixelated; vertical-align: middle; }
-  .csprite { position: absolute; top: 3px; right: 4px; opacity: .9; width: 18px; height: 18px; }
-  .card { min-height: 44px; }
+  .csprite { flex: none; width: 20px; height: 20px; }
+  .card { min-height: 33px; }
   .bwrap { display: inline-flex; flex-direction: column; align-items: center;
            margin: 1px; }
   .binc { font-size: 9px; color: var(--dim); line-height: 1.1; }
@@ -877,10 +878,9 @@ function cardHTML(cell, mult, cls = '', extra = '') {
                         : `$${base}`;
   return `<div class="card ${CSS[cell.card.type]} ${cls}" ${extra}>${money}
     <img class="px csprite" src="${bSprite(cell.card.type, null)}"
-         width="22" height="22" alt="">
-    <div class="t">${cell.card.type.slice(0, 3)}</div>
-    <div class="pr">${pr}</div>
-    <div class="inc">+$${cell.card.income}/rd</div></div>`;
+         width="20" height="20" alt="">
+    <div class="cm"><span class="pr">${pr}</span>
+    <span class="inc">+$${cell.card.income}/rd</span></div></div>`;
 }
 
 // subsidies to show: the actually-placed markers while the game is being
@@ -1119,8 +1119,8 @@ function renderCities(s) {
         const col = o === 'bank' ? '#666c7c' : PCOLS[o];
         const bs = items.map(({b, k}) =>
           `<span class="bwrap" data-b="${ci},${t},${k}"><img class="px"
-             src="${bSprite(t, o === 'bank' ? null : o)}" width="20"
-             height="20" alt=""><span class="binc">$${b.card.income}</span></span>`
+             src="${bSprite(t, o === 'bank' ? null : o)}" width="24"
+             height="24" alt=""><span class="binc">$${b.card.income}</span></span>`
         ).join('');
         return `<span class="block" style="border-color:${col}">${bs}</span>`;
       }).join('');
@@ -1230,6 +1230,33 @@ function renderOver(s) {
     `<tr><td colspan="5" class="sub">VP ties break on remaining cash` +
     (vpTie ? ' — and that decided this game!' : '') + '</td></tr>';
 }
+
+// one global fixed-position tooltip: escapes column clipping and is
+// clamped to the viewport
+const tipEl = document.createElement('div');
+tipEl.id = 'tip';
+document.body.appendChild(tipEl);
+let tipTarget = null;
+document.addEventListener('mouseover', (e) => {
+  const el = e.target.closest ? e.target.closest('[data-tip]') : null;
+  if (el === tipTarget) return;
+  tipTarget = el;
+  if (!el || el.classList.contains('target')) {
+    tipEl.style.display = 'none';
+    return;
+  }
+  tipEl.textContent = el.dataset.tip;
+  tipEl.style.display = 'block';
+  const r = el.getBoundingClientRect();
+  const tw = Math.min(300, window.innerWidth - 16);
+  tipEl.style.width = tw + 'px';
+  const th = tipEl.offsetHeight;
+  const x = Math.min(Math.max(8, r.left), window.innerWidth - tw - 8);
+  let y = r.bottom + 6;
+  if (y + th > window.innerHeight - 8) y = Math.max(8, r.top - th - 6);
+  tipEl.style.left = x + 'px';
+  tipEl.style.top = y + 'px';
+});
 
 // click anywhere to fast-forward a replay — but NOT the click that
 // initiated the action: it bubbles here after act() starts the playback
