@@ -120,6 +120,10 @@
   .sect.ind .hd b { color: var(--ind); }
   .sect.target { border-color: #4f8ef7; cursor: pointer; background: #22304a; }
   .sect.target:hover { background: #2a3c5e; }
+  .card.buyable { touch-action: none; }
+  .card.dragsrc { opacity: .35; }
+  .flyer.drag { transition: none; }
+  .sect.hover2 { background: #2a3c5e; border-color: #fff; }
   [data-tip] { cursor: help; }
   #tip { position: fixed; z-index: 60; display: none; width: 300px;
          background: #0c0e13; color: var(--text); border: 1px solid #46506a;
@@ -445,6 +449,7 @@ function loadPrefs() {
 }
 let G = null;        // {state, agents, names, cursor}
 let sel = null;
+let suppressClick = false;   // swallow the synthetic click after a drag
 let viewLive = true;   // false while rendering a replay frame
 let playing = false, skipReq = false;
 
@@ -1060,16 +1065,70 @@ function renderMarket(s) {
   document.getElementById('market').innerHTML = html;
   if (viewLive) {
     document.querySelectorAll('.card.buyable').forEach(el => {
+      const key = el.dataset.key;
+      const rc = key.split(',').map(Number);
+      const cities = buyable[key];
+      const type = G.state.display[rc[0]][rc[1]].card.type;
       el.onclick = () => {
-        const key = el.dataset.key;
-        const rc = key.split(',').map(Number);
-        sel = (sel && sel.key === key) ? null :
-          {key, cities: buyable[key], rc,
-           type: G.state.display[rc[0]][rc[1]].card.type};
+        if (suppressClick) return;
+        sel = (sel && sel.key === key) ? null : {key, cities, rc, type};
         render();
       };
+      enableDrag(el, rc, cities, type);
     });
   }
+}
+
+// drag a buyable card onto a legal city zone (pointer events: one code
+// path for mouse and touch; below the movement threshold it stays a click)
+function enableDrag(el, rc, cities, type) {
+  el.addEventListener('pointerdown', (e) => {
+    if (playing || e.button > 0) return;
+    const startX = e.clientX, startY = e.clientY;
+    let ghost = null, over = null, targets = [];
+    const move = (ev) => {
+      const dx = ev.clientX - startX, dy = ev.clientY - startY;
+      if (!ghost) {
+        if (Math.hypot(dx, dy) < 7) return;
+        const r = el.getBoundingClientRect();
+        ghost = document.createElement('div');
+        ghost.className = 'flyer drag';
+        ghost.innerHTML = el.outerHTML;
+        ghost.style.width = r.width + 'px';
+        ghost.style.height = r.height + 'px';
+        ghost.style.left = r.left + 'px';
+        ghost.style.top = r.top + 'px';
+        document.body.appendChild(ghost);
+        el.classList.add('dragsrc');
+        targets = [...document.querySelectorAll(`.sect.${CSS[type]}`)]
+          .filter(z => cities.includes(Number(z.dataset.city)));
+        targets.forEach(z => z.classList.add('target'));
+      }
+      ghost.style.transform = `translate(${dx}px, ${dy}px)`;
+      const under = document.elementFromPoint(ev.clientX, ev.clientY);
+      const zone = under && under.closest ? under.closest('.sect.target') : null;
+      if (over && over !== zone) over.classList.remove('hover2');
+      over = zone;
+      if (over) over.classList.add('hover2');
+    };
+    const up = (ev) => {
+      document.removeEventListener('pointermove', move);
+      document.removeEventListener('pointerup', up);
+      document.removeEventListener('pointercancel', up);
+      if (!ghost) return;                    // plain click: let onclick run
+      targets.forEach(z => z.classList.remove('target', 'hover2'));
+      el.classList.remove('dragsrc');
+      ghost.remove();
+      suppressClick = true;
+      setTimeout(() => { suppressClick = false; }, 50);
+      if (ev.type === 'pointerup' && over) {
+        act(['buy', rc[0], rc[1], Number(over.dataset.city)]);
+      }
+    };
+    document.addEventListener('pointermove', move);
+    document.addEventListener('pointerup', up);
+    document.addEventListener('pointercancel', up);
+  });
 }
 
 function sectTooltip(s, ci, t, stateSubs, citySubs) {
@@ -1174,7 +1233,7 @@ function renderActions(s) {
   } else if (s.phase === 'buy') {
     hint.textContent = sel ?
       'Now click a highlighted city zone to place it.' :
-      'Click a card to buy, then pick a city — or pass.';
+      'Drag a card onto a city zone (or click card, then zone) — or pass.';
     if (acts.some(a => a[0] === 'repay')) mk('Repay 1 loan', ['repay']);
     mk('Pass — done buying', ['pass'], !acts.some(a => a[0] === 'buy'));
   } else if (s.phase === 'bailout') {
