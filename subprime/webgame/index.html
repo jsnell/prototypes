@@ -174,6 +174,9 @@
                      100% { transform: scale(1); } }
   .pulse { display: inline-block; animation: pulse .55s; }
   #overav { text-align: center; margin-bottom: 6px; }
+  .flyer { position: fixed; z-index: 50; pointer-events: none;
+           display: flex; align-items: center; justify-content: center; }
+  .flyer > * { visibility: visible !important; }
   @media (max-width: 1100px) {
     main { grid-template-columns: 1fr; }
     #log { max-height: 220px; }
@@ -495,23 +498,66 @@ function step(pid, action) {
     money: s.players.map(p => p.money),
     bankrupt: s.players.map(p => p.bankrupt),
     counts: s.cities.map(c => E.TYPES.map(t => c[t].length)),
+    bids: Object.assign({}, s.bids),
+    disp: s.display.map(row => row.map(c => c ? c.card.id : null)),
   };
-  const evStart = s.events.length;
+  // a foreclosure sale moves an existing building between blocks —
+  // remember which one, the count diff below won't see it
+  let moved = null;
+  if (action[0] === 'bailout_buy') {
+    const lot = s.bailoutLots[action[1]];
+    moved = {ci: lot.city, zone: lot.bldg.card.type,
+             idx: s.cities[lot.city][lot.bldg.card.type].indexOf(lot.bldg)};
+  }
   E.applyAction(s, action);
   const fx = [];
-  if (action[0] === 'bid') fx.push({t: 'bid', v: action[1]});
+  // 1. the action itself, with its spatial link
+  if (action[0] === 'bid') {
+    fx.push({t: 'bid', v: action[1], pid, fromBid: pre.bids[pid]});
+  }
+  if (action[0] === 'pass' &&
+      (pre.phase === 'bid_initial' || pre.phase === 'bid_raise')) {
+    const inBid = s.phase === 'bid_initial' || s.phase === 'bid_raise';
+    const spot = (inBid ? s.nextOrder : s.turnOrder).indexOf(pid);
+    fx.push({t: 'pass', pid, spot, fromBid: pre.bids[pid], inBid});
+  }
+  if (moved) fx.push(Object.assign({t: 'moved'}, moved));
   s.cities.forEach((c, ci) => E.TYPES.forEach((tp, ti) => {
     for (let k = pre.counts[ci][ti]; k < c[tp].length; k++) {
-      fx.push({t: 'built', ci, zone: tp, idx: k});
+      const from = action[0] === 'buy'
+        ? {r: action[1], c: action[2]} : null;
+      fx.push({t: 'built', ci, zone: tp, idx: k, from});
     }
   }));
+  // 2. money, rate, bankruptcies
   s.players.forEach((p, i) => {
     const d = p.money - pre.money[i];
     if (d) fx.push({t: 'money', pid: i, d});
-    if (p.bankrupt && !pre.bankrupt[i]) fx.push({t: 'bankrupt', pid: i});
   });
   const rate = E.currentRate(s);
   if (rate > pre.rate) fx.push({t: 'rate', from: pre.rate, to: rate});
+  s.players.forEach((p, i) => {
+    if (p.bankrupt && !pre.bankrupt[i]) fx.push({t: 'bankrupt', pid: i});
+  });
+  // 3. market movement at cleanup: surviving cards slide, then new
+  //    cards deal in one by one
+  const postIds = {}, preIds = {};
+  s.display.forEach((row, r) => row.forEach((cell, c) => {
+    if (cell) postIds[cell.card.id] = {r, c};
+  }));
+  pre.disp.forEach((row, r) => row.forEach((id, c) => {
+    if (id !== null) preIds[id] = {r, c};
+  }));
+  for (const id of Object.keys(postIds)) {
+    const to = postIds[id], from = preIds[id];
+    if (from && (from.r !== to.r || from.c !== to.c)) {
+      fx.push({t: 'slide', from, to});
+    }
+  }
+  Object.keys(postIds).filter(id => !preIds[id]).map(id => postIds[id])
+    .sort((a, b) => a.c - b.c || b.r - a.r)
+    .forEach(d => fx.push({t: 'deal', r: d.r, c: d.c}));
+  // 4. announce what comes next
   if (s.phase !== pre.phase) {
     const banners = {
       buy: 'BUY REAL ESTATE',
@@ -551,25 +597,200 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 async function playFrames(frames) {
   const speed = document.getElementById('anim').value;
-  const mult = speed === 'off' ? 0 : speed === 'fast' ? 0.45 : 1;
+  const mult = speed === 'off' ? 0 : speed === 'fast' ? 0.5 : 1;
   if (!mult || !frames.length) { render(); return; }
   playing = true; skipReq = false;
   document.getElementById('phase').textContent = '▶ replaying… (click to skip)';
   for (const f of frames) {
     if (skipReq) break;
-    const vs = stateFromPlain(f.snap);
-    render(vs, false);
-    // log everything up to this frame's watermark (covers events emitted
-    // outside any frame, e.g. game setup)
+    // measure flight ORIGINS in the previous frame's DOM, then render the
+    // new state with flight DESTINATIONS hidden, and fly between them
+    const src = measureSources(f.fx);
+    render(stateFromPlain(f.snap), false);
     G.state.events.slice(G.cursor, f.evEnd).forEach(logLine);
     G.cursor = f.evEnd;
-    let dt = 430;
-    for (const x of f.fx) dt = Math.max(dt, runFx(x));
-    await sleep(dt * mult);
+    prepareHidden(f.fx);
+    await runFxSeq(f.fx, src, mult);
+    if (!skipReq) await sleep(140 * mult);
   }
   playing = false; skipReq = false;
+  document.querySelectorAll('.flyer').forEach(e => e.remove());
   document.getElementById('banner').classList.remove('show');
   render();
+}
+
+const rectOf = sel => {
+  const el = document.querySelector(sel);
+  return el ? el.getBoundingClientRect() : null;
+};
+
+function measureSources(fx) {
+  const m = {};
+  fx.forEach((x, i) => {
+    if (x.t === 'built' && x.from) {
+      m[i] = rectOf(`[data-mc="${x.from.r},${x.from.c}"]`);
+    } else if (x.t === 'moved') {
+      m[i] = rectOf(`[data-b="${x.ci},${x.zone},${x.idx}"]`);
+    } else if (x.t === 'slide') {
+      m[i] = rectOf(`[data-mc="${x.from.r},${x.from.c}"]`);
+    } else if (x.t === 'pass' || x.t === 'bid') {
+      m[i] = x.fromBid !== undefined
+        ? rectOf(`.bspace[data-bid="${x.fromBid}"] img`)
+        : rectOf(`#players .player[data-pp="${x.pid}"] img`);
+    }
+  });
+  return m;
+}
+
+function setVis(sel, hidden) {
+  const el = document.querySelector(sel);
+  if (el) el.style.visibility = hidden ? 'hidden' : '';
+  return el;
+}
+
+function prepareHidden(fx) {
+  for (const x of fx) {
+    if (x.t === 'built' || x.t === 'moved') {
+      setVis(`[data-b="${x.ci},${x.zone},${x.idx}"]`, true);
+    } else if (x.t === 'pass' && x.spot >= 0) {
+      setVis(`#torder .tslot[data-slot="${x.spot}"] img`, true);
+    } else if (x.t === 'bid') {
+      setVis(`.bspace[data-bid="${x.v}"] img`, true);
+    } else if (x.t === 'deal') {
+      setVis(`[data-mc="${x.r},${x.c}"]`, true);
+    } else if (x.t === 'slide') {
+      setVis(`[data-mc="${x.to.r},${x.to.c}"]`, true);
+    }
+  }
+}
+
+function reveal(sel, pop) {
+  const el = setVis(sel, false);
+  if (el && pop) el.classList.add('pop');
+  return el;
+}
+
+// fly `html` (sized w×h) from the center of `from` to the center of `to`
+function fly(html, from, to, ms, w = 24, h = 24) {
+  if (!from || !to) return sleep(0);
+  const d = document.createElement('div');
+  d.className = 'flyer';
+  d.innerHTML = html;
+  d.style.width = w + 'px'; d.style.height = h + 'px';
+  d.style.left = (from.left + from.width / 2 - w / 2) + 'px';
+  d.style.top = (from.top + from.height / 2 - h / 2) + 'px';
+  d.style.transition = `transform ${ms}ms cubic-bezier(.45,.05,.35,1)`;
+  document.body.appendChild(d);
+  void d.offsetWidth;
+  const dx = (to.left + to.width / 2) - (from.left + from.width / 2);
+  const dy = (to.top + to.height / 2) - (from.top + from.height / 2);
+  d.style.transform = `translate(${dx}px, ${dy}px)`;
+  return sleep(ms).then(() => d.remove());
+}
+
+async function runFxSeq(fx, src, mult) {
+  const S = ms => sleep(ms * mult);
+  const bspr = (zone, ci) =>
+    `<img class="px" src="${bSprite(zone, null)}" width="24" height="24">`;
+  let i = 0;
+  while (i < fx.length) {
+    if (skipReq) return;
+    const x = fx[i];
+    if (x.t === 'money') {
+      // simultaneous income/interest: float together, one beat
+      while (i < fx.length && fx[i].t === 'money') {
+        const m = fx[i];
+        floater(document.querySelector(`#players .player[data-pp="${m.pid}"]`),
+                (m.d > 0 ? '+$' : '−$') + Math.abs(m.d),
+                m.d > 0 ? 'pos' : 'neg');
+        i++;
+      }
+      await S(780);
+      continue;
+    }
+    if (x.t === 'slide') {
+      // one cleanup: all surviving cards glide to their new cells together
+      const flights = [];
+      while (i < fx.length && fx[i].t === 'slide') {
+        const sl = fx[i];
+        const destSel = `[data-mc="${sl.to.r},${sl.to.c}"]`;
+        const destEl = document.querySelector(destSel);
+        const to = destEl && destEl.getBoundingClientRect();
+        const from = src[i];
+        flights.push(fly(destEl ? destEl.outerHTML : '', from, to, 420 * mult,
+                         from ? from.width : 80, from ? from.height : 58)
+          .then(() => reveal(destSel, false)));
+        i++;
+      }
+      await Promise.all(flights);
+      await S(120);
+      continue;
+    }
+    switch (x.t) {
+      case 'bid': {
+        await fly(avImg(x.pid, 18), src[i],
+                  rectOf(`.bspace[data-bid="${x.v}"]`), 430 * mult, 18, 18);
+        reveal(`.bspace[data-bid="${x.v}"] img`, true);
+        await S(160);
+        break;
+      }
+      case 'pass': {
+        if (x.spot >= 0) {
+          await fly(avImg(x.pid, 18), src[i],
+                    rectOf(`#torder .tslot[data-slot="${x.spot}"]`),
+                    460 * mult, 18, 18);
+          reveal(`#torder .tslot[data-slot="${x.spot}"] img`, true);
+        }
+        await S(180);
+        break;
+      }
+      case 'built': {
+        const sel = `[data-b="${x.ci},${x.zone},${x.idx}"]`;
+        if (x.from && src[i]) {
+          await fly(bspr(x.zone), src[i], rectOf(sel), 460 * mult);
+        }
+        reveal(sel, true);
+        await S(260);
+        break;
+      }
+      case 'moved': {
+        const sel = `[data-b="${x.ci},${x.zone},${x.idx}"]`;
+        await fly(bspr(x.zone), src[i], rectOf(sel), 460 * mult);
+        reveal(sel, true);
+        await S(260);
+        break;
+      }
+      case 'deal': {
+        reveal(`[data-mc="${x.r},${x.c}"]`, true);
+        await S(180);
+        break;
+      }
+      case 'rate': {
+        const el = document.getElementById('rate');
+        el.classList.remove('pulse');
+        void el.offsetWidth;
+        el.classList.add('pulse');
+        floater(document.querySelector('header'), `rate ↑ $${x.to}`, 'neg');
+        await S(600);
+        break;
+      }
+      case 'bankrupt': {
+        const panel =
+          document.querySelector(`#players .player[data-pp="${x.pid}"]`);
+        if (panel) panel.classList.add('shake');
+        showBanner(`💥 ${G.names[x.pid].toUpperCase()} IS BANKRUPT`);
+        await S(1100);
+        break;
+      }
+      case 'banner': {
+        showBanner(x.text);
+        await S(950);
+        break;
+      }
+      default: await S(200);
+    }
+    i++;
+  }
 }
 
 function showBanner(text) {
@@ -587,42 +808,6 @@ function floater(anchor, text, cls) {
   f.textContent = text;
   anchor.appendChild(f);
   setTimeout(() => f.remove(), 1200);
-}
-
-function runFx(x) {
-  if (x.t === 'bid') {
-    const el = document.querySelector(`.bspace[data-bid="${x.v}"]`);
-    if (el) el.classList.add('pop');
-    return 430;
-  }
-  if (x.t === 'built') {
-    const el = document.querySelector(
-      `[data-b="${x.ci},${x.zone},${x.idx}"]`);
-    if (el) el.classList.add('pop');
-    return 520;
-  }
-  if (x.t === 'money') {
-    const panel = document.querySelectorAll('#players .player')[x.pid];
-    floater(panel, (x.d > 0 ? '+$' : '−$') + Math.abs(x.d),
-            x.d > 0 ? 'pos' : 'neg');
-    return 700;
-  }
-  if (x.t === 'bankrupt') {
-    const panel = document.querySelectorAll('#players .player')[x.pid];
-    if (panel) panel.classList.add('shake');
-    showBanner(`💥 ${G.names[x.pid].toUpperCase()} IS BANKRUPT`);
-    return 1100;
-  }
-  if (x.t === 'rate') {
-    const el = document.getElementById('rate');
-    el.classList.remove('pulse');
-    void el.offsetWidth;
-    el.classList.add('pulse');
-    floater(document.querySelector('header'), `rate ↑ $${x.to}`, 'neg');
-    return 650;
-  }
-  if (x.t === 'banner') { showBanner(x.text); return 1000; }
-  return 430;
 }
 
 function newGame() {
@@ -662,7 +847,7 @@ function legalFor(s) {
 }
 
 function cardHTML(cell, mult, cls = '', extra = '') {
-  if (!cell) return `<div class="card empty"></div>`;
+  if (!cell) return `<div class="card empty" ${extra}></div>`;
   const money = cell.money ? `<span class="cash">$${cell.money}</span>` : '';
   const base = cell.card.cost, markup = base * (mult - 1);
   const pr = markup > 0 ? `$${base}<span class="mk">+$${markup}</span>`
@@ -741,7 +926,7 @@ function render(viewState, live = true) {
       : v ? `~<b>${v.total} VP</b> = ${v.buildings} bldg + ${v.majorities} ` +
             `city-maj + ${v.state} state-sub`
           : '';
-    return `<div class="player ${p.bankrupt ? 'dead' : ''}"
+    return `<div class="player ${p.bankrupt ? 'dead' : ''}" data-pp="${i}"
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${avImg(i, 22)} ${esc(G.names[i])}</span>
         <span>${tags.join(' ')}</span></div>
@@ -796,7 +981,7 @@ function renderOrder(s) {
       if (!inBid && dp === pid) cls.push('acting');
       who = `<span class="who">${avImg(pid, 18)}${passed ? ' ✓' : ''}</span>`;
     }
-    return `<div class="${cls.join(' ')}"><span>${i + 1}${
+    return `<div class="${cls.join(' ')}" data-slot="${i}"><span>${i + 1}${
       ['st', 'nd', 'rd'][i] || 'th'}</span>${who}</div>`;
   }).join('');
 }
@@ -849,7 +1034,7 @@ function renderMarket(s) {
       const isSel = sel && sel.key === key;
       html += cardHTML(cell, cfg.rowCostMultipliers[r],
         (can ? 'buyable ' : '') + (isSel ? 'sel' : ''),
-        can ? `data-key="${key}"` : '');
+        `data-mc="${r},${c}" ` + (can ? `data-key="${key}"` : ''));
     }
   }
   document.getElementById('market').innerHTML = html;
