@@ -13,28 +13,41 @@
   }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--text);
-         font: 14px/1.45 system-ui, sans-serif; }
-  header { display: flex; gap: 18px; align-items: center; padding: 10px 16px;
+         font: 13px/1.4 system-ui, sans-serif;
+         display: flex; flex-direction: column; height: 100vh;
+         overflow: hidden; }
+  header { display: flex; gap: 14px; align-items: center; padding: 6px 14px;
            background: var(--panel); border-bottom: 1px solid var(--line);
-           flex-wrap: wrap; }
-  header h1 { font-size: 18px; margin: 0 8px 0 0; letter-spacing: 1px; }
+           flex-wrap: wrap; flex: none; }
+  header h1 { font-size: 16px; margin: 0 6px 0 0; letter-spacing: 1px; }
   .stat { color: var(--dim); } .stat b { color: var(--text); }
   .rate { color: #ff7a7a; font-weight: 700; }
   button { background: var(--panel2); color: var(--text); cursor: pointer;
-           border: 1px solid var(--line); border-radius: 6px; padding: 6px 12px;
+           border: 1px solid var(--line); border-radius: 6px; padding: 4px 10px;
            font: inherit; }
   button:hover:not(:disabled) { border-color: #6b7690; }
   button:disabled { opacity: .4; cursor: default; }
   button.primary { background: #2c4a8a; border-color: #3d62b3; }
   select { background: var(--panel2); color: var(--text);
            border: 1px solid var(--line); border-radius: 6px; padding: 5px; }
-  main { display: grid; grid-template-columns: 260px 1fr 300px; gap: 12px;
-         padding: 12px 16px; align-items: start; }
+  main { display: grid; grid-template-columns: 240px 1fr 280px; gap: 10px;
+         padding: 8px 12px; align-items: stretch; flex: 1; min-height: 0;
+         overflow: hidden; }
+  main > div { overflow-y: auto; min-height: 0; }
+  main > div > :last-child, main > div > .row2:last-child .panel {
+    margin-bottom: 0; }
+  .row2 { display: flex; gap: 8px; }
+  .row2 .panel { flex: 1; }
   .panel { background: var(--panel); border: 1px solid var(--line);
-           border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; }
-  .panel h2 { margin: 0 0 8px; font-size: 12px; text-transform: uppercase;
-              letter-spacing: 1px; color: var(--dim); }
-  .lrow { display: flex; align-items: center; gap: 8px; margin: 3px 0; }
+           border-radius: 8px; padding: 6px 10px; margin-bottom: 6px; }
+  .panel h2 { margin: 0 0 6px; font-size: 11px; text-transform: uppercase;
+              letter-spacing: 1px; color: var(--dim); display: flex;
+              gap: 6px; align-items: center; }
+  .qm { display: inline-flex; width: 15px; height: 15px; border-radius: 50%;
+        background: #2a3040; color: #9aa3b5; font-size: 10px; flex: none;
+        align-items: center; justify-content: center; cursor: help;
+        text-transform: none; }
+  .lrow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
   .lrow .r { width: 46px; color: var(--dim); font-size: 12px; }
   .lrow .bar { flex: 1; height: 12px; background: #3a2a2a; border-radius: 3px;
                overflow: hidden; display: flex; }
@@ -43,27 +56,27 @@
   .lrow.expired .bar { opacity: .25; }
   .lrow .n { width: 42px; text-align: right; font-size: 12px; color: var(--dim); }
   .player { position: relative; border-left: 4px solid; border-radius: 4px; background: var(--panel2);
-            padding: 6px 9px; margin: 6px 0; }
+            padding: 4px 8px; margin: 5px 0; }
   .player .nm { font-weight: 600; display: flex; justify-content: space-between;
                 gap: 6px; flex-wrap: wrap; }
-  .player .st { color: var(--dim); font-size: 12.5px; }
+  .player .st { color: var(--dim); font-size: 11.5px; }
   .player.dead { opacity: .45; }
   .player .tag { font-size: 11px; padding: 1px 6px; border-radius: 8px;
                  background: #46340f; color: #ecc35a; }
   .player .tag.dead { background: #4a1f1f; color: #ff9a9a; }
   .player .tag.turn { background: #1f3a25; color: #7ade8f; }
-  .bidtrack { display: flex; flex-wrap: wrap; gap: 5px; }
-  .bspace { width: 42px; height: 42px; border: 1px dashed var(--line);
+  .bidtrack { display: flex; flex-wrap: wrap; gap: 4px; }
+  .bspace { width: 34px; height: 38px; border: 1px dashed var(--line);
             border-radius: 6px; display: flex; flex-direction: column;
-            align-items: center; justify-content: center; font-size: 12px;
+            align-items: center; justify-content: center; font-size: 11px;
             color: var(--dim); }
   .bspace.legal { border-style: solid; border-color: #4f8ef7; cursor: pointer; }
   .bspace.legal:hover { background: #22304a; }
   .bspace .dot { width: 14px; height: 14px; border-radius: 50%; }
-  .tslot { min-width: 64px; height: 46px; border: 1px dashed var(--line);
+  .tslot { min-width: 50px; height: 40px; border: 1px dashed var(--line);
            border-radius: 6px; display: flex; flex-direction: column;
-           align-items: center; justify-content: center; gap: 2px;
-           font-size: 11px; color: var(--dim); padding: 2px 8px; }
+           align-items: center; justify-content: center; gap: 1px;
+           font-size: 10px; color: var(--dim); padding: 1px 6px; }
   .tslot .who { font-size: 12px; font-weight: 700; display: flex;
                 align-items: center; gap: 5px; }
   .tslot .dot { width: 12px; height: 12px; border-radius: 50%; }
@@ -74,29 +87,29 @@
   .net-pos { color: #7ade8f; }
   .net-neg { color: #ff8a8a; font-weight: 700; }
   #market { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr));
-            gap: 6px; }
+            gap: 4px; }
   .mhead { font-size: 10.5px; color: var(--dim); text-transform: uppercase;
            letter-spacing: .5px; padding: 0 2px; }
-  .card { border-radius: 7px; padding: 6px 8px; cursor: default;
+  .card { border-radius: 6px; padding: 3px 6px; cursor: default;
           border: 2px solid transparent; color: #10131a; position: relative; }
   .card.res { background: var(--res); } .card.com { background: var(--com); }
   .card.ind { background: var(--ind); }
   .card .t { font-size: 10.5px; font-weight: 700; text-transform: uppercase; }
-  .card .pr { font-size: 16px; font-weight: 800; }
+  .card .pr { font-size: 13.5px; font-weight: 800; }
   .card .pr .mk { font-size: 12px; opacity: .7; }
-  .card .inc { font-size: 11.5px; }
+  .card .inc { font-size: 10.5px; }
   .card.buyable { cursor: pointer; box-shadow: 0 0 0 2px #ffffff55; }
   .card.buyable:hover { box-shadow: 0 0 0 3px #fff; }
   .card.sel { border-color: #fff; box-shadow: 0 0 0 3px #4f8ef7; }
   .card.empty { background: #20242e; border: 1px dashed var(--line);
-                min-height: 58px; box-shadow: none; }
+                min-height: 44px; box-shadow: none; }
   .cash { position: absolute; top: -7px; right: -7px; background: #ecc35a;
           color: #201703; font-size: 11px; font-weight: 800; padding: 1px 6px;
           border-radius: 9px; }
-  .cities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
-  .city { background: var(--panel2); border-radius: 8px; padding: 8px; }
-  .city h3 { margin: 0 0 6px; font-size: 12.5px; color: var(--dim); }
-  .sect { border-radius: 6px; padding: 4px 6px; margin: 4px 0; min-height: 30px;
+  .cities { display: grid; grid-template-columns: repeat(3, 1fr); gap: 6px; }
+  .city { background: var(--panel2); border-radius: 8px; padding: 5px 7px; }
+  .city h3 { margin: 0 0 3px; font-size: 11.5px; color: var(--dim); }
+  .sect { border-radius: 6px; padding: 2px 5px; margin: 3px 0; min-height: 24px;
           border: 1px solid var(--line); }
   .sect .hd { font-size: 10.5px; text-transform: uppercase; color: var(--dim);
               display: flex; gap: 6px; align-items: center; }
@@ -104,8 +117,8 @@
   .sect.ind .hd b { color: var(--ind); }
   .sect.target { border-color: #4f8ef7; cursor: pointer; background: #22304a; }
   .sect.target:hover { background: #2a3c5e; }
-  .sect[data-tip] { position: relative; cursor: help; }
-  .sect[data-tip]:hover::after {
+  [data-tip] { position: relative; cursor: help; }
+  [data-tip]:hover::after {
     content: attr(data-tip); position: absolute; left: 0; top: 100%;
     z-index: 20; width: 270px; background: #0c0e13; color: var(--text);
     border: 1px solid #46506a; border-radius: 7px; padding: 8px 10px;
@@ -117,11 +130,13 @@
        background: #171a22; }
   .b .own { width: 9px; height: 9px; border-radius: 50%; }
   .sub { font-size: 12px; }
-  #actions { display: flex; gap: 8px; flex-wrap: wrap; align-items: center;
-             min-height: 38px; }
+  #actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
+             min-height: 26px; }
   #hint { color: var(--dim); }
-  #log { max-height: 520px; overflow-y: auto; font-size: 12.5px;
+  #log { flex: 1; min-height: 0; overflow-y: auto; font-size: 11.5px;
          color: var(--dim); }
+  #logpanel { display: flex; flex-direction: column; min-height: 0;
+              margin-bottom: 0; overflow: hidden; }
   #log div { padding: 1.5px 0; border-bottom: 1px solid #20242e; }
   #log .you { color: #bcd3ff; }
   #over { position: fixed; inset: 0; background: #000a; display: flex;
@@ -136,14 +151,14 @@
   main > div, .panel { min-width: 0; }
   .player .st, .player .nm { overflow-wrap: anywhere; }
   .px { image-rendering: pixelated; vertical-align: middle; }
-  .csprite { position: absolute; top: 5px; right: 6px; opacity: .9; }
-  .card { min-height: 58px; }
+  .csprite { position: absolute; top: 3px; right: 4px; opacity: .9; width: 18px; height: 18px; }
+  .card { min-height: 44px; }
   .bwrap { display: inline-flex; flex-direction: column; align-items: center;
            margin: 1px; }
   .binc { font-size: 9px; color: var(--dim); line-height: 1.1; }
   .block { display: inline-flex; align-items: flex-end; gap: 1px;
-           border: 1px solid; border-radius: 6px; padding: 2px 3px;
-           margin: 3px 4px 0 0; background: #171a22; }
+           border: 1px solid; border-radius: 5px; padding: 1px 2px;
+           margin: 2px 3px 0 0; background: #171a22; }
   @keyframes pop { 0% { transform: scale(.2); } 70% { transform: scale(1.3); }
                    100% { transform: scale(1); } }
   .pop { animation: pop .45s ease-out; }
@@ -178,8 +193,10 @@
            display: flex; align-items: center; justify-content: center; }
   .flyer > * { visibility: visible !important; }
   @media (max-width: 1100px) {
-    main { grid-template-columns: 1fr; }
-    #log { max-height: 220px; }
+    body { overflow: auto; height: auto; }
+    main { grid-template-columns: 1fr; overflow: visible; }
+    main > div { overflow-y: visible; }
+    #log { max-height: 220px; flex: none; }
     .cities { grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); }
   }
 </style>
@@ -210,28 +227,34 @@
 
 <main>
   <div>
-    <div class="panel"><h2>Players <span class="sub">(income as base+subsidy;
-      net = cash + income − interest, the money left after this round's
-      bills; VP ties break on remaining cash)</span></h2><div id="players"></div></div>
-    <div class="panel"><h2>Loan track <span class="sub" id="lnote"></span></h2>
+    <div class="panel"><h2>Players
+      <span class="qm" data-tip="Income shown as base+subsidy. net = cash + income − interest: the money left after this round's bills. VP ties break on remaining cash.">?</span></h2>
+      <div id="players"></div></div>
+    <div class="panel"><h2>Loan track
+      <span class="qm" data-tip="The interest rate is the deepest row with an uncovered space; an emptied row keeps showing its rate. Rows at or below the round number expire at cleanup. Amber = markers already claimed by bids on the bid track.">?</span>
+      <span class="sub" id="lnote"></span></h2>
       <div id="ltrack"></div></div>
   </div>
   <div>
     <div class="panel"><h2 id="acthead">Your move</h2><div id="actions"></div>
       <div id="hint"></div></div>
-    <div class="panel" id="bidpanel"><h2>Bid track — loans wanted (+turn order)</h2>
-      <div class="bidtrack" id="btrack"></div></div>
-    <div class="panel"><h2 id="tohead">Turn order</h2>
-      <div class="bidtrack" id="torder"></div></div>
-    <div class="panel" id="mpanel"><h2>Real estate market
-      <span class="sub" id="mnote">(price shown as printed cost + row markup;
-      unsold cards slide toward row 1 and lose the markup)</span></h2>
+    <div class="row2">
+      <div class="panel" id="bidpanel"><h2>Bid track
+        <span class="qm" data-tip="A bid = loans you take when you lock it in (1 loan = $10 now, interest every round, forever). Only the LOWEST bidder may act: raise or pass. Passing takes the latest free turn-order spot, so final turn order = bid order, highest first.">?</span></h2>
+        <div class="bidtrack" id="btrack"></div></div>
+      <div class="panel"><h2 id="tohead">Turn order
+        <span class="qm" data-tip="During bidding this shows NEXT round's order, filling from the back as players pass. Higher bid = earlier turn = first pick of the market.">?</span></h2>
+        <div class="bidtrack" id="torder"></div></div>
+    </div>
+    <div class="panel" id="mpanel"><h2>Market
+      <span class="qm" data-tip="Price = printed cost + row markup (×3 fresh, ×2, ×1). Unsold cards slide toward row 1 at cleanup and get cheaper. Closed during foreclosure sales and scoring.">?</span>
+      <span class="sub" id="mnote"></span></h2>
       <div id="market"></div></div>
-    <div class="panel"><h2>Cities <span class="sub">(★ state subsidy · ● city
-      subsidy — as they'd be awarded at the next income phase)</span></h2>
+    <div class="panel"><h2>Cities
+      <span class="qm" data-tip="★ state subsidy: this city has the fewest of that building type — every owner in the zone earns +$1/card, and the zone leader scores 1 VP/building at game end. ● city subsidy: that player has the most in the zone — +$1/card (stacks with ★ to +$3/card). Shown as they'd be awarded at the next income phase. Hover a zone for details.">?</span></h2>
       <div class="cities" id="cities"></div></div>
   </div>
-  <div class="panel"><h2>Log</h2><div id="log"></div></div>
+  <div class="panel" id="logpanel"><h2>Log</h2><div id="log"></div></div>
 </main>
 
 <div id="banner"></div>
@@ -921,20 +944,20 @@ function render(viewState, live = true) {
     }
     if (s.bailedOut.has(i)) tags.push('<span class="tag">bailed out</span>');
     const v = vps[i];
-    const vpLine = s.phase === 'over'
-      ? `<b>${p.vp} VP final</b>`
-      : v ? `~<b>${v.total} VP</b> = ${v.buildings} bldg + ${v.majorities} ` +
-            `city-maj + ${v.state} state-sub`
-          : '';
+    const vpTip = v ? `${v.total} VP = ${v.buildings} buildings + ` +
+      `${v.majorities} city majorities + ${v.state} state-subsidy` : '';
+    const vpBit = s.phase === 'over'
+      ? `<b>${p.vp} VP</b>`
+      : v ? `<b data-tip="${vpTip}">~${v.total} VP</b>` : '';
     return `<div class="player ${p.bankrupt ? 'dead' : ''}" data-pp="${i}"
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${avImg(i, 22)} ${esc(G.names[i])}</span>
         <span>${tags.join(' ')}</span></div>
-      <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
-        ${bld} bldgs · income $${base}${subs ? `<b>+$${subs}</b>` : ''}/rd ·
+      <div class="st">$${p.money} · ${p.loans} ln (−$${due}) ·
+        ${bld} bldg · inc $${base}${subs ? `<b>+$${subs}</b>` : ''} ·
         <span class="${p.money + income - due < 0 ? 'net-neg' : 'net-pos'}">net
-        ${p.money + income - due >= 0 ? '+' : '−'}$${Math.abs(p.money + income - due)}</span></div>
-      <div class="st">${vpLine}</div></div>`;
+        ${p.money + income - due >= 0 ? '+' : '−'}$${Math.abs(p.money + income - due)}</span>
+        · ${vpBit}</div></div>`;
   }).join('');
 
   // loan track — during bidding, markers claimed by bids still on the
@@ -943,7 +966,7 @@ function render(viewState, live = true) {
   let pending = inBidPhase
     ? Object.values(s.bids).reduce((a, b) => a + b, 0) : 0;
   document.getElementById('lnote').textContent =
-    inBidPhase && pending ? `(amber = claimed by bids on the track: ${pending})` : '';
+    inBidPhase && pending ? `(${pending} claimed by bids)` : '';
   let idx = 0;
   document.getElementById('ltrack').innerHTML =
     s.cfg.loanRowSizes.map((size, i) => {
@@ -967,9 +990,8 @@ function render(viewState, live = true) {
 function renderOrder(s) {
   const inBid = s.phase === 'bid_initial' || s.phase === 'bid_raise';
   const order = inBid ? s.nextOrder : s.turnOrder;
-  document.getElementById('tohead').textContent = inBid
-    ? 'Next round turn order — fills from the back as players pass'
-    : (s.phase === 'buy' ? 'Turn order — buy phase' : 'Turn order');
+  document.getElementById('tohead').childNodes[0].textContent = inBid
+    ? 'Next round order ' : 'Turn order ';
   const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
   document.getElementById('torder').innerHTML = order.map((pid, i) => {
     const cls = ['tslot'];
@@ -1015,10 +1037,8 @@ function renderMarket(s) {
   // the market is only open during the buy phase
   const closed = s.phase === 'bailout' || s.phase === 'over';
   document.getElementById('mpanel').style.opacity = closed ? .45 : 1;
-  document.getElementById('mnote').textContent = closed
-    ? '— CLOSED (foreclosure sale / scoring; only repossessed lots can be bought)'
-    : '(price shown as printed cost + row markup; unsold cards slide toward '
-      + 'row 1 and lose the markup)';
+  document.getElementById('mnote').textContent =
+    closed ? '— CLOSED (foreclosure sale)' : '';
   // transposed: one grid column per price row (fresh ×3 on the left,
   // bargains ×1 on the right — the direction cards slide)
   const rows = [...Array(s.display.length).keys()].reverse();  // [2,1,0]
@@ -1099,8 +1119,8 @@ function renderCities(s) {
         const col = o === 'bank' ? '#666c7c' : PCOLS[o];
         const bs = items.map(({b, k}) =>
           `<span class="bwrap" data-b="${ci},${t},${k}"><img class="px"
-             src="${bSprite(t, o === 'bank' ? null : o)}" width="24"
-             height="24" alt=""><span class="binc">$${b.card.income}</span></span>`
+             src="${bSprite(t, o === 'bank' ? null : o)}" width="20"
+             height="20" alt=""><span class="binc">$${b.card.income}</span></span>`
         ).join('');
         return `<span class="block" style="border-color:${col}">${bs}</span>`;
       }).join('');
@@ -1144,23 +1164,22 @@ function renderActions(s) {
     el.appendChild(b);
   };
   if (s.phase === 'bid_initial') {
-    hint.textContent = 'Place your bid: click a space on the bid track. ' +
-      `Each bid step = 1 loan ($${s.cfg.moneyPerLoan} now, interest forever).`;
+    hint.textContent = 'Click a bid space (1 space = 1 loan), or pass.';
     if (acts.some(a => a[0] === 'pass'))
       mk('Pass (no loans, last turn order)', ['pass']);
   } else if (s.phase === 'bid_raise') {
-    hint.textContent = 'You hold the lowest bid: raise to a higher empty ' +
-      'space, or pass to lock in your loans and turn-order spot.';
+    hint.textContent = 'Lowest bid: raise to a higher space, or pass to ' +
+      'lock in your loans.';
     mk('Pass — take your loans', ['pass'], true);
   } else if (s.phase === 'buy') {
     hint.textContent = sel ?
-      'Now click a highlighted city zone to place the building.' :
-      'Click a highlighted card to buy (then pick a city), or pass out of the round.';
+      'Now click a highlighted city zone to place it.' :
+      'Click a card to buy, then pick a city — or pass.';
     if (acts.some(a => a[0] === 'repay')) mk('Repay 1 loan', ['repay']);
     mk('Pass — done buying', ['pass'], !acts.some(a => a[0] === 'buy'));
   } else if (s.phase === 'bailout') {
-    hint.textContent = 'Foreclosure sale: you may buy ONE of the bankrupt ' +
-      'player\'s buildings at its printed cost (no row markup). The market is closed.';
+    hint.textContent = 'Foreclosure sale: you may buy ONE building at ' +
+      'printed cost.';
     s.bailoutLots.forEach((lot, i) => {
       if (!lot.bldg) return;   // already sold
       const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
