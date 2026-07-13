@@ -48,14 +48,16 @@
         background: #2a3040; color: #9aa3b5; font-size: 10px; flex: none;
         align-items: center; justify-content: center; cursor: help;
         text-transform: none; }
-  .lrow { display: flex; align-items: center; gap: 8px; margin: 2px 0; }
-  .lrow .r { width: 46px; color: var(--dim); font-size: 12px; }
-  .lrow .bar { flex: 1; height: 12px; background: #3a2a2a; border-radius: 3px;
-               overflow: hidden; display: flex; }
-  .lrow .fill { height: 100%; background: #7a5cd6; }
-  .lrow .commit { height: 100%; background: #ecc35a; }
-  .lrow.expired .bar { opacity: .25; }
-  .lrow .n { width: 42px; text-align: right; font-size: 12px; color: var(--dim); }
+  .lrow { display: flex; align-items: center; gap: 6px; margin: 3px 0; }
+  .lrow .r { width: 44px; color: var(--dim); font-size: 11px; }
+  .lrow .bar { flex: 1; display: flex; gap: 2px; }
+  .lbox { width: 11px; height: 13px; border-radius: 2.5px;
+          background: #7a5cd6; flex: none; }
+  .lbox.commit { background: #ecc35a; }
+  .lbox.off { background: transparent; border: 1px solid #2e3442; }
+  .lrow.expired .lbox.off { border-color: #2a2f3c; }
+  .lrow .n { width: 30px; text-align: right; font-size: 11px; color: var(--dim); }
+  .proj { color: #ecc35a; }
   .player { position: relative; border-left: 4px solid; border-radius: 4px; background: var(--panel2);
             padding: 4px 8px; margin: 5px 0; }
   .player .nm { font-weight: 600; display: flex; justify-content: space-between;
@@ -136,6 +138,8 @@
        background: #171a22; }
   .b .own { width: 9px; height: 9px; border-radius: 50%; }
   .sub { font-size: 12px; }
+  #lnote { text-transform: none; letter-spacing: 0; font-weight: 400;
+           font-size: 10.5px; }
   #actions { display: flex; gap: 6px; flex-wrap: wrap; align-items: center;
              min-height: 26px; }
   #hint { color: var(--dim); }
@@ -926,16 +930,31 @@ function render(viewState, live = true) {
   }
 
   document.getElementById('round').textContent = `${s.round}/${s.cfg.maxRounds}`;
-  document.getElementById('rate').textContent =
-    '$' + E.currentRate(s) + (s.cfg.interestPerLoan ? '/loan' : '');
+  const rNow = E.currentRate(s);
+  const inBidH = s.phase === 'bid_initial' || s.phase === 'bid_raise';
+  const commH = inBidH
+    ? Object.values(s.bids).reduce((a, b) => a + b, 0) : 0;
+  const rProj = E.rateAfter(s, commH);
+  document.getElementById('rate').innerHTML =
+    '$' + rNow + (rProj > rNow ? `<span class="proj"> → $${rProj}</span>` : '')
+    + (s.cfg.interestPerLoan ? '/loan' : '');
   document.getElementById('markers').textContent = E.markersLeft(s);
 
-  // players
+  // players — during bidding, committed bids are folded into loans,
+  // cash, interest and net at the PROJECTED rate (amber = projection)
   const [stateSubs, citySubs] = currentSubs(s);
   const vps = E.scoreBreakdown(s);
   const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
+  const inBid0 = s.phase === 'bid_initial' || s.phase === 'bid_raise';
+  const committedTotal = inBid0
+    ? Object.values(s.bids).reduce((a, b) => a + b, 0) : 0;
+  const projRate = E.rateAfter(s, committedTotal);
   document.getElementById('players').innerHTML = s.players.map((p, i) => {
-    const due = E.interestDue(s, p);
+    const cb = inBid0 ? (s.bids[i] || 0) : 0;
+    const proj = cb > 0 || (inBid0 && projRate > E.currentRate(s));
+    const due = (s.cfg.interestPerLoan && !s.cfg.fixedRateLoans)
+      ? projRate * (p.loans + cb) : E.interestDue(s, p);
+    const cash = p.money + cb * s.cfg.moneyPerLoan;
     const income = projIncome(s, stateSubs, citySubs, i);
     const base = s.cities.reduce((n, c) => n + E.TYPES.reduce((m, t) =>
       m + c[t].filter(b => b.owner === i)
@@ -959,10 +978,12 @@ function render(viewState, live = true) {
       style="border-color:${COLORS[i]}">
       <div class="nm"><span>${avImg(i, 22)} ${esc(G.names[i])}</span>
         <span>${tags.join(' ')}</span></div>
-      <div class="st">$${p.money} · ${p.loans} ln (−$${due}) ·
+      <div class="st">$${p.money}${cb ? `<span class="proj">+$${cb * s.cfg.moneyPerLoan}</span>` : ''} ·
+        ${p.loans}${cb ? `<span class="proj">+${cb}</span>` : ''} ln
+        (<span class="${proj ? 'proj' : ''}">−$${due}</span>) ·
         ${bld} bldg · inc $${base}${subs ? `<b>+$${subs}</b>` : ''} ·
-        <span class="${p.money + income - due < 0 ? 'net-neg' : 'net-pos'}">net
-        ${p.money + income - due >= 0 ? '+' : '−'}$${Math.abs(p.money + income - due)}</span>
+        <span class="${cash + income - due < 0 ? 'net-neg' : 'net-pos'}">net
+        ${cash + income - due >= 0 ? '+' : '−'}$${Math.abs(cash + income - due)}</span>
         · ${vpBit}</div></div>`;
   }).join('');
 
@@ -972,21 +993,28 @@ function render(viewState, live = true) {
   let pending = inBidPhase
     ? Object.values(s.bids).reduce((a, b) => a + b, 0) : 0;
   document.getElementById('lnote').textContent =
-    inBidPhase && pending ? `(${pending} claimed by bids)` : '';
+    inBidPhase && pending ? `(amber: ${pending} committed by bids)` : '';
   let idx = 0;
   document.getElementById('ltrack').innerHTML =
     s.cfg.loanRowSizes.map((size, i) => {
+      const boxes = [];
       let left = 0;
-      for (let k = 0; k < size; k++) if (s.loanMarkers[idx + k]) left++;
+      for (let k = 0; k < size; k++) {
+        if (!s.loanMarkers[idx + k]) {
+          boxes.push('<span class="lbox off"></span>');
+        } else if (pending > 0) {
+          boxes.push('<span class="lbox commit"></span>');
+          pending--; left++;
+        } else {
+          boxes.push('<span class="lbox"></span>');
+          left++;
+        }
+      }
       idx += size;
-      const claimed = Math.min(left, pending);
-      pending -= claimed;
-      const remain = left - claimed;
       return `<div class="lrow ${left === 0 ? 'expired' : ''}">
         <div class="r">rate $${s.cfg.loanRowRates[i]}</div>
-        <div class="bar"><div class="fill" style="width:${100 * remain / size}%"></div>
-          <div class="commit" style="width:${100 * claimed / size}%"></div></div>
-        <div class="n">${left}/${size}</div></div>`;
+        <div class="bar">${boxes.join('')}</div>
+        <div class="n">${left}</div></div>`;
     }).join('');
 
   renderBids(s); renderOrder(s); renderMarket(s); renderCities(s);
