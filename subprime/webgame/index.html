@@ -15,7 +15,8 @@
   body { margin: 0; background: var(--bg); color: var(--text);
          font: 13px/1.4 system-ui, sans-serif;
          display: flex; flex-direction: column; height: 100vh;
-         overflow: hidden; }
+         overflow: hidden; user-select: none; -webkit-user-select: none; }
+  #log { user-select: text; -webkit-user-select: text; }
   header { display: flex; gap: 14px; align-items: center; padding: 6px 14px;
            background: var(--panel); border-bottom: 1px solid var(--line);
            flex-wrap: wrap; flex: none; }
