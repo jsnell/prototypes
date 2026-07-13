@@ -42,7 +42,7 @@
   .lrow .commit { height: 100%; background: #ecc35a; }
   .lrow.expired .bar { opacity: .25; }
   .lrow .n { width: 42px; text-align: right; font-size: 12px; color: var(--dim); }
-  .player { border-left: 4px solid; border-radius: 4px; background: var(--panel2);
+  .player { position: relative; border-left: 4px solid; border-radius: 4px; background: var(--panel2);
             padding: 6px 9px; margin: 6px 0; }
   .player .nm { font-weight: 600; display: flex; justify-content: space-between;
                 gap: 6px; flex-wrap: wrap; }
@@ -135,6 +135,45 @@
   .hidden { display: none !important; }
   main > div, .panel { min-width: 0; }
   .player .st, .player .nm { overflow-wrap: anywhere; }
+  .px { image-rendering: pixelated; vertical-align: middle; }
+  .csprite { position: absolute; top: 5px; right: 6px; opacity: .9; }
+  .card { min-height: 58px; }
+  .bwrap { display: inline-flex; flex-direction: column; align-items: center;
+           margin: 1px; }
+  .binc { font-size: 9px; color: var(--dim); line-height: 1.1; }
+  .block { display: inline-flex; align-items: flex-end; gap: 1px;
+           border: 1px solid; border-radius: 6px; padding: 2px 3px;
+           margin: 3px 4px 0 0; background: #171a22; }
+  @keyframes pop { 0% { transform: scale(.2); } 70% { transform: scale(1.3); }
+                   100% { transform: scale(1); } }
+  .pop { animation: pop .45s ease-out; }
+  @keyframes shake { 0%,100% { transform: translateX(0); }
+    20% { transform: translateX(-5px); } 40% { transform: translateX(5px); }
+    60% { transform: translateX(-4px); } 80% { transform: translateX(3px); } }
+  .shake { animation: shake .5s; }
+  @keyframes floatUp { 0% { opacity: 0; transform: translateY(8px); }
+    15% { opacity: 1; } 100% { opacity: 0; transform: translateY(-28px); } }
+  .floater { position: absolute; top: 4px; right: 10px; font-weight: 800;
+             font-size: 15px; pointer-events: none; z-index: 30;
+             animation: floatUp 1.15s ease-out forwards; }
+  .floater.pos { color: #7ade8f; } .floater.neg { color: #ff8a8a; }
+  header { position: relative; }
+  @keyframes bannerIn {
+    0% { opacity: 0; transform: translate(-50%,-50%) scale(.6); }
+    12% { opacity: 1; transform: translate(-50%,-50%) scale(1.08); }
+    22% { transform: translate(-50%,-50%) scale(1); }
+    78% { opacity: 1; } 100% { opacity: 0; } }
+  #banner { position: fixed; left: 50%; top: 36%;
+            transform: translate(-50%,-50%); font-size: 32px; font-weight: 900;
+            letter-spacing: 2px; color: #fff; text-shadow: 0 3px 14px #000;
+            background: #1e222cee; border: 1px solid #46506a;
+            padding: 14px 36px; border-radius: 12px; z-index: 40;
+            pointer-events: none; opacity: 0; white-space: nowrap; }
+  #banner.show { animation: bannerIn 1.5s ease-out forwards; }
+  @keyframes pulse { 0% { transform: scale(1); } 40% { transform: scale(1.6); }
+                     100% { transform: scale(1); } }
+  .pulse { display: inline-block; animation: pulse .55s; }
+  #overav { text-align: center; margin-bottom: 6px; }
   @media (max-width: 1100px) {
     main { grid-template-columns: 1fr; }
     #log { max-height: 220px; }
@@ -150,6 +189,11 @@
   <span class="stat">loan markers <b id="markers">–</b></span>
   <span class="stat" id="phase"></span>
   <span style="flex:1"></span>
+  <label class="stat">anim <select id="anim">
+    <option value="normal">normal</option>
+    <option value="fast">fast</option>
+    <option value="off">off</option>
+  </select></label>
   <label class="stat"><input type="checkbox" id="steep" checked> tuned rates</label>
   <select id="opps">
     <option value="digest,shark,greedy">digest / shark / greedy</option>
@@ -187,7 +231,10 @@
   <div class="panel"><h2>Log</h2><div id="log"></div></div>
 </main>
 
+<div id="banner"></div>
+
 <div id="over" class="hidden"><div class="box">
+  <div id="overav"></div>
   <h2 id="overtitle"></h2><table id="scores"></table>
   <button onclick="G.overDismissed = true; render();">Inspect final board</button>
   <button class="primary" onclick="newGame()">Play again</button>
@@ -197,18 +244,163 @@
 <script src="agents.js"></script>
 <script>
 const E = SubprimeEngine, A = SubprimeAgents;
-const COLORS = ['var(--p0)','var(--p1)','var(--p2)','var(--p3)'];
-const CSS = {residential:'res', commercial:'com', industrial:'ind'};
+const PCOLS = ['#4f8ef7', '#e05555', '#e0a832', '#a86ee0'];
+const COLORS = PCOLS;
+const CSS = {residential: 'res', commercial: 'com', industrial: 'ind'};
 const HUMAN = 0;
 const SAVE_KEY = 'subprime-save';
 const SAVE_VER = 2;   // bump when the state schema/rules change
 const PREFS_KEY = 'subprime-prefs';
 
+// ---------------------------------------------------------- pixel art
+// Sprites are ASCII pixel maps rendered to canvas data-URIs (the page
+// must stay self-contained — no external assets). Palette letters:
+// O outline, W wall, G glass, D dark/door, A accent (owner-tinted),
+// S skin, E eye, H hair.
+const BUILDING_MAPS = {
+  residential: [
+    '............',
+    '.....AA.....',
+    '....AAAA....',
+    '...AAAAAA...',
+    '..AAAAAAAA..',
+    '.AAAAAAAAAA.',
+    '.OOOOOOOOOO.',
+    '.OWGWWGWWGO.',
+    '.OWGWWGWWGO.',
+    '.OWWWWDDWWO.',
+    '.OWWWWDDWWO.',
+    '.OOOOOOOOOO.',
+  ],
+  commercial: [
+    '............',
+    '.OOOOOOOOOO.',
+    '.OAAWAAWAAO.',
+    '.OAAWAAWAAO.',
+    '.OOOOOOOOOO.',
+    '.OGGGGGGGGO.',
+    '.OGGGGGGGGO.',
+    '.OOOOOOOOOO.',
+    '.OGGGOWWOGO.',
+    '.OGGGOWWOGO.',
+    '.OGGGOWWOGO.',
+    '.OOOOOOOOOO.',
+  ],
+  industrial: [
+    '.OO......OO.',
+    '.OWO....OWO.',
+    '.OWO....OWO.',
+    '.OOOOOOOOOO.',
+    '.OAAAAAAAAO.',
+    '.OOOOOOOOOO.',
+    '.OWGWGWGWGO.',
+    '.OWWWWWWWWO.',
+    '.OWWDDWWWWO.',
+    '.OWWDDWWWWO.',
+    '.OWWDDWWWWO.',
+    '.OOOOOOOOOO.',
+  ],
+};
+const BUILDING_PAL = {
+  residential: {W: '#7fcf8e', G: '#eafff0', D: '#2e5e3a'},
+  commercial:  {W: '#8fc3e8', G: '#eaf6ff', D: '#2c4b66'},
+  industrial:  {W: '#e0aa72', G: '#ffe9c9', D: '#6e4522'},
+};
+const AVATAR_MAPS = [
+  [ // P0: hard hat
+    '....OOOO....',
+    '...OAAAAO...',
+    '..OAAAAAAO..',
+    '.OAAAAAAAAO.',
+    '.OOOOOOOOOO.',
+    '.OSSSSSSSSO.',
+    '.OSESSSSESO.',
+    '.OSSSSSSSSO.',
+    '..OSSDDSSO..',
+    '...OOOOOO...',
+    '..OAAAAAAO..',
+    '..OOOOOOOO..',
+  ],
+  [ // P1: top hat
+    '...OOOOOO...',
+    '...OAAAAO...',
+    '...OAAAAO...',
+    '..OOAAAAOO..',
+    '.OAAAAAAAAO.',
+    '.OOOOOOOOOO.',
+    '.OSSSSSSSSO.',
+    '.OSESSSSESO.',
+    '.OSSSDDSSSO.',
+    '...OOOOOO...',
+    '..OAAAAAAO..',
+    '..OOOOOOOO..',
+  ],
+  [ // P2: cap with brim
+    '....OOOO....',
+    '...OAAAAO...',
+    '..OAAAAAAOO.',
+    '..OAAAAAAAO.',
+    '..OOOOOOOOO.',
+    '.OSSSSSSSSO.',
+    '.OSESSSSESO.',
+    '.OSSSSSSSSO.',
+    '..OSSDDSSO..',
+    '...OOOOOO...',
+    '..OAAAAAAO..',
+    '..OOOOOOOO..',
+  ],
+  [ // P3: hair bun
+    '.....OO.....',
+    '....OHHO....',
+    '...OHHHHO...',
+    '..OHHHHHHO..',
+    '.OHHHHHHHHO.',
+    '.OHSSSSSSHO.',
+    '.OSESSSSESO.',
+    '.OSSSSSSSSO.',
+    '..OSSDDSSO..',
+    '...OOOOOO...',
+    '..OAAAAAAO..',
+    '..OOOOOOOO..',
+  ],
+];
+const _spriteCache = {};
+function drawSprite(map, pal) {
+  const k = map.join('') + JSON.stringify(pal);
+  if (_spriteCache[k]) return _spriteCache[k];
+  const h = map.length, w = map[0].length;
+  const c = document.createElement('canvas');
+  c.width = w; c.height = h;
+  const ctx = c.getContext('2d');
+  const base = {O: '#0e1116', E: '#14181f', S: '#e9b587',
+                D: '#3a3f4e', H: '#6b4a2f', W: '#c9cfdd', G: '#eef4ff'};
+  for (let y = 0; y < h; y++) for (let x = 0; x < w; x++) {
+    const col = pal[map[y][x]] || base[map[y][x]];
+    if (!col) continue;
+    ctx.fillStyle = col;
+    ctx.fillRect(x, y, 1, 1);
+  }
+  return _spriteCache[k] = c.toDataURL();
+}
+function bSprite(type, owner) {
+  const accent = owner === null || owner === undefined
+    ? '#666c7c' : PCOLS[owner];
+  return drawSprite(BUILDING_MAPS[type],
+                    Object.assign({A: accent}, BUILDING_PAL[type]));
+}
+function avatar(pid) {
+  return drawSprite(AVATAR_MAPS[pid % AVATAR_MAPS.length], {A: PCOLS[pid]});
+}
+const avImg = (pid, px = 20) =>
+  `<img class="px" src="${avatar(pid)}" width="${px}" height="${px}" alt="">`;
+
+// ------------------------------------------------------------- prefs
 function savePrefs() {
   try {
     localStorage.setItem(PREFS_KEY, JSON.stringify({
       steep: document.getElementById('steep').checked,
       opps: document.getElementById('opps').value,
+      anim: document.getElementById('anim').value,
     }));
   } catch (e) {}
 }
@@ -220,15 +412,45 @@ function loadPrefs() {
     document.getElementById('steep').checked = !!d.steep;
     const sel = document.getElementById('opps');
     if ([...sel.options].some(o => o.value === d.opps)) sel.value = d.opps;
+    const an = document.getElementById('anim');
+    if ([...an.options].some(o => o.value === d.anim)) an.value = d.anim;
   } catch (e) {}
 }
 let G = null;        // {state, agents, names, cursor}
 let sel = null;
+let viewLive = true;   // false while rendering a replay frame
+let playing = false, skipReq = false;
+
+// --------------------------------------------- state (de)serialization
+function stateToPlain(s) {
+  return Object.assign({}, s, {
+    rng: s.rng.state(),
+    buyPassed: [...s.buyPassed],
+    stateSubsidies: [...s.stateSubsidies],
+    bailedOut: [...s.bailedOut],
+    unable: [...s.unable],
+    // lots reference Buildings inside cities; store their position so
+    // load can re-link instead of JSON duplicating them
+    bailoutLots: s.bailoutLots.map(l => ({ city: l.city,
+      ref: l.bldg ? { t: l.bldg.card.type,
+                      i: s.cities[l.city][l.bldg.card.type].indexOf(l.bldg) }
+                  : null })),
+  });
+}
+function stateFromPlain(s) {
+  s.rng = E.makeRng(s.rng);
+  s.buyPassed = new Set(s.buyPassed);
+  s.stateSubsidies = new Set(s.stateSubsidies);
+  s.bailedOut = new Set(s.bailedOut);
+  s.unable = new Set(s.unable || []);
+  s.bailoutLots = (s.bailoutLots || []).map(l => ({ city: l.city,
+    bldg: l.ref ? s.cities[l.city][l.ref.t][l.ref.i] : null }));
+  return s;
+}
 
 function saveGame() {
   if (!G) return;
   try {
-    const s = G.state;
     localStorage.setItem(SAVE_KEY, JSON.stringify({
       v: SAVE_VER,
       names: G.names, overDismissed: G.overDismissed,
@@ -236,19 +458,7 @@ function saveGame() {
         kind: a instanceof A.RandomAgent ? 'random' : 'heuristic',
         params: a.p || null, rng: a.rng.state(),
       }),
-      state: Object.assign({}, s, {
-        rng: s.rng.state(),
-        buyPassed: [...s.buyPassed],
-        stateSubsidies: [...s.stateSubsidies],
-        bailedOut: [...s.bailedOut],
-        unable: [...s.unable],
-        // lots reference Buildings inside cities; store their position so
-        // load can re-link instead of JSON duplicating them
-        bailoutLots: s.bailoutLots.map(l => ({ city: l.city,
-          ref: l.bldg ? { t: l.bldg.card.type,
-                          i: s.cities[l.city][l.bldg.card.type].indexOf(l.bldg) }
-                      : null })),
-      }),
+      state: stateToPlain(G.state),
     }));
   } catch (e) { /* storage unavailable: play on without saves */ }
 }
@@ -259,14 +469,7 @@ function loadGame() {
     if (!raw) return false;
     const d = JSON.parse(raw);
     if (d.v !== SAVE_VER || !d.state || !d.state.phase) return false;
-    const s = d.state;
-    s.rng = E.makeRng(s.rng);
-    s.buyPassed = new Set(s.buyPassed);
-    s.stateSubsidies = new Set(s.stateSubsidies);
-    s.bailedOut = new Set(s.bailedOut);
-    s.unable = new Set(s.unable || []);
-    s.bailoutLots = (s.bailoutLots || []).map(l => ({ city: l.city,
-      bldg: l.ref ? s.cities[l.city][l.ref.t][l.ref.i] : null }));
+    const s = stateFromPlain(d.state);
     const agents = d.agents.map(a => {
       if (!a) return null;
       const agent = a.kind === 'random'
@@ -280,7 +483,150 @@ function loadGame() {
   } catch (e) { return false; }
 }
 
+// --------------------------------------------------- game + animation
+// Every applied action becomes a replay "frame": a snapshot of the
+// state right after it, plus effects derived by diffing (new buildings
+// pop, money floats, rate pulses, phase banners). Frames play back in
+// order so you can watch what the table did before it's your turn.
+function step(pid, action) {
+  const s = G.state;
+  const pre = {
+    phase: s.phase, round: s.round, rate: E.currentRate(s),
+    money: s.players.map(p => p.money),
+    bankrupt: s.players.map(p => p.bankrupt),
+    counts: s.cities.map(c => E.TYPES.map(t => c[t].length)),
+  };
+  const evStart = s.events.length;
+  E.applyAction(s, action);
+  const fx = [];
+  if (action[0] === 'bid') fx.push({t: 'bid', v: action[1]});
+  s.cities.forEach((c, ci) => E.TYPES.forEach((tp, ti) => {
+    for (let k = pre.counts[ci][ti]; k < c[tp].length; k++) {
+      fx.push({t: 'built', ci, zone: tp, idx: k});
+    }
+  }));
+  s.players.forEach((p, i) => {
+    const d = p.money - pre.money[i];
+    if (d) fx.push({t: 'money', pid: i, d});
+    if (p.bankrupt && !pre.bankrupt[i]) fx.push({t: 'bankrupt', pid: i});
+  });
+  const rate = E.currentRate(s);
+  if (rate > pre.rate) fx.push({t: 'rate', from: pre.rate, to: rate});
+  if (s.phase !== pre.phase) {
+    const banners = {
+      buy: 'BUY REAL ESTATE',
+      bailout: '💥 BANKRUPTCY',
+      over: 'GAME OVER',
+    };
+    if (s.phase === 'bid_initial' && s.round !== pre.round) {
+      fx.push({t: 'banner', text: `ROUND ${s.round} — BID FOR LOANS`});
+    } else if (banners[s.phase]) {
+      fx.push({t: 'banner', text: banners[s.phase]});
+    }
+  }
+  return {snap: JSON.parse(JSON.stringify(stateToPlain(s))),
+          fx, evEnd: s.events.length};
+}
+
+function runAgents(frames) {
+  const s = G.state;
+  while (s.phase !== 'over' && E.decisionPlayer(s) !== HUMAN) {
+    const pid = E.decisionPlayer(s);
+    frames.push(step(pid, G.agents[pid].act(s, pid, E.legalActions(s))));
+  }
+}
+
+function act(action) {
+  if (playing) return;
+  const frames = [];
+  try {
+    frames.push(step(HUMAN, action));
+  } catch (e) { logLine('⚠ ' + e.message); return; }
+  sel = null;
+  runAgents(frames);
+  playFrames(frames);
+}
+
+const sleep = ms => new Promise(r => setTimeout(r, ms));
+
+async function playFrames(frames) {
+  const speed = document.getElementById('anim').value;
+  const mult = speed === 'off' ? 0 : speed === 'fast' ? 0.45 : 1;
+  if (!mult || !frames.length) { render(); return; }
+  playing = true; skipReq = false;
+  document.getElementById('phase').textContent = '▶ replaying… (click to skip)';
+  for (const f of frames) {
+    if (skipReq) break;
+    const vs = stateFromPlain(f.snap);
+    render(vs, false);
+    // log everything up to this frame's watermark (covers events emitted
+    // outside any frame, e.g. game setup)
+    G.state.events.slice(G.cursor, f.evEnd).forEach(logLine);
+    G.cursor = f.evEnd;
+    let dt = 430;
+    for (const x of f.fx) dt = Math.max(dt, runFx(x));
+    await sleep(dt * mult);
+  }
+  playing = false; skipReq = false;
+  document.getElementById('banner').classList.remove('show');
+  render();
+}
+
+function showBanner(text) {
+  const b = document.getElementById('banner');
+  b.textContent = text;
+  b.classList.remove('show');
+  void b.offsetWidth;          // restart the CSS animation
+  b.classList.add('show');
+}
+
+function floater(anchor, text, cls) {
+  if (!anchor) return;
+  const f = document.createElement('div');
+  f.className = 'floater ' + cls;
+  f.textContent = text;
+  anchor.appendChild(f);
+  setTimeout(() => f.remove(), 1200);
+}
+
+function runFx(x) {
+  if (x.t === 'bid') {
+    const el = document.querySelector(`.bspace[data-bid="${x.v}"]`);
+    if (el) el.classList.add('pop');
+    return 430;
+  }
+  if (x.t === 'built') {
+    const el = document.querySelector(
+      `[data-b="${x.ci},${x.zone},${x.idx}"]`);
+    if (el) el.classList.add('pop');
+    return 520;
+  }
+  if (x.t === 'money') {
+    const panel = document.querySelectorAll('#players .player')[x.pid];
+    floater(panel, (x.d > 0 ? '+$' : '−$') + Math.abs(x.d),
+            x.d > 0 ? 'pos' : 'neg');
+    return 700;
+  }
+  if (x.t === 'bankrupt') {
+    const panel = document.querySelectorAll('#players .player')[x.pid];
+    if (panel) panel.classList.add('shake');
+    showBanner(`💥 ${G.names[x.pid].toUpperCase()} IS BANKRUPT`);
+    return 1100;
+  }
+  if (x.t === 'rate') {
+    const el = document.getElementById('rate');
+    el.classList.remove('pulse');
+    void el.offsetWidth;
+    el.classList.add('pulse');
+    floater(document.querySelector('header'), `rate ↑ $${x.to}`, 'neg');
+    return 650;
+  }
+  if (x.t === 'banner') { showBanner(x.text); return 1000; }
+  return 430;
+}
+
 function newGame() {
+  if (playing) return;
   const opps = document.getElementById('opps').value.split(',');
   const cfg = E.defaultConfig();
   if (document.getElementById('steep').checked) {
@@ -289,45 +635,31 @@ function newGame() {
   const seed = (Math.random() * 0xffffffff) >>> 0;
   const state = E.newGame(cfg, 1 + opps.length, seed, true);
   const agents = [null, ...opps.map((n, i) => A.REGISTRY[n](seed + 1 + i))];
-  const names = ['P0 (you)', ...opps.map((n, i) => `P${i + 1} (${n})`)];
+  const names = ['You', ...opps.map((n, i) => `P${i + 1} (${n})`)];
   document.getElementById('log').innerHTML = '';
   G = {state, agents, names, cursor: 0, overDismissed: false};
   sel = null;
-  runAgents();
-  render();
-}
-
-function runAgents() {
-  const s = G.state;
-  while (s.phase !== 'over' && E.decisionPlayer(s) !== HUMAN) {
-    const pid = E.decisionPlayer(s);
-    E.applyAction(s, G.agents[pid].act(s, pid, E.legalActions(s)));
-  }
-}
-
-function act(action) {
-  try {
-    E.applyAction(G.state, action);
-  } catch (e) { logLine('⚠ ' + e.message); return; }
-  sel = null;
-  runAgents();
-  render();
+  const frames = [];
+  runAgents(frames);
+  playFrames(frames);
 }
 
 function logLine(t) {
   const el = document.getElementById('log');
   const d = document.createElement('div');
   d.textContent = t;
-  if (t.includes('P0')) d.className = 'you';
+  if (t.includes('You')) d.className = 'you';
   el.prepend(d);
 }
 const esc = (x) => String(x).replace(/[&<>]/g,
-  c => ({'&':'&amp;','<':'&lt;','>':'&gt;'}[c]));
+  c => ({'&': '&amp;', '<': '&lt;', '>': '&gt;'}[c]));
 
-function humanTurn() {
-  return G.state.phase !== 'over' && E.decisionPlayer(G.state) === HUMAN;
+function humanTurn(s) {
+  return s.phase !== 'over' && E.decisionPlayer(s) === HUMAN;
 }
-function legal() { return humanTurn() ? E.legalActions(G.state) : []; }
+function legalFor(s) {
+  return viewLive && humanTurn(s) ? E.legalActions(s) : [];
+}
 
 function cardHTML(cell, mult, cls = '', extra = '') {
   if (!cell) return `<div class="card empty"></div>`;
@@ -336,15 +668,16 @@ function cardHTML(cell, mult, cls = '', extra = '') {
   const pr = markup > 0 ? `$${base}<span class="mk">+$${markup}</span>`
                         : `$${base}`;
   return `<div class="card ${CSS[cell.card.type]} ${cls}" ${extra}>${money}
-    <div class="t">${cell.card.type.slice(0,3)}</div>
+    <img class="px csprite" src="${bSprite(cell.card.type, null)}"
+         width="22" height="22" alt="">
+    <div class="t">${cell.card.type.slice(0, 3)}</div>
     <div class="pr">${pr}</div>
     <div class="inc">+$${cell.card.income}/rd</div></div>`;
 }
 
 // subsidies to show: the actually-placed markers while the game is being
 // scored (bailout/over), otherwise as they'd be awarded right now
-function currentSubs() {
-  const s = G.state;
+function currentSubs(s) {
   if (s.phase === 'bailout' || s.phase === 'over') {
     return [s.stateSubsidies, s.citySubsidies];
   }
@@ -368,20 +701,23 @@ function projIncome(s, stateSubs, citySubs, pid) {
   return total;
 }
 
-function render() {
-  saveGame();
-  const s = G.state;
-  s.events.slice(G.cursor).forEach(logLine);
-  G.cursor = s.events.length;
+function render(viewState, live = true) {
+  viewLive = live;
+  const s = viewState || G.state;
+  if (live) {
+    saveGame();
+    s.events.slice(G.cursor).forEach(logLine);
+    G.cursor = s.events.length;
+    document.getElementById('phase').textContent = 'phase: ' + s.phase;
+  }
 
   document.getElementById('round').textContent = `${s.round}/${s.cfg.maxRounds}`;
   document.getElementById('rate').textContent =
     '$' + E.currentRate(s) + (s.cfg.interestPerLoan ? '/loan' : '');
   document.getElementById('markers').textContent = E.markersLeft(s);
-  document.getElementById('phase').textContent = 'phase: ' + s.phase;
 
   // players
-  const [stateSubs, citySubs] = currentSubs();
+  const [stateSubs, citySubs] = currentSubs(s);
   const vps = E.scoreBreakdown(s);
   const dp = s.phase === 'over' ? null : E.decisionPlayer(s);
   document.getElementById('players').innerHTML = s.players.map((p, i) => {
@@ -405,9 +741,10 @@ function render() {
       : v ? `~<b>${v.total} VP</b> = ${v.buildings} bldg + ${v.majorities} ` +
             `city-maj + ${v.state} state-sub`
           : '';
-    return `<div class="player ${p.bankrupt?'dead':''}"
+    return `<div class="player ${p.bankrupt ? 'dead' : ''}"
       style="border-color:${COLORS[i]}">
-      <div class="nm"><span>${esc(G.names[i])}</span><span>${tags.join(' ')}</span></div>
+      <div class="nm"><span>${avImg(i, 22)} ${esc(G.names[i])}</span>
+        <span>${tags.join(' ')}</span></div>
       <div class="st">$${p.money} · ${p.loans} loans (owes ~$${due}) ·
         ${bld} bldgs · income $${base}${subs ? `<b>+$${subs}</b>` : ''}/rd ·
         <span class="${p.money + income - due < 0 ? 'net-neg' : 'net-pos'}">net
@@ -431,19 +768,18 @@ function render() {
       const claimed = Math.min(left, pending);
       pending -= claimed;
       const remain = left - claimed;
-      return `<div class="lrow ${left===0?'expired':''}">
+      return `<div class="lrow ${left === 0 ? 'expired' : ''}">
         <div class="r">rate $${s.cfg.loanRowRates[i]}</div>
-        <div class="bar"><div class="fill" style="width:${100*remain/size}%"></div>
-          <div class="commit" style="width:${100*claimed/size}%"></div></div>
+        <div class="bar"><div class="fill" style="width:${100 * remain / size}%"></div>
+          <div class="commit" style="width:${100 * claimed / size}%"></div></div>
         <div class="n">${left}/${size}</div></div>`;
     }).join('');
 
-  renderBids(); renderOrder(); renderMarket(); renderCities();
-  renderActions(); renderOver();
+  renderBids(s); renderOrder(s); renderMarket(s); renderCities(s);
+  renderActions(s); renderOver(s);
 }
 
-function renderOrder() {
-  const s = G.state;
+function renderOrder(s) {
   const inBid = s.phase === 'bid_initial' || s.phase === 'bid_raise';
   const order = inBid ? s.nextOrder : s.turnOrder;
   document.getElementById('tohead').textContent = inBid
@@ -458,38 +794,37 @@ function renderOrder() {
       const passed = s.phase === 'buy' && s.buyPassed.has(pid);
       if (passed) cls.push('donebuy');
       if (!inBid && dp === pid) cls.push('acting');
-      who = `<span class="who"><span class="dot"
-        style="background:${COLORS[pid]}"></span>P${pid}${passed ? ' ✓' : ''}</span>`;
+      who = `<span class="who">${avImg(pid, 18)}${passed ? ' ✓' : ''}</span>`;
     }
     return `<div class="${cls.join(' ')}"><span>${i + 1}${
-      ['st','nd','rd'][i] || 'th'}</span>${who}</div>`;
+      ['st', 'nd', 'rd'][i] || 'th'}</span>${who}</div>`;
   }).join('');
 }
 
-function renderBids() {
-  const s = G.state;
+function renderBids(s) {
   const el = document.getElementById('btrack');
   const inBid = s.phase === 'bid_initial' || s.phase === 'bid_raise';
   document.getElementById('bidpanel').style.opacity = inBid ? 1 : .45;
-  const legalBids = new Set(legal().filter(a => a[0]==='bid').map(a => a[1]));
+  const legalBids = new Set(legalFor(s).filter(a => a[0] === 'bid')
+                                       .map(a => a[1]));
   const occ = {};
   Object.keys(s.bids).forEach(pid => occ[s.bids[pid]] = Number(pid));
   el.innerHTML = s.cfg.bidSpaces.map(v => {
     const o = occ[v];
     const isLegal = legalBids.has(v);
-    const dot = o !== undefined ?
-      `<span class="dot" style="background:${COLORS[o]}"></span>` : '';
-    return `<div class="bspace ${isLegal?'legal':''}" data-bid="${v}">
+    const dot = o !== undefined ? avImg(o, 18) : '';
+    return `<div class="bspace ${isLegal ? 'legal' : ''}" data-bid="${v}">
       <span>${v}</span>${dot}</div>`;
   }).join('');
-  el.querySelectorAll('.bspace.legal').forEach(b =>
-    b.onclick = () => act(['bid', Number(b.dataset.bid)]));
+  if (viewLive) {
+    el.querySelectorAll('.bspace.legal').forEach(b =>
+      b.onclick = () => act(['bid', Number(b.dataset.bid)]));
+  }
 }
 
-function renderMarket() {
-  const s = G.state;
+function renderMarket(s) {
   const buyable = {};
-  legal().filter(a => a[0]==='buy').forEach(a => {
+  legalFor(s).filter(a => a[0] === 'buy').forEach(a => {
     (buyable[`${a[1]},${a[2]}`] ||= []).push(a[3]);
   });
   // the market is only open during the buy phase
@@ -504,7 +839,7 @@ function renderMarket() {
   const rows = [...Array(s.display.length).keys()].reverse();  // [2,1,0]
   const cfg = s.cfg;
   let html = rows.map(r =>
-    `<div class="mhead">row ${r+1} ×${cfg.rowCostMultipliers[r]}` +
+    `<div class="mhead">row ${r + 1} ×${cfg.rowCostMultipliers[r]}` +
     `</div>`).join('');
   for (let c = 0; c < s.display[0].length; c++) {
     for (const r of rows) {
@@ -518,16 +853,18 @@ function renderMarket() {
     }
   }
   document.getElementById('market').innerHTML = html;
-  document.querySelectorAll('.card.buyable').forEach(el => {
-    el.onclick = () => {
-      const key = el.dataset.key;
-      const rc = key.split(',').map(Number);
-      sel = (sel && sel.key === key) ? null :
-        {key, cities: buyable[key], rc,
-         type: G.state.display[rc[0]][rc[1]].card.type};
-      render();
-    };
-  });
+  if (viewLive) {
+    document.querySelectorAll('.card.buyable').forEach(el => {
+      el.onclick = () => {
+        const key = el.dataset.key;
+        const rc = key.split(',').map(Number);
+        sel = (sel && sel.key === key) ? null :
+          {key, cities: buyable[key], rc,
+           type: G.state.display[rc[0]][rc[1]].card.type};
+        render();
+      };
+    });
+  }
 }
 
 function sectTooltip(s, ci, t, stateSubs, citySubs) {
@@ -540,22 +877,22 @@ function sectTooltip(s, ci, t, stateSubs, citySubs) {
   }
   const lines = [];
   if (st) lines.push(`★ state subsidy: fewest ${t} of any city — every ` +
-    'owner here gets +$1/card; the section leader also scores 1 VP per ' +
+    'owner here gets +$1/card; the zone leader also scores 1 VP per ' +
     'building at game end');
-  if (cs !== undefined) lines.push(`● city subsidy: P${cs} has the most ` +
-    `here — +$1/card${st ? ' (stacks with ★ to +$3/card)' : ''}`);
+  if (cs !== undefined) lines.push(`● city subsidy: ${G.names[cs]} has ` +
+    `the most here — +$1/card${st ? ' (stacks with ★ to +$3/card)' : ''}`);
   for (const pid of Object.keys(owners)) {
     const n = owners[pid];
     const per = st && cs === Number(pid) ? 3
               : (st || cs === Number(pid)) ? 1 : 0;
-    if (per) lines.push(`P${pid}: +$${per * n}/rd (${n} card${n>1?'s':''} × $${per})`);
+    if (per) lines.push(`${G.names[pid]}: +$${per * n}/rd ` +
+                        `(${n} card${n > 1 ? 's' : ''} × $${per})`);
   }
   return lines.join('\n');
 }
 
-function renderCities() {
-  const s = G.state;
-  const [stateSubs, citySubs] = currentSubs();
+function renderCities(s) {
+  const [stateSubs, citySubs] = currentSubs(s);
   document.getElementById('cities').innerHTML = s.cities.map((city, ci) => {
     const sects = E.TYPES.map(t => {
       const marks = [];
@@ -566,18 +903,30 @@ function renderCities() {
       const tip = esc(sectTooltip(s, ci, t, stateSubs, citySubs))
         .replace(/"/g, '&quot;').replace(/\n/g, '&#10;');
       const target = sel && sel.cities.includes(ci) && t === sel.type;
-      const bs = city[t].map(b =>
-        `<span class="b"><span class="own" style="background:${
-          b.owner===null?'#555':COLORS[b.owner]}"></span>$${b.card.income}</span>`
-      ).join('');
-      return `<div class="sect ${CSS[t]} ${target?'target':''}"
+      // per-player blocks: each owner's buildings grouped together
+      const byOwner = new Map();
+      city[t].forEach((b, k) => {
+        const key = b.owner === null ? 'bank' : b.owner;
+        if (!byOwner.has(key)) byOwner.set(key, []);
+        byOwner.get(key).push({b, k});
+      });
+      const blocks = [...byOwner.entries()].map(([o, items]) => {
+        const col = o === 'bank' ? '#666c7c' : PCOLS[o];
+        const bs = items.map(({b, k}) =>
+          `<span class="bwrap" data-b="${ci},${t},${k}"><img class="px"
+             src="${bSprite(t, o === 'bank' ? null : o)}" width="24"
+             height="24" alt=""><span class="binc">$${b.card.income}</span></span>`
+        ).join('');
+        return `<span class="block" style="border-color:${col}">${bs}</span>`;
+      }).join('');
+      return `<div class="sect ${CSS[t]} ${target ? 'target' : ''}"
         data-city="${ci}" ${tip ? `data-tip="${tip}"` : ''}>
-        <div class="hd"><b>${t.slice(0,3)}</b>
-        <span>${marks.join(' ')}</span></div>${bs}</div>`;
+        <div class="hd"><b>${t.slice(0, 3)}</b>
+        <span>${marks.join(' ')}</span></div>${blocks}</div>`;
     }).join('');
     return `<div class="city"><h3>${E.cityName(ci)}</h3>${sects}</div>`;
   }).join('');
-  if (sel) {
+  if (viewLive && sel) {
     document.querySelectorAll('.sect.target').forEach(el => {
       el.onclick = () => act(['buy', sel.rc[0], sel.rc[1],
                               Number(el.dataset.city)]);
@@ -585,22 +934,22 @@ function renderCities() {
   }
 }
 
-function renderActions() {
-  const s = G.state;
+function renderActions(s) {
   const el = document.getElementById('actions');
   const hint = document.getElementById('hint');
-  const acts = legal();
+  const acts = legalFor(s);
   el.innerHTML = ''; hint.textContent = '';
   document.getElementById('acthead').textContent =
-    humanTurn() ? 'Your move' : (s.phase === 'over' ? 'Game over' : 'Waiting…');
-  if (s.phase === 'over' && G.overDismissed) {
+    viewLive && humanTurn(s) ? 'Your move'
+      : (s.phase === 'over' ? 'Game over' : 'Waiting…');
+  if (viewLive && s.phase === 'over' && G.overDismissed) {
     const b = document.createElement('button');
     b.textContent = 'Show final scores';
     b.className = 'primary';
     b.onclick = () => { G.overDismissed = false; render(); };
     el.appendChild(b);
   }
-  if (!humanTurn()) return;
+  if (!viewLive || !humanTurn(s)) return;
 
   const mk = (label, action, primary) => {
     const b = document.createElement('button');
@@ -612,7 +961,7 @@ function renderActions() {
   if (s.phase === 'bid_initial') {
     hint.textContent = 'Place your bid: click a space on the bid track. ' +
       `Each bid step = 1 loan ($${s.cfg.moneyPerLoan} now, interest forever).`;
-    if (acts.some(a => a[0]==='pass'))
+    if (acts.some(a => a[0] === 'pass'))
       mk('Pass (no loans, last turn order)', ['pass']);
   } else if (s.phase === 'bid_raise') {
     hint.textContent = 'You hold the lowest bid: raise to a higher empty ' +
@@ -620,19 +969,19 @@ function renderActions() {
     mk('Pass — take your loans', ['pass'], true);
   } else if (s.phase === 'buy') {
     hint.textContent = sel ?
-      'Now click a highlighted city section to place the building.' :
+      'Now click a highlighted city zone to place the building.' :
       'Click a highlighted card to buy (then pick a city), or pass out of the round.';
-    if (acts.some(a => a[0]==='repay')) mk('Repay 1 loan', ['repay']);
-    mk('Pass — done buying', ['pass'], !acts.some(a => a[0]==='buy'));
+    if (acts.some(a => a[0] === 'repay')) mk('Repay 1 loan', ['repay']);
+    mk('Pass — done buying', ['pass'], !acts.some(a => a[0] === 'buy'));
   } else if (s.phase === 'bailout') {
-    hint.textContent = 'Foreclosure sale: you may buy ONE repossessed ' +
-      'building at its printed cost (no row markup). The market is closed.';
+    hint.textContent = 'Foreclosure sale: you may buy ONE of the bankrupt ' +
+      'player\'s buildings at its printed cost (no row markup). The market is closed.';
     s.bailoutLots.forEach((lot, i) => {
       if (!lot.bldg) return;   // already sold
       const price = lot.bldg.card.cost * s.cfg.bailoutPriceMultiplier;
-      const label = `Buy ${lot.bldg.card.type.slice(0,3).toUpperCase()} ` +
+      const label = `Buy ${lot.bldg.card.type.slice(0, 3).toUpperCase()} ` +
         `+$${lot.bldg.card.income}/rd in ${E.cityName(lot.city)} — $${price}`;
-      if (acts.some(a => a[0]==='bailout_buy' && a[1]===i)) {
+      if (acts.some(a => a[0] === 'bailout_buy' && a[1] === i)) {
         mk(label, ['bailout_buy', i]);
       } else {
         const b = document.createElement('button');
@@ -645,15 +994,19 @@ function renderActions() {
   }
 }
 
-function renderOver() {
-  const s = G.state;
+function renderOver(s) {
   const ov = document.getElementById('over');
-  if (s.phase !== 'over' || G.overDismissed) {
+  if (!viewLive || s.phase !== 'over' || G.overDismissed) {
     ov.classList.add('hidden');
     return;
   }
   ov.classList.remove('hidden');
+  document.getElementById('banner').classList.remove('show');
   const youWon = s.winners.includes(HUMAN);
+  const champ = s.winners[0];
+  document.getElementById('overav').innerHTML = champ !== undefined
+    ? `<img class="px" src="${avatar(champ)}" width="64" height="64" alt="">`
+    : '';
   document.getElementById('overtitle').textContent =
     (youWon ? '🏆 You win!' : 'Game over — ' +
       s.winners.map(w => G.names[w]).join(' & ') + ' wins') +
@@ -665,7 +1018,8 @@ function renderOver() {
   const vpTie = rows.length > 1 && rows[0].vp === rows[1].vp;
   document.getElementById('scores').innerHTML =
     '<tr><th></th><th>VP</th><th>$</th><th>bldgs</th><th></th></tr>' +
-    rows.map(p => `<tr><td style="color:${COLORS[p.i]}">${esc(G.names[p.i])}</td>
+    rows.map(p => `<tr><td style="color:${COLORS[p.i]}">${avImg(p.i, 18)}
+      ${esc(G.names[p.i])}</td>
       <td><b>${p.vp}</b></td><td>${p.money}</td><td>${p.bld}</td>
       <td>${p.bankrupt ? '💥 bankrupt' : (s.winners.includes(p.i) ? '🏆' : '')}
       </td></tr>`).join('') +
@@ -673,11 +1027,15 @@ function renderOver() {
     (vpTie ? ' — and that decided this game!' : '') + '</td></tr>';
 }
 
+// click anywhere to fast-forward a replay
+document.addEventListener('click', () => { if (playing) skipReq = true; });
+
 // restore new-game settings, then resume a saved game if one exists
 // (artifact redeploys reload the page)
 loadPrefs();
 document.getElementById('steep').onchange = savePrefs;
 document.getElementById('opps').onchange = savePrefs;
+document.getElementById('anim').onchange = savePrefs;
 if (loadGame()) render(); else newGame();
 </script>
 </body>
