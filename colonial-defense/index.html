@@ -1,0 +1,148 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Colonial Defense</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Share+Tech+Mono&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#07090b; --panel:#0d1216ee; --line:#1f3a36; --txt:#bfe8d8; --dim:#5f8a7e; --hi:#7dffc8; --warn:#ffb347; --bad:#ff5a4a; --acid:#b6ff3a; }
+* { box-sizing: border-box; }
+html, body { margin:0; height:100%; background:var(--bg); color:var(--txt); font-family:'Share Tech Mono', ui-monospace, Menlo, Consolas, monospace; overflow:hidden; user-select:none; -webkit-user-select:none; }
+#app { position:fixed; inset:0; display:flex; flex-direction:column; }
+#top, #bottom { flex:none; background:linear-gradient(#0d1417,#080c0e); border-color:var(--line); border-style:solid; border-width:0 0 1px; display:flex; align-items:center; gap:14px; padding:0 12px; }
+#top { height:40px; font-size:15px; }
+#bottom { height:78px; border-width:1px 0 0; gap:10px; padding:6px 10px; }
+#stage { flex:1; position:relative; min-height:0; }
+#gl, #ov { position:absolute; image-rendering:pixelated; }
+#ov { pointer-events:auto; cursor:crosshair; }
+.stat { white-space:nowrap; }
+.stat b { color:var(--hi); font-weight:normal; }
+.phase-night b { color:var(--bad); }
+.btn { background:#10201d; color:var(--txt); border:1px solid var(--line); font:inherit; padding:4px 10px; cursor:pointer; border-radius:2px; white-space:nowrap; }
+.btn:hover:not(:disabled) { border-color:var(--hi); color:var(--hi); }
+.btn:disabled { opacity:0.35; cursor:default; }
+.btn.on { background:#1d3d34; border-color:var(--hi); color:var(--hi); }
+.btn.big { font-size:20px; padding:10px 26px; background:#123c30; border-color:var(--hi); color:var(--hi); letter-spacing:2px; }
+.spacer { flex:1; }
+#build, #specials { display:flex; gap:5px; height:100%; align-items:stretch; position:relative; }
+#build { flex:1.3; }
+#specials { flex:1; justify-content:flex-end; }
+.tool { position:relative; width:62px; background:#0c1715; border:1px solid var(--line); cursor:pointer; display:flex; flex-direction:column; align-items:center; justify-content:flex-end; padding:2px; font-size:11px; color:var(--dim); border-radius:2px; overflow:hidden; }
+.tool canvas { image-rendering:pixelated; flex:1; min-height:0; }
+.tool .k { position:absolute; left:3px; top:1px; color:var(--dim); }
+.tool .c { color:var(--warn); }
+.tool.sel { border-color:var(--hi); background:#133029; color:var(--hi); }
+.tool.dis { opacity:0.35; }
+.tool.locked { opacity:0.25; }
+.tool .cdv { position:absolute; left:0; right:0; bottom:0; background:#000a; pointer-events:none; }
+.tool .ch { position:absolute; right:3px; top:1px; color:var(--hi); }
+.tool .glyph { font-size:24px; flex:1; display:flex; align-items:center; color:var(--txt); }
+#nightveil { position:absolute; inset:0; z-index:5; display:none; align-items:center; justify-content:center; color:var(--bad); background:#0b0d0ecc; font-size:13px; letter-spacing:2px; text-align:center; pointer-events:none; }
+#msgs { position:absolute; left:50%; top:10px; transform:translateX(-50%); text-align:center; pointer-events:none; font-size:16px; text-shadow:0 0 6px #000, 0 0 2px #000; }
+#msgs div { margin:2px; }
+#tip { position:fixed; pointer-events:none; background:var(--panel); border:1px solid var(--line); padding:6px 9px; font-size:13px; max-width:280px; display:none; z-index:20; line-height:1.35; }
+#tip h4 { margin:0 0 3px; color:var(--hi); font-weight:normal; }
+#sel { position:absolute; right:8px; top:8px; background:var(--panel); border:1px solid var(--line); padding:8px 10px; font-size:13px; display:none; min-width:170px; }
+.screen { position:fixed; inset:0; display:none; z-index:10; }
+#menu { background:linear-gradient(270deg, #05080af2 0%, #05080add 44%, #05080a33 70%, transparent); overflow:auto; }
+#menu .inner { width:min(640px, 94vw); padding:28px 34px; margin-left:auto; }
+h1 { font-size:44px; margin:0; letter-spacing:6px; color:var(--hi); text-shadow:0 0 18px #3fffb055; font-weight:normal; }
+.sub { color:var(--dim); margin:2px 0 18px; letter-spacing:1px; }
+.scrip { color:var(--warn); font-size:18px; }
+.tabs { display:flex; gap:6px; margin:14px 0 10px; }
+.row { display:flex; flex-wrap:wrap; gap:6px; margin:6px 0 14px; }
+.card { border:1px solid var(--line); background:#0b1513; padding:7px 10px; cursor:pointer; min-width:130px; flex:1; font-size:14px; border-radius:2px; }
+.card small { display:block; color:var(--dim); font-size:12px; margin-top:2px; line-height:1.3; }
+.card.sel { border-color:var(--hi); background:#12302a; }
+.card.locked { opacity:0.45; cursor:default; }
+.label { color:var(--dim); font-size:13px; letter-spacing:2px; margin-top:6px; }
+.shopcat { color:var(--dim); letter-spacing:2px; margin:12px 0 4px; font-size:13px; }
+.shopitem { display:flex; align-items:center; gap:10px; border:1px solid var(--line); background:#0b1513; padding:6px 10px; margin:4px 0; font-size:14px; }
+.shopitem .d { flex:1; }
+.shopitem .d small { display:block; color:var(--dim); font-size:12px; }
+.shopitem.owned { opacity:0.5; }
+.help { color:var(--dim); font-size:13px; line-height:1.5; margin-top:16px; border-top:1px solid var(--line); padding-top:10px; }
+.help b { color:var(--txt); font-weight:normal; }
+#end { background:#030506cc; align-items:center; justify-content:center; }
+#end .inner { background:var(--panel); border:1px solid var(--line); padding:26px 36px; min-width:360px; text-align:center; }
+#end h2 { font-size:34px; margin:0 0 10px; font-weight:normal; letter-spacing:4px; }
+#end table { margin:10px auto 18px; border-collapse:collapse; font-size:15px; }
+#end td { padding:3px 12px; text-align:left; } #end td:last-child { text-align:right; color:var(--hi); }
+#err { position:fixed; inset:0; display:none; align-items:center; justify-content:center; color:var(--bad); padding:40px; text-align:center; z-index:50; background:#000; }
+@media (max-width: 900px) { .tool { width:48px; font-size:10px; } #top { font-size:12px; gap:8px; } }
+</style>
+</head>
+<body>
+<div id="app">
+  <div id="top">
+    <span class="stat">MATERIEL <b id="res">0</b> <span id="inc" style="color:var(--dim)"></span></span>
+    <span class="stat">WAVE <b id="wave">0/10</b></span>
+    <span class="stat" id="phaseBox"><span id="phaseLbl">NIGHTFALL IN</span> <b id="phaseVal">0:00</b></span>
+    <button class="btn" id="btnWave" title="Start the next wave now (F). Unused time converts to materiel.">CALL WAVE</button>
+    <button class="btn" id="btnRebuild" title="Rebuild everything that was destroyed">REBUILD</button>
+    <span class="spacer"></span>
+    <span class="stat" style="color:var(--dim)" id="score"></span>
+    <button class="btn" id="spd1">1×</button><button class="btn" id="spd2">2×</button><button class="btn" id="spd3">3×</button>
+    <button class="btn" id="btnPause" title="Space">❚❚</button>
+    <button class="btn" id="btnMute" title="Sound">♪</button>
+    <button class="btn" id="btnMenu">ABANDON</button>
+  </div>
+  <div id="stage">
+    <canvas id="gl"></canvas><canvas id="ov"></canvas>
+    <div id="msgs"></div>
+    <div id="sel"></div>
+  </div>
+  <div id="bottom">
+    <div id="build"><div id="nightveil">NO CONSTRUCTION DURING AN ATTACK<br>HOLD THE LINE — USE YOUR STRATAGEMS</div></div>
+    <div id="specials"></div>
+  </div>
+</div>
+<div id="tip"></div>
+
+<div id="menu" class="screen"><div class="inner">
+  <h1>COLONIAL DEFENSE</h1>
+  <div class="sub">hold the colony until evac. 10 nights. no retreat.</div>
+  <div class="scrip">SCRIP: <span id="scrip">0</span></div>
+  <div class="tabs"><button class="btn on" id="tabDeploy">DEPLOY</button><button class="btn" id="tabShop">REQUISITION</button></div>
+  <div id="paneDeploy">
+    <div class="label">HOSTILES</div><div class="row" id="selFaction"></div>
+    <div class="label">BIOME</div><div class="row" id="selBiome"></div>
+    <div class="label">THREAT LEVEL</div><div class="row" id="selDiff"></div>
+    <div class="label">ACTIVE BOOSTERS</div><div class="row" id="boosters" style="color:var(--dim);font-size:13px"></div>
+    <button class="btn big" id="btnDeploy">DEPLOY ▸</button>
+    <span style="color:var(--dim);margin-left:12px" id="best"></span>
+    <div class="help">
+      <b>Day:</b> claim sectors (click a highlighted sector), build on ore, wall off the <b>gaps</b> in the rock ridges, place turrets and floodlights.
+      Drag to lay barricades. Right-click cancels.<br>
+      <b>Night:</b> no building. Your turrets and marines fight on their own — turrets only aim well at what's <b>lit</b>.
+      Call in stratagems with <b>Q W E R T Y U</b> and click the map.<br>
+      <b>Keys:</b> 1-9 build · F call wave early · Space pause · X sell selected · Esc cancel
+    </div>
+  </div>
+  <div id="paneShop" style="display:none"></div>
+</div></div>
+
+<div id="end" class="screen"><div class="inner">
+  <h2 id="endTitle">COLONY LOST</h2>
+  <div id="endSub" style="color:var(--dim)"></div>
+  <table id="endStats"></table>
+  <button class="btn big" id="btnAgain">REDEPLOY</button>
+  <button class="btn" id="btnEndMenu" style="margin-left:8px">MENU</button>
+</div></div>
+<div id="err"></div>
+
+<script src="js/util.js"></script>
+<script src="js/data.js"></script>
+<script src="js/sprites.js"></script>
+<script src="js/map.js"></script>
+<script src="js/render.js"></script>
+<script src="js/audio.js"></script>
+<script src="js/game.js"></script>
+<script src="js/fx.js"></script>
+<script src="js/meta.js"></script>
+<script src="js/ui.js"></script>
+<script src="js/main.js"></script>
+</body>
+</html>
