@@ -26,14 +26,15 @@ export class Minimap {
       const px = (e.clientX - r.left) / r.width * W, pz = (e.clientY - r.top) / r.height * D;
       return { x: W - px, z: D - pz };
     };
+    const o = { signal: G.signal };
     this.cv.addEventListener('contextmenu', (e) => e.preventDefault());
     this.cv.addEventListener('pointerdown', (e) => {
       const p = go(e);
       if (e.button === 0) { dragging = true; G.cam.focus(p.x, p.z); G.cam.follow = null; }
       else if (e.button === 2) this.order(p, e.shiftKey);
     });
-    window.addEventListener('pointermove', (e) => { if (dragging) { const p = go(e); G.cam.focus(p.x, p.z); } });
-    window.addEventListener('pointerup', () => { dragging = false; });
+    window.addEventListener('pointermove', (e) => { if (dragging) { const p = go(e); G.cam.focus(p.x, p.z); } }, o);
+    window.addEventListener('pointerup', () => { dragging = false; }, o);
   }
 
   order(p, shift) {

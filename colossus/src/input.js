@@ -28,17 +28,20 @@ export class Input {
     document.body.appendChild(this.hoverEl);
     const c = this.canvas;
     c.style.cursor = G.side === 'tank' ? 'crosshair' : 'default';
-    c.addEventListener('contextmenu', (e) => e.preventDefault());
-    c.addEventListener('pointerdown', (e) => this.down(e));
-    window.addEventListener('pointermove', (e) => this.move(e));
-    window.addEventListener('pointerup', (e) => this.up(e));
-    c.addEventListener('wheel', (e) => { e.preventDefault(); this.wheel(e); }, { passive: false });
-    c.addEventListener('pointerenter', () => { this.mouse.over = true; });
-    c.addEventListener('pointerleave', () => { this.mouse.over = false; });
-    window.addEventListener('keydown', (e) => this.keydown(e));
-    window.addEventListener('keyup', (e) => this.keys.delete(e.code));
-    window.addEventListener('blur', () => this.keys.clear());
+    const o = { signal: G.signal };
+    c.addEventListener('contextmenu', (e) => e.preventDefault(), o);
+    c.addEventListener('pointerdown', (e) => this.down(e), o);
+    window.addEventListener('pointermove', (e) => this.move(e), o);
+    window.addEventListener('pointerup', (e) => this.up(e), o);
+    c.addEventListener('wheel', (e) => { e.preventDefault(); this.wheel(e); }, { passive: false, signal: G.signal });
+    c.addEventListener('pointerenter', () => { this.mouse.over = true; }, o);
+    c.addEventListener('pointerleave', () => { this.mouse.over = false; }, o);
+    window.addEventListener('keydown', (e) => this.keydown(e), o);
+    window.addEventListener('keyup', (e) => this.keys.delete(e.code), o);
+    window.addEventListener('blur', () => this.keys.clear(), o);
+    this.mouse.over = true;
   }
+  dispose() { this.hoverEl.remove(); this.selEl.style.display = 'none'; }
 
   // ------------------------------------------------------------ picking
   ray(sx, sy) {

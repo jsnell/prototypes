@@ -7,6 +7,7 @@ import { fmtTime, clamp } from './util.js';
 const $ = (sel, el = document) => el.querySelector(sel);
 const h = (tag, cls = '', html = '') => { const e = document.createElement(tag); if (cls) e.className = cls; if (html) e.innerHTML = html; return e; };
 const KEYS = ['1', '2', '3', '4', '5'];
+let PORTRAITS = null;
 const QN = ['Front', 'Right', 'Rear', 'Left'];
 
 export class UI {
@@ -19,7 +20,7 @@ export class UI {
     this.labelsEl = $('#labels');
     this.helpOpen = false;
     this.t = 0;
-    this.portraits = this.makePortraits();
+    this.portraits = PORTRAITS || (PORTRAITS = this.makePortraits());
     this.buildTop();
     if (G.side === 'tank') this.buildTank();
     if (G.side === 'swarm') this.buildSwarm();
@@ -31,7 +32,7 @@ export class UI {
 
   // ------------------------------------------------------------ helpers
   log(msg, type = 'info', important = false) {
-    if (this.G.fastForward) return;
+    if (this.G.fastForward || this.G.disposed) return;
     const e = h('div', 'msg ' + type + (important ? ' big' : ''), msg);
     this.logEl.prepend(e);
     while (this.logEl.children.length > 7) this.logEl.lastChild.remove();
@@ -515,6 +516,13 @@ export class UI {
     document.body.appendChild(el);
     this.helpEl = el;
   }
+  dispose() {
+    this.helpEl.remove();
+    document.querySelectorAll('.endscreen').forEach((e) => e.remove());
+    this.labelsEl.innerHTML = '';
+    this.root.innerHTML = '';
+    clearTimeout(this.toastT);
+  }
   toggleHelp(v) {
     this.helpOpen = v === undefined ? !this.helpOpen : v;
     this.helpEl.classList.toggle('show', this.helpOpen);
@@ -540,6 +548,7 @@ export class UI {
     $('#end-again', el).onclick = () => G.restart(G.side);
     $('#end-swap', el).onclick = () => G.restart(G.side === 'tank' ? 'swarm' : 'tank');
     $('#end-title', el).onclick = () => G.restart(null);
+    $('#end-again', el).focus();
     $('#end-look', el).onclick = () => { el.remove(); };
     requestAnimationFrame(() => el.classList.add('show'));
   }

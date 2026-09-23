@@ -10,8 +10,8 @@ export class Audio {
     this.last = {};
     this.voices = 0;
     const unlock = () => { this.ensure(); };
-    window.addEventListener('pointerdown', unlock, { once: false });
-    window.addEventListener('keydown', unlock, { once: false });
+    window.addEventListener('pointerdown', unlock);
+    window.addEventListener('keydown', unlock);
   }
   ensure() {
     if (this.ctx) { if (this.ctx.state === 'suspended') this.ctx.resume(); return; }
