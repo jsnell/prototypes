@@ -18,13 +18,13 @@ const BUILDINGS = {
                desc: '+0.45/s materiel. Max 2 per sector — expand to grow.' },
   barracks:  { name: 'Marine Barracks', key: '6', w: 2, h: 2, hp: 650, cost: 110, marines: 5,
                desc: 'Keeps 5 marines posted at the frontier gaps. Free reinforcements.' },
-  flamer:    { name: 'Incinerator', key: '7', w: 1, h: 1, hp: 380, cost: 60, turret: true, locked: true,
+  flamer:    { name: 'Incinerator', key: '7', w: 1, h: 1, hp: 380, cost: 60, turret: true,
                weapon: 'flame', range: 30, rate: 20, dmg: 1.1,
                desc: 'Short-range fire cone. Sets hostiles alight.' },
-  mortar:    { name: 'Mortar Pit', key: '8', w: 2, h: 2, hp: 400, cost: 140, turret: true, locked: true,
+  mortar:    { name: 'Mortar Pit', key: '8', w: 2, h: 2, hp: 400, cost: 140, turret: true,
                weapon: 'mortar', range: 230, minRange: 36, rate: 0.55, dmg: 34, splash: 16,
                desc: 'Long-range indirect fire. Can\'t hit what\'s close.' },
-  railgun:   { name: 'Rail Battery', key: '9', w: 2, h: 2, hp: 460, cost: 190, turret: true, locked: true,
+  railgun:   { name: 'Rail Battery', key: '9', w: 2, h: 2, hp: 460, cost: 190, turret: true,
                weapon: 'rail', range: 250, rate: 0.35, dmg: 140,
                desc: 'Punches a line through everything in its path.' },
   dropsentry:{ name: 'Drop Sentry', w: 1, h: 1, hp: 500, cost: 0, hidden: true, turret: true,
@@ -109,12 +109,38 @@ const SPECIALS = {
   flare:   { name: 'Flare',           key: 'Q', cd: 7,   charges: 3, desc: 'Lights up an area for 25s. Turrets can see.' },
   tracker: { name: 'Tracker Pulse',   key: 'W', cd: 18,  desc: 'Pings every hostile on the map. Tagged targets are easy to hit.', noTarget: true },
   orbital: { name: 'Orbital Lance',   key: 'E', cd: 40,  desc: 'Precision strike from orbit after a short delay.' },
-  napalm:  { name: 'Napalm Run',      key: 'R', cd: 55,  locked: true, desc: 'A burning line, laid from your base outward through the target.' },
-  drop:    { name: 'Sentry Drop',     key: 'T', cd: 45,  locked: true, desc: 'Drops an armored sentry pod anywhere. Crushes what it lands on.' },
-  gunship: { name: 'Gunship Strafe',  key: 'Y', cd: 35,  locked: true, desc: 'A walking line of cannon fire across the target.' },
-  nuke:    { name: 'Dust Off',        key: 'U', cd: 9999, charges: 1, locked: true, desc: 'Nuke it from orbit. Once per scenario. Mind your own buildings.' },
+  napalm:  { name: 'Napalm Run',      key: 'R', cd: 55, desc: 'A burning line, laid from your base outward through the target.' },
+  drop:    { name: 'Sentry Drop',     key: 'T', cd: 45, desc: 'Drops an armored sentry pod anywhere. Crushes what it lands on.' },
+  gunship: { name: 'Gunship Strafe',  key: 'Y', cd: 35, desc: 'A walking line of cannon fire across the target.' },
+  nuke:    { name: 'Dust Off',        key: 'U', cd: 9999, charges: 1, desc: 'Nuke it from orbit. Once per scenario. Mind your own buildings.' },
 };
 const SPECIAL_ORDER = ['flare', 'tracker', 'orbital', 'napalm', 'drop', 'gunship', 'nuke'];
+
+// ---- Mk II upgrades (bought with scrip; everything above is available from the start) ----
+const UPGRADES = {
+  wall:      { name: 'Plasteel Barricade', cost: 60,  desc: 'Double HP, and acid blood no longer eats it.', b: d => { d.hp = 1100; d.acidProof = true; } },
+  sentry:    { name: 'Twin-Link Sentry',   cost: 110, desc: '+55% fire rate and a gun-mounted spotlight: never fires blind, and lights what it shoots.', b: d => { d.rate = 17; d.spot = true; } },
+  light:     { name: 'Arc Floodlight',     cost: 70,  desc: '+45% radius. Hostiles caught in the glare are dazzled and slowed 30%.', b: d => { d.lightR = 140; d.dazzle = true; } },
+  extractor: { name: 'Deep-Core Extractor',cost: 90,  desc: '+60% materiel per extractor.', b: d => { d.income = 2.1; } },
+  habitat:   { name: 'Arcology Dome',      cost: 80,  desc: '+55% income and 3 domes per sector.', b: d => { d.income = 0.7; d.perSector = 3; } },
+  barracks:  { name: 'Smartgun Squad',     cost: 140, desc: '8 marines per barracks with target-tracking smartguns (hit in the dark) and heavier armour.', b: d => { d.marines = 8; d.smart = true; } },
+  flamer:    { name: 'Napalm Projector',   cost: 120, desc: '+40% range, and it leaves the ground burning behind its targets.', b: d => { d.range = 42; d.napalm = true; } },
+  mortar:    { name: 'Cluster Mortar',     cost: 150, desc: 'Every shell scatters four bomblets on impact.', b: d => { d.cluster = true; } },
+  railgun:   { name: 'Overcharged Rail',   cost: 200, desc: '+60% fire rate, and every target it pierces detonates.', b: d => { d.rate = 0.56; d.detonate = true; } },
+  flare:     { special: true, name: 'Starshell',         cost: 70,  desc: '5 charges; brighter, wider and burns 40% longer.', s: d => { d.charges = 5; } },
+  tracker:   { special: true, name: 'Target Designator', cost: 100, desc: 'Tags last 14s and tagged hostiles take +50% damage from everything.', s: d => { } },
+  orbital:   { special: true, name: 'Orbital Barrage',   cost: 160, desc: 'Three lances walk across the target instead of one.', s: d => { } },
+  napalm:    { special: true, name: 'Double Napalm Run', cost: 130, desc: 'Two jets, two parallel burning lines, and it burns longer.', s: d => { } },
+  drop:      { special: true, name: 'Sentry Drop Trio',  cost: 150, desc: 'Three pods instead of one.', s: d => { } },
+  gunship:   { special: true, name: 'AC-130 Strafe',     cost: 140, desc: 'Nearly twice the shells, heavier rounds.', s: d => { } },
+  nuke:      { special: true, name: 'Second Warhead',    cost: 400, desc: 'Dust Off can be called twice per scenario.', s: d => { d.charges = 2; } },
+};
+const UPGRADE_UNLOCKS = Object.entries(UPGRADES).map(([k, u]) => ({
+  id: 'u_' + k, cat: u.special ? 'Stratagem upgrades' : 'Building upgrades',
+  name: u.name + ' <span style="color:var(--dim)">(' + (u.special ? SPECIALS[k] : BUILDINGS[k]).name + ' Mk II)</span>', cost: u.cost, desc: u.desc,
+}));
+// scrip refunds for unlocks that no longer exist (everything they unlocked is now free)
+const LEGACY_REFUND = { b_flamer: 50, b_mortar: 100, b_railgun: 180, s_napalm: 70, s_drop: 90, s_gunship: 120, s_nuke: 350 };
 
 // ---- meta progression ------------------------------------------------------
 const UNLOCKS = [
@@ -127,13 +153,7 @@ const UNLOCKS = [
   { id: 'dif_2',      cat: 'Difficulty',   name: 'Hardened',         cost: 140, desc: 'x2.3 scrip.', req: 'dif_1' },
   { id: 'dif_3',      cat: 'Difficulty',   name: 'Nightmare',        cost: 280, desc: 'x3.2 scrip.', req: 'dif_2' },
   { id: 'dif_4',      cat: 'Difficulty',   name: 'Game Over, Man',   cost: 480, desc: 'x4.5 scrip. Good luck.', req: 'dif_3' },
-  { id: 'b_flamer',   cat: 'Buildings',    name: 'Incinerator',      cost: 50,  desc: BUILDINGS.flamer.desc },
-  { id: 'b_mortar',   cat: 'Buildings',    name: 'Mortar Pit',       cost: 100, desc: BUILDINGS.mortar.desc },
-  { id: 'b_railgun',  cat: 'Buildings',    name: 'Rail Battery',     cost: 180, desc: BUILDINGS.railgun.desc },
-  { id: 's_napalm',   cat: 'Stratagems',   name: 'Napalm Run',       cost: 70,  desc: SPECIALS.napalm.desc },
-  { id: 's_drop',     cat: 'Stratagems',   name: 'Sentry Drop',      cost: 90,  desc: SPECIALS.drop.desc },
-  { id: 's_gunship',  cat: 'Stratagems',   name: 'Gunship Strafe',   cost: 120, desc: SPECIALS.gunship.desc },
-  { id: 's_nuke',     cat: 'Stratagems',   name: 'Dust Off',         cost: 350, desc: SPECIALS.nuke.desc },
+  ...UPGRADE_UNLOCKS,
   { id: 'x_cache1',   cat: 'Boosters',     name: 'Supply Cache I',   cost: 40,  desc: '+100 starting materiel.' },
   { id: 'x_cache2',   cat: 'Boosters',     name: 'Supply Cache II',  cost: 90,  desc: '+100 more starting materiel.', req: 'x_cache1' },
   { id: 'x_cache3',   cat: 'Boosters',     name: 'Supply Cache III', cost: 160, desc: '+150 more starting materiel.', req: 'x_cache2' },

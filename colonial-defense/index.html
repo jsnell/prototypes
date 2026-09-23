@@ -38,6 +38,9 @@ html, body { margin:0; height:100%; background:var(--bg); color:var(--txt); font
 .tool.locked { opacity:0.25; }
 .tool .cdv { position:absolute; left:0; right:0; bottom:0; background:#000a; pointer-events:none; }
 .tool .ch { position:absolute; right:3px; top:1px; color:var(--hi); }
+.tool .mk { position:absolute; right:3px; top:1px; color:var(--warn); font-size:10px; }
+#specials .tool .mk { right:auto; left:14px; }
+.tool.mk2 { border-color:#4a4a26; }
 .tool .glyph { font-size:24px; flex:1; display:flex; align-items:center; color:var(--txt); }
 #nightveil { position:absolute; inset:0; z-index:5; display:none; align-items:center; justify-content:center; color:var(--bad); background:#0b0d0ecc; font-size:13px; letter-spacing:2px; text-align:center; pointer-events:none; }
 #msgs { position:absolute; left:50%; top:10px; transform:translateX(-50%); text-align:center; pointer-events:none; font-size:16px; text-shadow:0 0 6px #000, 0 0 2px #000; }

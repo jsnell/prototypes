@@ -5,6 +5,7 @@ const Meta = {
   data: { scrip: 0, unlocked: {}, best: {}, runs: 0, sel: { faction: 'hive', biome: 'barren', difficulty: 0 } },
   load() {
     try { const d = JSON.parse(localStorage.getItem(META_KEY)); if (d) Object.assign(this.data, d); } catch (e) { }
+    for (const [id, c] of Object.entries(LEGACY_REFUND)) if (this.data.unlocked[id]) { delete this.data.unlocked[id]; this.data.scrip += c; this.save(); }
     if (location.hash === '#unlockall') for (const u of UNLOCKS) this.data.unlocked[u.id] = true;
   },
   save() { try { localStorage.setItem(META_KEY, JSON.stringify(this.data)); } catch (e) { } },

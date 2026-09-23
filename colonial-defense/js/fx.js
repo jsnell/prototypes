@@ -124,11 +124,11 @@ function stamp(spr, x, y, size, r, g, b, a, ang) { GFX.bDC.add(x, y, size, size,
 function stampE(spr, x, y, size, r, g, b, em, ang) { GFX.bDE.add(x, y, size, size, SPR[spr].r[0][0], r, g, b, 1, ang, 0, 0, em); }
 
 // ---------------- stratagems ----------------
-function specialReady(id) { const s = G.spec[id]; return s && !s.locked && s.charges > 0 && !G.over; }
+function specialReady(id) { const s = G.spec[id]; return s && s.charges > 0 && !G.over; }
 function useSpecial(id, x, y) {
   if (!specialReady(id)) return false;
   const s = G.spec[id];
-  s.base = SPECIALS[id].cd * G.cdMult;
+  s.base = SD(id).cd * G.cdMult;
   if (s.charges === s.max) s.cd = s.base;
   s.charges--;
   G.specialsUsed++;
@@ -139,6 +139,7 @@ function useSpecial(id, x, y) {
 }
 const SPECIAL_FX = {
   flare(x, y, hq) {
+    const DUR = G.up.flare ? 35 : 25, FR = G.up.flare ? 170 : 120;
     const sx = hq.x, sy = hq.y - 6, T = Math.hypot(x - sx, y - sy) / 220 + 0.5;
     SFX.play('flare', sx, 0.6);
     G.fx.push({ kind: 'flare', x: sx, y: sy, z: 0, t: 0, T, burnT: 0, update(f, dt) {
@@ -151,21 +152,37 @@ const SPECIAL_FX = {
       f.x = x; f.y = y; f.z = 0; f.burnT += dt;
       if (Math.random() < 0.7) G.parts.spawn(P_SPARK, x, y, 2, rnd(-30, 30), rnd(-30, 30), rnd(20, 60), 1, 1, 0.35, 0.25, 1);
       if (Math.random() < 0.25) G.parts.spawn(P_SMOKE, x, y, 3, rnd(-3, 3), rnd(-3, 3), rnd(6, 12), rnd(3, 5), 0.6, 0.4, 0.4, 0.35);
-      return f.burnT < 25;
+      return f.burnT < DUR;
     }, light(f) {
       if (f.t < f.T) { addLight(f.x, f.y, f.z + 4, 40, 1.5, 0.4, 0.3); return; }
-      const fl = 0.85 + Math.random() * 0.3, fade = Math.min(1, (25 - f.burnT) / 3);
-      addLight(f.x + rnd(-1, 1), f.y + rnd(-1, 1), 7, 120 * (0.7 + 0.3 * fade), 2.4 * fl * fade, 0.55 * fl * fade, 0.4 * fl * fade);
+      const fl = 0.85 + Math.random() * 0.3, fade = Math.min(1, (DUR - f.burnT) / 3);
+      addLight(f.x + rnd(-1, 1), f.y + rnd(-1, 1), G.up.flare ? 10 : 7, FR * (0.7 + 0.3 * fade), 2.4 * fl * fade, 0.55 * fl * fade, 0.4 * fl * fade);
     }, draw(f) { GFX.bE.add(Math.round(f.x) + 0.5, Math.round(f.y - f.z) + 0.5, 2, 2, SPR.px.r[0][0], 1, 0.5, 0.4, 1, 0, 0, 0, 6); GFX.bE.add(f.x, f.y - f.z, 14, 14, SPR.soft.r[0][0], 1, 0.3, 0.2, 0.7, 0, 0, 0, 3); } });
   },
   tracker(x, y, hq) {
-    G.tagT = 9;
-    for (const e of G.enemies) e.tagged = 9;
+    const T = G.up.tracker ? 14 : 9;
+    G.tagT = T;
+    for (const e of G.enemies) e.tagged = T;
     G.parts.spawn(P_RING, hq.x, hq.y, 0, 0, 0, 420, 4, 0.2, 1, 0.5, 0.8, 1.6);
     SFX.play('ping', hq.x, 1);
     G.trackerPing = { t: 0, n: G.enemies.length };
   },
   orbital(x, y) {
+    if (!G.up.orbital) return orbitalStrike(x, y);
+    const a = Math.random() * TAU;
+    for (let i = 0; i < 3; i++) { const ox = Math.cos(a + i * TAU / 3) * 24, oy = Math.sin(a + i * TAU / 3) * 24; setTimeoutG(i * 0.4, () => orbitalStrike(x + ox, y + oy)); }
+  },
+  napalm(x, y, hq) {
+    let dx = x - hq.x, dy = y - hq.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+    if (!G.up.napalm) return napalmRun(x, y, dx, dy, rnd(10, 13));
+    napalmRun(x - dy * 10, y + dx * 10, dx, dy, rnd(15, 18));
+    setTimeoutG(0.35, () => napalmRun(x + dy * 10, y - dx * 10, dx, dy, rnd(15, 18)));
+  },
+  drop(x, y) {
+    if (!G.up.drop) return dropPod(x, y);
+    for (let i = 0; i < 3; i++) { const a = i / 3 * TAU + 0.5; setTimeoutG(i * 0.3, () => dropPod(x + Math.cos(a) * 14, y + Math.sin(a) * 14)); }
+  },
+  _orbitalStrike(x, y) {
     SFX.play('charge', x, 0.8);
     G.fx.push({ kind: 'orbital', x, y, t: 0, fired: false, update(f, dt) {
       if (f.t > 1.6 && !f.fired) {
@@ -189,8 +206,7 @@ const SPECIAL_FX = {
       }
     } });
   },
-  napalm(x, y, hq) {
-    let dx = x - hq.x, dy = y - hq.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
+  _napalmRun(x, y, dx, dy, life) {
     const len = 140, x0 = x - dx * len / 2, y0 = y - dy * len / 2;
     const jx0 = x0 - dx * 300, jy0 = y0 - dy * 300, speed = 320;
     SFX.play('jet', x, 1);
@@ -200,13 +216,13 @@ const SPECIAL_FX = {
       const along = (f.x - x0) * dx + (f.y - y0) * dy;
       while (dropped * 7 < Math.min(along, len) && along >= 0) {
         const px = x0 + dx * dropped * 7, py = y0 + dy * dropped * 7; dropped++;
-        napalmPatch(px + rnd(-3, 3), py + rnd(-3, 3), dropped % 3 === 0);
+        napalmPatch(px + rnd(-3, 3), py + rnd(-3, 3), dropped % 3 === 0, life);
         if (dropped % 4 === 0) SFX.play('boom', px, 0.4);
       }
       return f.t < 3;
     }, draw(f) { drawJet(f); } });
   },
-  drop(x, y) {
+  _dropPod(x, y) {
     SFX.play('whistle', x, 0.8);
     G.fx.push({ kind: 'pod', x, y, z: 260, t: 0, update(f, dt) {
       f.z = Math.max(0, 260 * (1 - f.t / 1.1));
@@ -228,15 +244,15 @@ const SPECIAL_FX = {
   },
   gunship(x, y, hq) {
     let dx = x - hq.x, dy = y - hq.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
-    const len = 110, x0 = x - dx * len / 2, y0 = y - dy * len / 2;
+    const len = G.up.gunship ? 130 : 110, x0 = x - dx * len / 2, y0 = y - dy * len / 2, NS = G.up.gunship ? 56 : 32;
     SFX.play('jet', x, 0.8);
     let n = 0;
     G.fx.push({ kind: 'jet', t: 0, x: x0 - dx * 200, y: y0 - dy * 200, ang: Math.atan2(dy, dx), update(f, dt) {
       f.x += dx * 180 * dt; f.y += dy * 180 * dt;
-      if (f.t > 0.6) while (n < 32 && n < (f.t - 0.6) * 22) {
-        const px = x0 + dx * n / 32 * len + rnd(-7, 7), py = y0 + dy * n / 32 * len + rnd(-7, 7); n++;
+      if (f.t > 0.6) while (n < NS && n < (f.t - 0.6) * 22 * NS / 32) {
+        const px = x0 + dx * n / NS * len + rnd(-7, 7), py = y0 + dy * n / NS * len + rnd(-7, 7); n++;
         tracer(px - 60, py - 90, px, py, 1, 0.8, 0.4, 2);
-        setTimeoutG(0.15, () => explosion(px, py, 8, 55, false, { quiet: n % 3 !== 0 }));
+        setTimeoutG(0.15, () => explosion(px, py, G.up.gunship ? 11 : 8, G.up.gunship ? 70 : 55, false, { quiet: n % 3 !== 0 }));
       }
       return f.t < 3.2;
     }, draw(f) { drawJet(f); } });
@@ -273,8 +289,11 @@ const SPECIAL_FX = {
     } });
   },
 };
-function napalmPatch(x, y, withLight) {
-  G.fx.push({ kind: 'fire', x, y, t: 0, life: rnd(10, 13), update(f, dt) {
+const orbitalStrike = (x, y) => SPECIAL_FX._orbitalStrike(x, y);
+const napalmRun = (x, y, dx, dy, life) => SPECIAL_FX._napalmRun(x, y, dx, dy, life);
+const dropPod = (x, y) => SPECIAL_FX._dropPod(x, y);
+function napalmPatch(x, y, withLight, life = rnd(10, 13)) {
+  G.fx.push({ kind: 'fire', x, y, t: 0, life, update(f, dt) {
     if (Math.random() < 0.45) G.parts.spawn(P_FIRE, x + rnd(-4, 4), y + rnd(-3, 3), 1, rnd(-4, 4), rnd(-4, 4), rnd(8, 20), rnd(2, 3.5), 1, 0.6, 0.2, 1);
     if (Math.random() < 0.08) G.parts.spawn(P_SMOKE, x, y, 6, rnd(-4, 4), rnd(-4, 4), rnd(10, 20), rnd(4, 7), 0.1, 0.08, 0.07, 0.6);
     if (Math.random() < 0.05) G.parts.spawn(P_EMBER, x, y, 4, rnd(-10, 10), rnd(-10, 10), 0, 1, 1, 0.5, 0.1, 1);
@@ -282,7 +301,7 @@ function napalmPatch(x, y, withLight) {
     if (f.dmgT <= 0) { f.dmgT = 0.25; forNear(x, y, 8, e => { hurtEnemy(e, 3, 0, 0); e.burn = 4; }); }
     return f.t < f.life;
   }, light(f) { if (withLight) { const k = Math.min(1, (f.life - f.t) / 2); addLight(x, y, 4, 55, 1.6 * k * (0.8 + Math.random() * 0.3), 0.7 * k, 0.15 * k); } } });
-  stamp('scorch', x, y, 14, 0.03, 0.02, 0.02, 0.5, Math.random() * TAU);
+  stamp('scorch', x, y, life > 8 ? 14 : 7, 0.03, 0.02, 0.02, 0.5, Math.random() * TAU);
 }
 function setTimeoutG(delay, fn) { G.fx.push({ kind: 'timer', t: 0, update(f) { if (f.t >= delay) { fn(); return false; } return true; } }); }
 function drawJet(f) {
@@ -324,7 +343,7 @@ function demoTick(dt) {
       const e = G.enemies.length ? G.enemies[(Math.random() * G.enemies.length) | 0] : null;
       if (!e) return;
       const ids = ['flare', 'flare', 'orbital', 'napalm', 'gunship', 'tracker', 'drop'].filter(id => { const s = G.spec[id]; return s.charges > 0; });
-      if (ids.length) { const id = pick(ids); G.spec[id].locked = false; useSpecial(id, e.x, e.y); }
+      if (ids.length) { useSpecial(pick(ids), e.x, e.y); }
     }
   }
 }
@@ -347,7 +366,7 @@ function autoBuildStep() {
   const tryNear = (type, x, y, r0 = 1, r1 = 6) => {
     for (let r = r0; r < r1; r++) for (let k = 0; k < 16; k++) {
       const a = Math.random() * TAU; const tx = Math.round(x / TILE + Math.cos(a) * r), ty = Math.round(y / TILE + Math.sin(a) * r);
-      if (canPlace(type, tx, ty) && G.res >= BUILDINGS[type].cost) { placeBuilding(type, tx, ty); return true; }
+      if (canPlace(type, tx, ty) && G.res >= BD(type).cost) { placeBuilding(type, tx, ty); return true; }
     }
     return false;
   };
@@ -356,8 +375,8 @@ function autoBuildStep() {
   if (!fg.length) return;
   const g = pick(fg); const side = S[g.a].claimed ? g.a : g.b; const p = g.post[side];
   const turrets = ['sentry', 'sentry', 'sentry', 'light'];
-  if (G.opts.unlocked?.b_flamer) turrets.push('flamer');
-  if (G.opts.unlocked?.b_mortar && Math.random() < 0.2) { tryNear('mortar', p.x + p.nx * -30, p.y + p.ny * -30, 1, 6); return; }
+  turrets.push('flamer');
+  if (Math.random() < 0.2) { tryNear('mortar', p.x + p.nx * -30, p.y + p.ny * -30, 1, 6); return; }
   tryNear(pick(turrets), p.x, p.y, 1, 4);
   if (G.res > 45 && Math.random() < 0.3) tryNear('habitat', hq.x, hq.y, 4, 12);
 }
@@ -375,7 +394,7 @@ function drawWorld(env) {
     addLight(x, y - 2, 8, 26, ore[0] * 0.25 * night, ore[1] * 0.25 * night, ore[2] * 0.25 * night);
   }
   for (const r of G.ruins) {
-    const d = BUILDINGS[r.type]; if (G.occ[r.ty * GW + r.tx]) continue;
+    const d = BD(r.type); if (G.occ[r.ty * GW + r.tx]) continue;
     const big = d.w > 1; const x = (r.tx + d.w / 2) * TILE, y = (r.ty + d.h / 2) * TILE;
     bG.add(x, y, big ? 16 : 8, big ? 16 : 8, SPR[big ? 'rubble2' : 'rubble'].r[0][0], 1, 1, 1, 1, 0, y - 4, 0, 0.6);
   }
@@ -396,12 +415,13 @@ function drawWorld(env) {
       case 'wall': bG.add(b.x, b.y, 8, 8, SPR.wall.r[wallMask(b)][0], hit, hit, hit, 1, 0, b.y + 3, 0, 1); break;
       case 'light':
         bG.add(b.x, b.y, 8, 8, SPR.light.r[0][0], hit, hit, hit, 1, 0, b.y + 3, 0, 1);
-        addLight(b.x, b.y - 2, 22, b.d.lightR, 1.15, 1.1, 0.95);
+        if (b.d.dazzle) addLight(b.x, b.y - 2, 24, b.d.lightR, 1.1, 1.2, 1.35); else addLight(b.x, b.y - 2, 22, b.d.lightR, 1.15, 1.1, 0.95);
         break;
       case 'sentry': case 'flamer': case 'dropsentry':
         bG.add(b.x, b.y, b.type === 'dropsentry' ? 9 : 8, b.type === 'dropsentry' ? 9 : 8, SPR[b.type === 'dropsentry' ? 'pod' : 'tbase'].r[0][0], hit, hit, hit, 1, 0, b.y + 2, 0, 1);
         bG.add(b.x + 0.5, b.y - 1 + 0.5, 9, 9, SPR[b.type === 'flamer' ? 'flamer' : 'sentry'].r[0][fi], hit, hit, hit, 1, 0, b.y + 3, b.type === 'dropsentry' ? 3 : 0, 1);
-        if (night > 0.3 && b.type !== 'flamer') addLight(b.x + Math.cos(b.ang) * 3, b.y + Math.sin(b.ang) * 3, 5, 45, 0.35, 0.05, 0.03, Math.cos(b.ang), Math.sin(b.ang), 0.93, 0.06);
+        if (night > 0.3 && b.d.spot) addLight(b.x + Math.cos(b.ang) * 3, b.y + Math.sin(b.ang) * 3, 6, 75, 1.2 * night, 1.15 * night, 1.0 * night, Math.cos(b.ang), Math.sin(b.ang), 0.95, 0.05);
+        else if (night > 0.3 && b.type !== 'flamer') addLight(b.x + Math.cos(b.ang) * 3, b.y + Math.sin(b.ang) * 3, 5, 45, 0.35, 0.05, 0.03, Math.cos(b.ang), Math.sin(b.ang), 0.93, 0.06);
         if (b.type === 'flamer') addLight(b.x + Math.cos(b.ang) * 4, b.y + Math.sin(b.ang) * 4, 5, 10, 0.6, 0.3, 0.05);
         break;
       case 'mortar': bG.add(b.x, b.y, 16, 16, SPR.mortarbase.r[0][0], hit, hit, hit, 1, 0, dy, 0, 1); break;

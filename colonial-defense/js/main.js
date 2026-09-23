@@ -67,7 +67,7 @@ function frame(now) {
 
 function restartDemo() {
   const fac = pick(Object.keys(FACTIONS).filter(f => Meta.factionOpen(f)));
-  newGame({ demo: true, faction: fac, biome: Meta.data.sel.biome, difficulty: 0, boost: {}, unlocked: { b_flamer: true, b_mortar: true } });
+  newGame({ demo: true, faction: fac, biome: Meta.data.sel.biome, difficulty: 0, boost: {}, unlocked: Object.fromEntries(Object.keys(UPGRADES).filter(() => Math.random() < 0.5).map(k => ['u_' + k, true])) });
   // a ready-made base so the attract mode looks lived-in
   const S = G.map.sectors; const home = S.find(s => s.claimed);
   const nb = [...home.nb].map(i => S[i]).filter(s => !s.hive);

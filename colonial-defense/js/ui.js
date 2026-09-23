@@ -32,28 +32,31 @@ function buildHUD() {
   host.querySelectorAll('.tool').forEach(e => e.remove());
   const icons = { wall: ['wall'], sentry: ['tbase', 'sentry'], light: ['light'], extractor: ['extractor'], habitat: ['habitat'], barracks: ['barracks'], flamer: ['tbase', 'flamer'], mortar: ['mortarbase'], railgun: ['railbase', 'rail'] };
   for (const type of BUILD_ORDER) {
-    const d = BUILDINGS[type];
-    const locked = d.locked && !G.opts.unlocked?.['b_' + type];
-    const el = document.createElement('div'); el.className = 'tool' + (locked ? ' locked' : ''); el.dataset.type = type;
+    const d = BD(type);
+    const el = document.createElement('div'); el.className = 'tool' + (d.mk2 ? ' mk2' : ''); el.dataset.type = type;
     const big = d.w > 1 || type === 'railgun';
     const ic = spriteIcon(icons[type], big ? 2 : 4, type === 'wall' ? 10 : 0, 0);
     el.appendChild(ic);
-    el.insertAdjacentHTML('beforeend', `<span class="k">${d.key}</span><span class="c">${d.cost}</span>`);
-    el.onclick = () => { if (!locked) selectTool(type); };
-    el.onmouseenter = ev => showTip(ev, `<h4>${d.name}</h4>${d.desc}<br><span style="color:var(--warn)">${d.cost} materiel</span>${locked ? '<br><span style="color:var(--bad)">Locked — requisition it between scenarios</span>' : ''}`);
+    el.insertAdjacentHTML('beforeend', `<span class="k">${d.key}</span>${d.mk2 ? '<span class="mk">II</span>' : ''}<span class="c">${d.cost}</span>`);
+    el.onclick = () => selectTool(type);
+    el.onmouseenter = ev => showTip(ev, `<h4>${d.name}</h4>${d.desc}<br><span style="color:var(--warn)">${d.cost} materiel</span>${mkTip(type, d)}`);
     el.onmouseleave = hideTip;
     host.appendChild(el);
   }
   const sp = $('specials'); sp.innerHTML = '';
   for (const id of SPECIAL_ORDER) {
-    const d = SPECIALS[id], s = G.spec[id];
-    const el = document.createElement('div'); el.className = 'tool' + (s.locked ? ' locked' : ''); el.dataset.sp = id;
-    el.innerHTML = `<span class="k">${d.key}</span><span class="ch"></span><div class="glyph">${SPEC_GLYPH[id]}</div><span>${d.name.split(' ')[0]}</span><div class="cdv"></div>`;
+    const d = SD(id), s = G.spec[id];
+    const el = document.createElement('div'); el.className = 'tool' + (d.mk2 ? ' mk2' : ''); el.dataset.sp = id;
+    el.innerHTML = `<span class="k">${d.key}</span>${d.mk2 ? '<span class="mk">II</span>' : ''}<span class="ch"></span><div class="glyph">${SPEC_GLYPH[id]}</div><span>${SPECIALS[id].name.split(' ')[0]}</span><div class="cdv"></div>`;
     el.onclick = () => armSpecial(id);
-    el.onmouseenter = ev => showTip(ev, `<h4>${d.name} [${d.key}]</h4>${d.desc}<br><span style="color:var(--dim)">cooldown ${d.cd > 999 ? 'once per scenario' : Math.round(d.cd * G.cdMult) + 's'}</span>${s.locked ? '<br><span style="color:var(--bad)">Locked — requisition it between scenarios</span>' : ''}`);
+    el.onmouseenter = ev => showTip(ev, `<h4>${d.name} [${d.key}]</h4>${d.desc}<br><span style="color:var(--dim)">cooldown ${d.cd > 999 ? 'once per scenario' : Math.round(d.cd * G.cdMult) + 's'}</span>${mkTip(id, d)}`);
     el.onmouseleave = hideTip;
     sp.appendChild(el);
   }
+}
+function mkTip(k, d) {
+  if (d.mk2) return '<br><span style="color:var(--hi)">Mk II upgrade active</span>';
+  const u = UPGRADES[k]; return u ? `<br><span style="color:var(--dim)">Mk II: ${u.name} — requisition for ${u.cost} scrip</span>` : '';
 }
 function showTip(ev, html) { const t = $('tip'); t.innerHTML = html; t.style.display = 'block'; const r = ev.currentTarget.getBoundingClientRect(); t.style.left = Math.min(innerWidth - 290, r.left) + 'px'; t.style.top = (r.top - t.offsetHeight - 8) + 'px'; }
 function hideTip() { $('tip').style.display = 'none'; }
@@ -65,13 +68,13 @@ function selectTool(type) {
 function armSpecial(id) {
   if (!specialReady(id)) { SFX.play('deny'); return; }
   UI.tool = null;
-  if (SPECIALS[id].noTarget) { useSpecial(id, 0, 0); return; }
+  if (SD(id).noTarget) { useSpecial(id, 0, 0); return; }
   UI.special = UI.special === id ? null : id; SFX.play('click');
 }
 function cancelAll() { UI.tool = null; UI.special = null; UI.drag = null; UI.sel = null; }
 
 function footprint(type, gx, gy) {
-  const d = BUILDINGS[type];
+  const d = BD(type);
   return { tx: Math.floor(gx / TILE - d.w / 2 + 0.5), ty: Math.floor(gy / TILE - d.h / 2 + 0.5), w: d.w, h: d.h };
 }
 function lineTiles(x0, y0, x1, y1) {
@@ -106,9 +109,9 @@ function initInput() {
     if (UI.special) { if (useSpecial(UI.special, p.x, p.y)) { if (!ev.shiftKey || !specialReady(UI.special)) UI.special = null; } return; }
     if (UI.tool) {
       if (G.phase !== 'lull') { UI.tool = null; return; }
-      if (BUILDINGS[UI.tool].drag) { UI.drag = { tx: Math.floor(p.x / TILE), ty: Math.floor(p.y / TILE) }; return; }
+      if (BD(UI.tool).drag) { UI.drag = { tx: Math.floor(p.x / TILE), ty: Math.floor(p.y / TILE) }; return; }
       const f = footprint(UI.tool, p.x, p.y);
-      if (G.res < BUILDINGS[UI.tool].cost) { msg('Not enough materiel', '#f86'); SFX.play('deny'); return; }
+      if (G.res < BD(UI.tool).cost) { msg('Not enough materiel', '#f86'); SFX.play('deny'); return; }
       if (placeBuilding(UI.tool, f.tx, f.ty)) SFX.play('build'); else SFX.play('deny');
       return;
     }
@@ -136,8 +139,8 @@ function initInput() {
     if (k === ' ') { G.paused = !G.paused; ev.preventDefault(); return; }
     if (k === 'F') { callWave(); return; }
     if ((k === 'X' || k === 'DELETE' || k === 'BACKSPACE') && UI.sel) { sellBuilding(UI.sel); UI.sel = null; return; }
-    for (const t of BUILD_ORDER) if (BUILDINGS[t].key === k) { const locked = BUILDINGS[t].locked && !G.opts.unlocked?.['b_' + t]; if (!locked) selectTool(t); return; }
-    for (const id of SPECIAL_ORDER) if (SPECIALS[id].key === k) { armSpecial(id); return; }
+    for (const t of BUILD_ORDER) if (BD(t).key === k) { selectTool(t); return; }
+    for (const id of SPECIAL_ORDER) if (SD(id).key === k) { armSpecial(id); return; }
   });
   $('btnWave').onclick = callWave;
   $('btnRebuild').onclick = () => rebuildAll();
@@ -174,13 +177,12 @@ function updateHUD() {
   document.querySelectorAll('#build .tool').forEach(el => {
     const t = el.dataset.type;
     el.classList.toggle('sel', UI.tool === t);
-    el.classList.toggle('dis', G.res < BUILDINGS[t].cost);
+    el.classList.toggle('dis', G.res < BD(t).cost);
   });
   document.querySelectorAll('#specials .tool').forEach(el => {
     const id = el.dataset.sp, s = G.spec[id];
     el.classList.toggle('sel', UI.special === id);
-    el.classList.toggle('locked', !!s.locked);
-    el.classList.toggle('dis', !s.locked && s.charges <= 0);
+    el.classList.toggle('dis', s.charges <= 0);
     const frac = s.charges < s.max && s.base ? clamp(s.cd / s.base, 0, 1) : 0;
     el.querySelector('.cdv').style.height = (s.charges > 0 ? 0 : frac * 100) + '%';
     const ch = el.querySelector('.ch'), txt = s.max > 1 ? String(s.charges) : '';
@@ -243,7 +245,7 @@ function drawOverlay() {
     }
     // build ghost
     if (UI.tool && UI.mouse.in) {
-      const d = BUILDINGS[UI.tool];
+      const d = BD(UI.tool);
       let cells = [];
       if (UI.drag) cells = lineTiles(UI.drag.tx, UI.drag.ty, Math.floor(UI.mouse.x / TILE), Math.floor(UI.mouse.y / TILE)).map(([x, y]) => ({ tx: x, ty: y, w: 1, h: 1 }));
       else cells = [footprint(UI.tool, UI.mouse.x, UI.mouse.y)];
@@ -305,14 +307,14 @@ function drawOverlay() {
   // special targeting
   if (inGame && UI.special && UI.mouse.in) {
     const id = UI.special, mx = UI.mouse.x, my = UI.mouse.y;
-    const R = { flare: 110, orbital: 38, drop: 14, nuke: 170 }[id];
+    const R = { flare: G.up.flare ? 170 : 110, orbital: G.up.orbital ? 60 : 38, drop: G.up.drop ? 28 : 14, nuke: 170 }[id];
     c.strokeStyle = id === 'nuke' ? 'rgba(255,60,40,0.9)' : 'rgba(255,200,80,0.9)'; c.lineWidth = 0.6;
     if (R) { c.setLineDash(id === 'flare' ? [2, 2] : []); c.beginPath(); c.arc(mx, my, R, 0, TAU); c.stroke(); c.setLineDash([]); }
     c.beginPath(); c.moveTo(mx - 5, my); c.lineTo(mx - 2, my); c.moveTo(mx + 2, my); c.lineTo(mx + 5, my); c.moveTo(mx, my - 5); c.lineTo(mx, my - 2); c.moveTo(mx, my + 2); c.lineTo(mx, my + 5); c.stroke();
     if (id === 'napalm' || id === 'gunship') {
       const hq = G.buildings.find(b => b.type === 'hq'); let dx = mx - hq.x, dy = my - hq.y; const l = Math.hypot(dx, dy) || 1; dx /= l; dy /= l;
-      const len = id === 'napalm' ? 140 : 110;
-      c.lineWidth = id === 'napalm' ? 4 : 3; c.strokeStyle = 'rgba(255,140,40,0.35)';
+      const len = id === 'napalm' ? 140 : G.up.gunship ? 130 : 110;
+      c.lineWidth = id === 'napalm' ? (G.up.napalm ? 9 : 4) : 3; c.strokeStyle = 'rgba(255,140,40,0.35)';
       c.beginPath(); c.moveTo(mx - dx * len / 2, my - dy * len / 2); c.lineTo(mx + dx * len / 2, my + dy * len / 2); c.stroke();
     }
     if (id === 'nuke') { c.fillStyle = 'rgba(255,60,40,0.9)'; c.font = '6px "Share Tech Mono", monospace'; c.textAlign = 'center'; c.fillText('FRIENDLY FIRE RADIUS', mx, my - R - 3); }

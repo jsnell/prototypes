@@ -39,14 +39,20 @@ right-click / `Esc` cancel · `X` sell selected · `F` call wave · `Space` paus
 
 ## Content
 
+Every building and stratagem is available from the first scenario. Scrip buys
+**Mk II upgrades**, which change how each one plays, not just its numbers:
+
 | | Start | Requisition (meta-unlock) |
 |---|---|---|
-| Factions | Xeno Hive (acid blood damages your walls) | Husk Plague (hordes plus bloaters that explode), Chitin Swarm (tiny mites; leapers jump walls; burrowers surface inside your base) |
-| Biomes | Barren Moon | Ice Shelf, Fungal Jungle (glowing flora), Ash Volcano (lava seams) |
-| Threat | Recruit | Veteran → Hardened → Nightmare → *Game Over, Man* (more enemies, more HP, elites) |
-| Buildings | Barricade, Sentry Gun, Floodlight, Extractor, Hab Dome, Barracks | Incinerator, Mortar Pit, Rail Battery |
-| Stratagems | Flare, Tracker Pulse, Orbital Lance | Napalm Run, Sentry Drop, Gunship Strafe, Dust Off (a nuke that also hits your own base) |
+| Factions | Xeno Hive (acid blood eats walls) | Husk Plague (hordes plus exploding bloaters), Chitin Swarm (mites; leapers jump walls; burrowers surface inside your base) |
+| Biomes | Barren Moon | Ice Shelf, Fungal Jungle, Ash Volcano |
+| Threat | Recruit | Veteran → Hardened → Nightmare → *Game Over, Man* |
+| Buildings | Barricade, Sentry Gun, Floodlight, Extractor, Hab Dome, Barracks, Incinerator, Mortar Pit, Rail Battery | Mk II: acid-proof plasteel walls · twin-link sentries with spotlights (never fire blind) · arc floodlights that dazzle and slow · deep-core extractors · arcology domes · smartgun squads · napalm projectors (burning ground) · cluster mortars · overcharged rails (pierced targets detonate) |
+| Stratagems | Flare, Tracker Pulse, Orbital Lance, Napalm Run, Sentry Drop, Gunship Strafe, Dust Off (nuke) | Mk II: Starshell (5 charges, bigger and longer) · Target Designator (tagged hostiles take +50% damage) · Orbital Barrage (3 lances) · Double Napalm Run · Sentry Drop Trio · AC-130 Strafe · Second Warhead |
 | Boosters | – | Supply Cache I–III, Forward Survey, Prefab Defenses, Orbital Relay |
+
+Old saves are refunded the scrip they spent on the removed building and
+stratagem unlocks.
 
 **Scrip** = (minutes survived × 6 + nights held × 8 + evac bonus) × threat
 multiplier × faction multiplier. It is saved in `localStorage`.

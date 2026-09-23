@@ -29,9 +29,14 @@ function newGame(opts) {
     spec: {}, msgs: [], over: false, result: null, demo: !!opts.demo,
     sunAng: 0.6, decalTick: 0, sfxT: {},
   };
+  // effective defs for this scenario, with owned Mk II upgrades applied
+  G.up = {}; G.B = {}; G.SP = {};
+  for (const k in UPGRADES) if (opts.unlocked?.['u_' + k]) G.up[k] = true;
+  for (const k in BUILDINGS) { const d = G.B[k] = { ...BUILDINGS[k] }; if (G.up[k]) { UPGRADES[k].b(d); d.name = UPGRADES[k].name; d.desc = UPGRADES[k].desc; d.mk2 = true; } }
+  for (const k in SPECIALS) { const d = G.SP[k] = { ...SPECIALS[k] }; if (G.up[k]) { UPGRADES[k].s(d); d.name = UPGRADES[k].name; d.desc = UPGRADES[k].desc; d.mk2 = true; } }
   for (const id of SPECIAL_ORDER) {
-    const d = SPECIALS[id];
-    G.spec[id] = { cd: 0, charges: d.charges || 1, max: d.charges || 1, locked: !!(d.locked && !opts.unlocked?.['s_' + id]) };
+    const d = SD(id);
+    G.spec[id] = { cd: 0, charges: d.charges || 1, max: d.charges || 1 };
   }
   G.cdMult = opts.boost?.relay ? 0.75 : 1;
   placeBuilding('hq', map.hq.x, map.hq.y, true);
@@ -44,6 +49,9 @@ function newGame(opts) {
   G.postsDirty = true;
   return G;
 }
+
+const BD = type => G.B[type];
+const SD = id => G.SP[id];
 
 // ---------------- messages ----------------
 function msg(text, col = '#cfe') { G.msgs.push({ text, col, t: 4 }); if (G.msgs.length > 5) G.msgs.shift(); }
@@ -73,7 +81,7 @@ function frontierGaps() {
 
 // ---------------- buildings ----------------
 function canPlace(type, tx, ty) {
-  const d = BUILDINGS[type];
+  const d = BD(type);
   if (G.phase !== 'lull' && type !== 'hq' && type !== 'dropsentry') return false;
   let ore = 0;
   for (let y = ty; y < ty + d.h; y++) for (let x = tx; x < tx + d.w; x++) {
@@ -92,7 +100,7 @@ function canPlace(type, tx, ty) {
   return true;
 }
 function placeBuilding(type, tx, ty, free = false) {
-  const d = BUILDINGS[type];
+  const d = BD(type);
   if (!free) {
     if (!canPlace(type, tx, ty)) return null;
     if (G.res < d.cost) return null;
@@ -124,20 +132,20 @@ function destroyBuilding(b) {
   stamp('scorch', b.x, b.y, 12 + b.w * 10, 0, 0, 0, 0.7, Math.random() * TAU);
   if (b.type === 'hq') { gameOver(false); return; }
   if (b.type !== 'dropsentry') { G.ruins.push({ type: b.type, tx: b.tx, ty: b.ty }); G.lost++; }
-  if (b.type !== 'wall' && b.type !== 'dropsentry') msg(BUILDINGS[b.type].name + ' destroyed', '#f86');
+  if (b.type !== 'wall' && b.type !== 'dropsentry') msg(BD(b.type).name + ' destroyed', '#f86');
 }
 function sellBuilding(b) {
   if (G.phase !== 'lull' || b.type === 'hq') return;
   G.res += Math.floor(b.d.cost * 0.6 * b.hp / b.maxHp);
   removeBuilding(b); SFX.play('sell');
 }
-function rebuildCost() { return G.ruins.reduce((s, r) => s + BUILDINGS[r.type].cost, 0); }
+function rebuildCost() { return G.ruins.reduce((s, r) => s + BD(r.type).cost, 0); }
 function rebuildAll() {
   if (G.phase !== 'lull') return;
   let n = 0;
   G.ruins = G.ruins.filter(r => {
     if (!canPlace(r.type, r.tx, r.ty)) return !G.occ[r.ty * GW + r.tx] && G.map.sectors[G.map.sectorOf[r.ty * GW + r.tx]].claimed;
-    if (G.res < BUILDINGS[r.type].cost) return true;
+    if (G.res < BD(r.type).cost) return true;
     placeBuilding(r.type, r.tx, r.ty); n++; return false;
   });
   if (n) SFX.play('build');
@@ -162,6 +170,13 @@ function computeIncome() {
 const heapF = new Heap(GW * GH);
 function computeFlow() {
   G.flowDirty = false;
+  G.dazzle = new Uint8Array(GW * GH);
+  for (const b of G.buildings) if (b.d.dazzle) {
+    const r = b.d.lightR * 0.8 / TILE, cx = b.x / TILE, cy = b.y / TILE;
+    for (let y = Math.max(0, Math.floor(cy - r)); y <= Math.min(GH - 1, Math.ceil(cy + r)); y++)
+      for (let x = Math.max(0, Math.floor(cx - r)); x <= Math.min(GW - 1, Math.ceil(cx + r)); x++)
+        if (dist2(x + 0.5, y + 0.5, cx, cy) < r * r) G.dazzle[y * GW + x] = 1;
+  }
   flowField(G.dist, G.dirX, G.dirY, 22);
   const tmp = new Float32Array(GW * GH);
   flowField(tmp, G.ldirX, G.ldirY, 0.5);
@@ -374,6 +389,7 @@ function nearestEnemy(x, y, r, minR = 0) {
 // ---------------- damage & gore ----------------
 function hurtEnemy(e, dmg, dx = 0, dy = 0, src) {
   if (e.dead) return;
+  if (e.tagged > 0 && G.up.tracker) dmg *= 1.5;
   e.hp -= dmg;
   const bl = BLOOD[G.fac.blood];
   const n = Math.min(4, 1 + (dmg / 6) | 0);
@@ -397,7 +413,7 @@ function killEnemy(e, dx, dy) {
     const tx = (e.x / TILE) | 0, ty = (e.y / TILE) | 0;
     for (let y = ty - 1; y <= ty + 1; y++) for (let x = tx - 1; x <= tx + 1; x++) {
       if (x < 0 || y < 0 || x >= GW || y >= GH) continue;
-      const b = G.occ[y * GW + x]; if (b && dist2(b.x, b.y, e.x, e.y) < (6 + b.w * 4) ** 2) { hurtBuilding(b, 5 * sz); if (Math.random() < 0.5) G.parts.spawn(P_SMOKE, e.x, e.y, 2, rnd(-3, 3), rnd(-3, 3), 8, 3, 0.4, 0.5, 0.2, 0.4); }
+      const b = G.occ[y * GW + x]; if (b && !b.d.acidProof && dist2(b.x, b.y, e.x, e.y) < (6 + b.w * 4) ** 2) { hurtBuilding(b, 5 * sz); if (Math.random() < 0.5) G.parts.spawn(P_SMOKE, e.x, e.y, 2, rnd(-3, 3), rnd(-3, 3), 8, 3, 0.4, 0.5, 0.2, 0.4); }
     }
   }
   if (e.td.beh === 'explode') bloaterBurst(e);
@@ -559,7 +575,7 @@ function updateEnemies(dt) {
         else if (d2 <= 0.0001) { sx += rnd(-1, 1); sy += rnd(-1, 1); }
       }
     }
-    const sp = e.speed;
+    const sp = e.speed * (G.dazzle && G.dazzle[t] && G.dayness < 0.5 ? 0.7 : 1);
     let tvx = dx * sp + sx * sp * 1.4, tvy = dy * sp + sy * sp * 1.4;
     e.vx += (tvx - e.vx) * Math.min(1, dt * 8); e.vy += (tvy - e.vy) * Math.min(1, dt * 8);
     let nx = e.x + e.vx * dt, ny = e.y + e.vy * dt;
@@ -619,7 +635,7 @@ function fireWeapon(b, tg) {
   const mx = b.x + ca * mz, my = b.y + sa * mz - 3;
   if (d.weapon === 'mg') {
     b.cd = 1 / d.rate * rnd(0.85, 1.15);
-    const lit = lightAt(tg.x, tg.y) > 0.28 || tg.tagged > 0;
+    const lit = d.spot || lightAt(tg.x, tg.y) > 0.28 || tg.tagged > 0;
     const hit = Math.random() < (lit ? 0.9 : 0.42);
     const ex = hit ? tg.x : tg.x + rnd(-10, 10), ey = hit ? tg.y : tg.y + rnd(-10, 10);
     tracer(mx, my, ex, ey, 1, 0.75, 0.35);
@@ -637,6 +653,7 @@ function fireWeapon(b, tg) {
       P.spawn(P_FIRE, mx, my, 3, Math.cos(a) * s, Math.sin(a) * s, rnd(0, 10), rnd(1.5, 3), 1, 0.65, 0.25, 1, 0.35);
     }
     if (Math.random() < 0.3) addLight(b.x + ca * 14, b.y + sa * 14, 5, 55, 1.6, 0.8, 0.25);
+    if (d.napalm && Math.random() < 0.04) napalmPatch(tg.x + rnd(-4, 4), tg.y + rnd(-4, 4), Math.random() < 0.3, rnd(4, 6));
     forNear(b.x, b.y, d.range, e => {
       const a = Math.atan2(e.y - b.y, e.x - b.x);
       if (Math.abs(Math.atan2(Math.sin(a - b.ang), Math.cos(a - b.ang))) < 0.42) { hurtEnemy(e, d.dmg, 0, 0); e.burn = 3.5; }
@@ -646,7 +663,7 @@ function fireWeapon(b, tg) {
     b.cd = 1 / d.rate;
     const lead = Math.hypot(tg.x - b.x, tg.y - b.y) / 140 + 0.8;
     const tx = tg.x + tg.vx * lead * 0.8 + rnd(-6, 6), ty = tg.y + tg.vy * lead * 0.8 + rnd(-6, 6);
-    G.projs.push({ kind: 'shell', x: b.x, y: b.y, sx: b.x, sy: b.y - 5, tx, ty, t: 0, T: lead, dmg: d.dmg, r: d.splash });
+    G.projs.push({ kind: 'shell', x: b.x, y: b.y, sx: b.x, sy: b.y - 5, tx, ty, t: 0, T: lead, dmg: d.dmg, r: d.splash, cluster: d.cluster });
     P.spawn(P_FLASH, b.x, b.y - 6, 6, 0, 0, 0, 12, 1, 0.7, 0.3, 1);
     for (let k = 0; k < 6; k++) P.spawn(P_SMOKE, b.x, b.y - 4, 6, rnd(-6, 6), rnd(-6, 6), rnd(10, 20), rnd(3, 5), 0.3, 0.3, 0.3, 0.5);
     addLight(b.x, b.y, 8, 50, 2, 1.2, 0.5);
@@ -655,12 +672,13 @@ function fireWeapon(b, tg) {
     b.cd = 1 / d.rate;
     const L = d.range, ex = b.x + ca * L, ey = b.y + sa * L;
     // everything along the line
+    let pierced = 0;
     for (const e of G.enemies) {
       if (e.dead || e.burrowT > 0) continue;
       const px = e.x - b.x, py = e.y - b.y, along = px * ca + py * sa;
       if (along < 0 || along > L) continue;
       const perp = Math.abs(-px * sa + py * ca);
-      if (perp < e.rad + 2) { hurtEnemy(e, d.dmg, ca, sa); for (let k = 0; k < 3; k++) P.spawn(P_SPARK, e.x, e.y, 3, ca * rnd(40, 120) + rnd(-30, 30), sa * rnd(40, 120) + rnd(-30, 30), rnd(10, 40), 1, 0.5, 0.8, 1, 1); }
+      if (perp < e.rad + 2) { if (d.detonate && pierced++ < 8) { const ex2 = e.x, ey2 = e.y; setTimeoutG(0.05 + pierced * 0.03, () => explosion(ex2, ey2, 10, 30, false, { quiet: pierced > 1 })); } hurtEnemy(e, d.dmg, ca, sa); for (let k = 0; k < 3; k++) P.spawn(P_SPARK, e.x, e.y, 3, ca * rnd(40, 120) + rnd(-30, 30), sa * rnd(40, 120) + rnd(-30, 30), rnd(10, 40), 1, 0.5, 0.8, 1, 1); }
     }
     G.fx.push({ kind: 'beam', x1: mx, y1: my, x2: ex, y2: ey, t: 0, life: 0.35 });
     P.spawn(P_FLASH, mx, my, 6, 0, 0, 0, 22, 0.5, 0.8, 1, 1);
@@ -684,7 +702,7 @@ function tracer(x1, y1, x2, y2, r, g, b, w = 1) {
 // ---------------- marines ----------------
 function spawnMarine(b) {
   if (G.postsDirty) computePosts();
-  const m = { x: b.x + rnd(-4, 4), y: b.y + 6, hp: 30, home: b, post: G.marines.length % G.posts.length, ang: 0, cd: 0, burst: 0, target: null, scanT: 0, walk: 0, ox: rnd(-7, 7), oy: rnd(-7, 7), dead: false };
+  const m = { x: b.x + rnd(-4, 4), y: b.y + 6, hp: b.d.smart ? 50 : 30, smart: !!b.d.smart, home: b, post: G.marines.length % G.posts.length, ang: 0, cd: 0, burst: 0, target: null, scanT: 0, walk: 0, ox: rnd(-7, 7), oy: rnd(-7, 7), dead: false };
   G.marines.push(m);
 }
 function updateMarines(dt) {
@@ -703,7 +721,7 @@ function updateMarines(dt) {
         if (m.burst <= 0) m.burst = 4;
         m.burst--; m.cd = m.burst > 0 ? 0.075 : rnd(0.45, 0.8);
         const ca = Math.cos(m.ang), sa = Math.sin(m.ang);
-        const lit = lightAt(tg.x, tg.y) > 0.28 || tg.tagged > 0;
+        const lit = m.smart || lightAt(tg.x, tg.y) > 0.28 || tg.tagged > 0;
         const hit = Math.random() < (lit ? 0.85 : 0.5);
         const mx = m.x + ca * 3, my = m.y + sa * 3 - 2;
         tracer(mx, my, hit ? tg.x : tg.x + rnd(-8, 8), hit ? tg.y : tg.y + rnd(-8, 8), 1, 0.85, 0.5);
@@ -748,7 +766,10 @@ function updateProjs(dt) {
     if (p.kind === 'shell') {
       p.z = Math.sin(k * Math.PI) * (20 + p.T * 30);
       if (Math.random() < 0.6) P.spawn(P_SMOKE, p.x, p.y, p.z, 0, 0, 0, 2, 0.4, 0.4, 0.4, 0.3);
-      if (k >= 1) { p.done = true; explosion(p.tx, p.ty, p.r, p.dmg, false); }
+      if (k >= 1) {
+        p.done = true; explosion(p.tx, p.ty, p.r, p.dmg, false);
+        if (p.cluster) for (let i = 0; i < 4; i++) { const a = i / 4 * TAU + rnd(-0.4, 0.4), r = rnd(12, 22), bx = p.tx + Math.cos(a) * r, by = p.ty + Math.sin(a) * r; setTimeoutG(0.12 + i * 0.07, () => explosion(bx, by, 9, 16, false, { quiet: i > 0 })); }
+      }
     } else if (p.kind === 'spit') {
       p.z = Math.sin(k * Math.PI) * 12;
       P.spawn(P_GLOW, p.x, p.y, p.z, 0, 0, 0, 2, p.col[0], p.col[1], p.col[2], 0.8);
