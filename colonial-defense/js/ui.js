@@ -179,11 +179,12 @@ function updateHUD() {
   document.querySelectorAll('#specials .tool').forEach(el => {
     const id = el.dataset.sp, s = G.spec[id];
     el.classList.toggle('sel', UI.special === id);
-    el.classList.toggle('locked', s.locked);
+    el.classList.toggle('locked', !!s.locked);
     el.classList.toggle('dis', !s.locked && s.charges <= 0);
     const frac = s.charges < s.max && s.base ? clamp(s.cd / s.base, 0, 1) : 0;
     el.querySelector('.cdv').style.height = (s.charges > 0 ? 0 : frac * 100) + '%';
-    el.querySelector('.ch').textContent = s.max > 1 ? s.charges : '';
+    const ch = el.querySelector('.ch'), txt = s.max > 1 ? String(s.charges) : '';
+    if (ch.textContent !== txt) ch.textContent = txt;
   });
   $('msgs').innerHTML = G.msgs.map(m => `<div style="color:${m.col};opacity:${Math.min(1, m.t)}">${m.text}</div>`).join('');
   const sel = $('sel');

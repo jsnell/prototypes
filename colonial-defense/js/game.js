@@ -31,7 +31,7 @@ function newGame(opts) {
   };
   for (const id of SPECIAL_ORDER) {
     const d = SPECIALS[id];
-    G.spec[id] = { cd: 0, charges: d.charges || 1, max: d.charges || 1, locked: d.locked && !opts.unlocked?.['s_' + id] };
+    G.spec[id] = { cd: 0, charges: d.charges || 1, max: d.charges || 1, locked: !!(d.locked && !opts.unlocked?.['s_' + id]) };
   }
   G.cdMult = opts.boost?.relay ? 0.75 : 1;
   placeBuilding('hq', map.hq.x, map.hq.y, true);
