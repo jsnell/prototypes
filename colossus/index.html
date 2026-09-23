@@ -1,0 +1,44 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>COLOSSUS vs the Swarm</title>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=1">
+<script type="importmap">{ "imports": { "three": "./vendor/three.module.min.js" } }</script>
+</head>
+<body>
+<canvas id="c"></canvas>
+<div id="labels"></div>
+<div id="selbox"></div>
+<div id="hud"></div>
+
+<div id="title" class="hidden">
+  <div class="panel">
+    <div class="logo">COLOSSUS <span>vs</span> <em>the Swarm</em></div>
+    <p class="pitch">One enormous tank with six systems and not enough power to run them all.<br>A horde of tiny, single-minded vehicles that only win together.</p>
+    <div class="sides">
+      <button class="side tank" data-side="tank">
+        <div class="big">Play as the Colossus</div>
+        <div class="desc">Juggle reactor power between treads, main gun, flak, shields and repair drones. Swing shields to where it hurts. Don't cook the reactor. Roll over everything.</div>
+      </button>
+      <button class="side swarm" data-side="swarm">
+        <div class="big">Play as the Swarm</div>
+        <div class="desc">Build Zippers, Plinkers, Whizzers, Lobbers, Boomers and Fuzzers. Flank, surround, jam its flak, then send the Boomers in.</div>
+      </button>
+    </div>
+    <div class="row">
+      <div class="seg"><span>AI difficulty</span><button data-diff="easy">Easy</button><button data-diff="normal">Normal</button><button data-diff="hard">Hard</button></div>
+      <button id="title-watch" class="ghost">Watch AI vs AI</button>
+      <button id="title-help" class="ghost">How to play</button>
+    </div>
+    <div class="foot">Mouse wheel zooms · right-drag pans · Q/E rotate · <span id="build-tag"></span></div>
+  </div>
+</div>
+
+<script type="module" src="src/main.js?v=1"></script>
+</body>
+</html>
