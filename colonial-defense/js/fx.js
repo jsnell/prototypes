@@ -80,12 +80,12 @@ class Particles {
         case P_EMBER: bE.add(Math.round(x) + 0.5, Math.round(y - z) + 0.5, 1, 1, px, 1, 0.4, 0.1, f * (0.5 + 0.5 * Math.sin(G.t * 20 + i)), 0, 0, 0, 3); break;
         case P_FIRE: {
           const hot = f;  // 1 = fresh
-          const r = 1, g = 0.25 + hot * 0.6, b = 0.05 + hot * hot * 0.5;
-          bE.add(x, y - z, s * 2.4, s * 2.4, soft, r, g, b, f * this.a[i], 0, 0, 0, 2.5 + hot * 2);
-          if (hot > 0.4) bE.add(Math.round(x) + 0.5, Math.round(y - z) + 0.5, 1, 1, px, 1, 0.9, 0.6, 1, 0, 0, 0, 3);
+          const r = 1, g = 0.18 + hot * 0.5, b = 0.03 + hot * hot * 0.3;
+          bE.add(x, y - z, s * 1.7, s * 1.7, soft, r, g, b, f * this.a[i], 0, 0, 0, 0.45 + hot * 0.9);
+          if (hot > 0.55) bE.add(Math.round(x) + 0.5, Math.round(y - z) + 0.5, 1, 1, px, 1, 0.75, 0.4, 1, 0, 0, 0, 1.6);
           break;
         }
-        case P_FLASH: bE.add(x, y - z, s * 2, s * 2, s > 20 ? soft32 : soft, this.r[i], this.g[i], this.b[i], f, 0, 0, 0, 5); break;
+        case P_FLASH: bE.add(x, y - z, s * 2, s * 2, s > 20 ? soft32 : soft, this.r[i], this.g[i], this.b[i], f, 0, 0, 0, 2.2); break;
         case P_GLOW: bE.add(x, y - z, s * 3, s * 3, soft, this.r[i], this.g[i], this.b[i], f, 0, 0, 0, 3); bE.add(Math.round(x) + 0.5, Math.round(y - z) + 0.5, 1, 1, px, this.r[i], this.g[i], this.b[i], 1, 0, 0, 0, 3); break;
         case P_RING: bE.add(x, y, s * 2, s * 2 * 0.8, ring, this.r[i], this.g[i], this.b[i], f * this.a[i], 0, 0, 0, 3); break;
         case P_TRACER: {

@@ -43,7 +43,7 @@ const FACTIONS = {
       warrior: { sprite: 'warrior', hp: 55,  speed: 23, dmg: 12, rate: 1.2, cost: 4,   w: 10, from: 2 },
       spitter: { sprite: 'spitter', hp: 26,  speed: 19, dmg: 9,  rate: 0.7, cost: 3,   w: 7,  from: 3, beh: 'spit', range: 58 },
       crusher: { sprite: 'crusher', hp: 520, speed: 13, dmg: 70, rate: 0.8, cost: 30,  w: 2,  from: 5, bldMult: 2.5, big: true },
-      queen:   { sprite: 'queen',   hp: 9000,speed: 8,  dmg: 160,rate: 0.7, cost: 0,   w: 0,  boss: true, beh: 'boss', minion: 'drone', big: true },
+      queen:   { name: 'HIVE QUEEN', sprite: 'queen',   hp: 9000,speed: 8,  dmg: 160,rate: 0.7, cost: 0,   w: 0,  boss: true, beh: 'boss', minion: 'drone', big: true },
     },
   },
   husk: {
@@ -54,7 +54,7 @@ const FACTIONS = {
       runner:  { sprite: 'runner',   hp: 10,  speed: 42, dmg: 4,  rate: 1.6, cost: 1,   w: 14, from: 1 },
       bloater: { sprite: 'bloater',  hp: 40,  speed: 11, dmg: 90, rate: 1.0, cost: 5,   w: 5,  from: 3, beh: 'explode', radius: 20 },
       brute:   { sprite: 'brute',    hp: 650, speed: 12, dmg: 60, rate: 0.7, cost: 30,  w: 2,  from: 5, bldMult: 2, big: true },
-      abom:    { sprite: 'abom',     hp: 11000,speed: 7, dmg: 200,rate: 0.6, cost: 0,   w: 0,  boss: true, beh: 'boss', minion: 'shambler', big: true },
+      abom:    { name: 'ABOMINATION', sprite: 'abom',     hp: 11000,speed: 7, dmg: 200,rate: 0.6, cost: 0,   w: 0,  boss: true, beh: 'boss', minion: 'shambler', big: true },
     },
   },
   swarm: {
@@ -65,12 +65,12 @@ const FACTIONS = {
       leaper:  { sprite: 'leaper',  hp: 24,  speed: 28, dmg: 8,  rate: 1.2, cost: 3,   w: 8,  from: 2, beh: 'leap' },
       burrower:{ sprite: 'burrower',hp: 60,  speed: 16, dmg: 14, rate: 1.0, cost: 6,   w: 4,  from: 4, beh: 'burrow' },
       spiker:  { sprite: 'spiker',  hp: 30,  speed: 18, dmg: 8,  rate: 0.8, cost: 3,   w: 6,  from: 3, beh: 'spit', range: 64 },
-      brood:   { sprite: 'brood',   hp: 8000,speed: 8,  dmg: 120,rate: 0.8, cost: 0,   w: 0,  boss: true, beh: 'boss', minion: 'mite', big: true },
+      brood:   { name: 'BROODMOTHER', sprite: 'brood',   hp: 8000,speed: 8,  dmg: 120,rate: 0.8, cost: 0,   w: 0,  boss: true, beh: 'boss', minion: 'mite', big: true },
     },
   },
 };
 const BLOOD = {
-  acid:  { col: [0.55, 0.78, 0.08], decal: [0.35, 0.5, 0.05], emis: [0.25, 0.5, 0.02], glow: 1 },
+  acid:  { col: [0.32, 0.42, 0.04], decal: [0.16, 0.22, 0.02], emis: [0.12, 0.26, 0.01], glow: 1 },
   red:   { col: [0.45, 0.02, 0.02], decal: [0.28, 0.02, 0.02], emis: null, glow: 0 },
   ichor: { col: [0.15, 0.35, 0.75], decal: [0.08, 0.16, 0.35], emis: [0.02, 0.1, 0.3], glow: 0.5 },
   human: { col: [0.5, 0.03, 0.03], decal: [0.3, 0.02, 0.02], emis: null, glow: 0 },

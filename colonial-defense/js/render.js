@@ -86,7 +86,7 @@ void main(){
   vec4 dc = texelFetch(uDCol, fc, 0); vec4 de = texelFetch(uDEmi, fc, 0);
   vec3 alb = mix(a.rgb, dc.rgb, clamp(dc.a, 0.0, 1.0));
   float spec = mix(e.a, 0.9, clamp(dc.a, 0.0, 1.0) * 0.6);
-  oAlb = vec4(alb, 1.0); oNrm = n; oEmi = vec4(e.rgb + clamp(de.rgb, 0.0, 0.35), spec);
+  oAlb = vec4(alb, 1.0); oNrm = n; oEmi = vec4(e.rgb + clamp(de.rgb, 0.0, 0.14), spec);
 }`;
 
 const FS_AMBIENT = SH_COMMON + `

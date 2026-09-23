@@ -124,7 +124,7 @@ function destroyBuilding(b) {
   stamp('scorch', b.x, b.y, 12 + b.w * 10, 0, 0, 0, 0.7, Math.random() * TAU);
   if (b.type === 'hq') { gameOver(false); return; }
   if (b.type !== 'dropsentry') { G.ruins.push({ type: b.type, tx: b.tx, ty: b.ty }); G.lost++; }
-  if (b.type !== 'wall') msg(BUILDINGS[b.type].name + ' destroyed', '#f86');
+  if (b.type !== 'wall' && b.type !== 'dropsentry') msg(BUILDINGS[b.type].name + ' destroyed', '#f86');
 }
 function sellBuilding(b) {
   if (G.phase !== 'lull' || b.type === 'hq') return;
@@ -290,6 +290,7 @@ function startWave() {
   G.phase = 'night';
   G.spawnQ = buildWave(G.wave);
   G.spawnTotal = G.spawnQ.length;
+  G.spawnMarks = [...new Set(G.spawnQ.filter(s => !s.burrow).map(s => s.t))].map(t => ({ x: (t % GW + 0.5) * TILE, y: (((t / GW) | 0) + 0.5) * TILE }));
   G.spawnDur = 22 + G.wave * 3.5;
   G.spawnT = 0; G.waveT = 0;
   msg(G.wave === WAVES ? 'FINAL WAVE — ' + G.spawnQ.length + ' contacts' : 'WAVE ' + G.wave + ' — ' + G.spawnQ.length + ' contacts inbound', '#f66');
@@ -342,7 +343,7 @@ function updateSpawning(dt) {
       x = (s.t % GW + 0.5) * TILE + rnd(-3, 3); y = (((s.t / GW) | 0) + 0.5) * TILE + rnd(-3, 3);
     }
     const e = spawnEnemy(s.type, x, y, { burrow: s.burrow });
-    if (s.boss && e) { msg('!!! ' + G.fac.types[s.type].sprite.toUpperCase() + ' DETECTED !!!', '#f44'); SFX.play('screech', x, 1); G.shake = 4; }
+    if (s.boss && e) { msg('!!! ' + G.fac.types[s.type].name + ' DETECTED !!!', '#f44'); SFX.play('screech', x, 1); G.shake = 4; }
   }
 }
 
@@ -789,10 +790,11 @@ function fxLights() {
 // ---------------- main step ----------------
 function step(dt) {
   if (G.paused) return;
+  if (G.over) G.overT += dt;
   dt *= G.slowmo;
   G.t += dt;
   if (G.flowDirty) computeFlow();
-  if (G.over) { G.overT += dt; G.slowmo = Math.min(1, G.slowmo + dt * 0.3); }
+  if (G.over) G.slowmo = Math.min(1, G.slowmo + dt * 0.3);
   // phase
   if (!G.over) {
     if (G.phase === 'lull') {

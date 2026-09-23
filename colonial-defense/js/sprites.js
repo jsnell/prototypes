@@ -86,8 +86,9 @@ function buildAtlas() {
   makeSprite('px', 1, 1, (p) => p.L(1, [1, 1, 1], 0.3));
   makeSprite('px2', 2, 2, (p) => p.L(1, [1, 1, 1], 0.3));
   makeSprite('gib', 3, 3, (p, u, v) => { const d = ell(u, v, 0, 0, 1.5, 1.2); if (d < 1) p.L(dome(d, 1.5), [1, 1, 1], 0.6); });
-  makeSoft('soft', 16, 16, (x, y) => Math.exp(-(x * x + y * y) * 4));
-  makeSoft('soft32', 32, 32, (x, y) => Math.exp(-(x * x + y * y) * 3.5));
+  const gauss = k => (x, y) => { const r2 = x * x + y * y; return r2 >= 1 ? 0 : (Math.exp(-r2 * k) - Math.exp(-k)) / (1 - Math.exp(-k)); };
+  makeSoft('soft', 16, 16, gauss(4));
+  makeSoft('soft32', 32, 32, gauss(3.5));
   makeSoft('ring', 32, 32, (x, y) => { const r = Math.hypot(x, y); return Math.exp(-Math.pow((r - 0.85) / 0.08, 2)); });
   makeSoft('line', 8, 4, (x, y) => Math.exp(-y * y * 3) * (1 - Math.pow(Math.abs(x), 6)));
   makeSoft('dot', 3, 3, (x, y) => (Math.abs(x) < 0.5 && Math.abs(y) < 0.5) ? 1 : 0.35);

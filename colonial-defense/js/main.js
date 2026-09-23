@@ -85,13 +85,13 @@ function startGame() {
   awarded = null;
   newGame(Meta.gameOpts());
   initWeather();
-  UI.screen = 'game'; cancelAll();
+  UI.screen = 'game'; cancelAll(); document.body.classList.remove('inmenu');
   $('menu').style.display = 'none'; $('end').style.display = 'none';
   buildHUD(); updateHUD();
   msg('Claim sectors, wall the gaps, light the dark. Night falls in ' + FIRST_LULL + 's.', '#cfe');
 }
 function showMenu() {
-  UI.screen = 'menu';
+  UI.screen = 'menu'; document.body.classList.add('inmenu');
   $('end').style.display = 'none'; $('menu').style.display = 'block';
   buildMenu();
   restartDemo();

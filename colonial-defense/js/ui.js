@@ -207,10 +207,12 @@ function drawOverlay() {
   const lull = G.phase === 'lull';
   if (inGame && lull) {
     // territory border
+    c.fillStyle = 'rgba(125,255,200,0.045)';
+    for (let t = 0; t < GW * GH; t++) if (sec[so[t]].claimed && tiles[t] !== T_ROCK) c.fillRect((t % GW) * 8, ((t / GW) | 0) * 8, 8, 8);
     c.strokeStyle = 'rgba(125,255,200,0.55)'; c.lineWidth = 0.75; c.beginPath();
     for (let y = 0; y < GH; y++) for (let x = 0; x < GW; x++) {
-      const t = y * GW + x; if (!sec[so[t]].claimed || tiles[t] === T_ROCK) continue;
-      const edge = (nx, ny) => nx < 0 || ny < 0 || nx >= GW || ny >= GH ? false : (tiles[ny * GW + nx] !== T_ROCK && !sec[so[ny * GW + nx]].claimed);
+      const t = y * GW + x; if (!sec[so[t]].claimed) continue;
+      const edge = (nx, ny) => nx < 0 || ny < 0 || nx >= GW || ny >= GH ? false : !sec[so[ny * GW + nx]].claimed;
       if (edge(x + 1, y)) { c.moveTo(x * 8 + 8, y * 8); c.lineTo(x * 8 + 8, y * 8 + 8); }
       if (edge(x - 1, y)) { c.moveTo(x * 8, y * 8); c.lineTo(x * 8, y * 8 + 8); }
       if (edge(x, y + 1)) { c.moveTo(x * 8, y * 8 + 8); c.lineTo(x * 8 + 8, y * 8 + 8); }
@@ -274,6 +276,19 @@ function drawOverlay() {
     const w = Math.max(6, b.w * 8 - 2), x = b.x - w / 2, y = b.ty * 8 - 2.5, k = b.hp / b.maxHp;
     c.fillStyle = 'rgba(0,0,0,0.6)'; c.fillRect(x - 0.25, y - 0.25, w + 0.5, 1.5);
     c.fillStyle = k > 0.5 ? '#6f6' : k > 0.25 ? '#fc4' : '#f44'; c.fillRect(x, y, w * k, 1);
+  }
+  // incoming-contact markers at the map edge while a wave is still arriving
+  if (UI.screen === 'game' && G.phase === 'night' && G.spawnQ.length && G.spawnMarks) {
+    const p = 0.5 + 0.5 * Math.sin(G.t * 6);
+    c.fillStyle = `rgba(255,70,50,${0.35 + 0.5 * p})`;
+    for (const m of G.spawnMarks) {
+      const ax = m.x > W - 12 ? -1 : 0, ay = m.y < 12 ? 1 : m.y > H - 12 ? -1 : 0;
+      const x = clamp(m.x, 4, W - 4), y = clamp(m.y, 4, H - 4);
+      c.beginPath();
+      if (ax) { c.moveTo(x - 4, y); c.lineTo(x, y - 3); c.lineTo(x, y + 3); }
+      else { c.moveTo(x, y + ay * 4); c.lineTo(x - 3, y); c.lineTo(x + 3, y); }
+      c.fill();
+    }
   }
   // tracker blips
   if (G.tagT > 0) {
