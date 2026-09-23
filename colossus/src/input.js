@@ -17,7 +17,17 @@ export class Input {
     this.lastClick = { t: 0, x: 0, y: 0 };
     this.lastGroupKey = { k: null, t: 0 };
     this.raycaster = new THREE.Raycaster();
+    // swarm: arrow showing which side of the Colossus a right-click would attack
+    const ag = new THREE.BufferGeometry();
+    ag.setAttribute('position', new THREE.Float32BufferAttribute([0, 0, 0, -1.6, 0, -2.6, 1.6, 0, -2.6, -0.6, 0, -2.6, 0.6, 0, -2.6, -0.6, 0, -5, 0.6, 0, -2.6, 0.6, 0, -5, -0.6, 0, -5], 3));
+    this.arrow = new THREE.Mesh(ag, new THREE.MeshBasicMaterial({ color: 0xff5a4a, side: THREE.DoubleSide, transparent: true, opacity: 0.85, depthTest: false, toneMapped: false }));
+    this.arrow.renderOrder = 12; this.arrow.visible = false;
+    G.scene.add(this.arrow);
+    this.hoverEl = document.createElement('div');
+    this.hoverEl.className = 'hovertag';
+    document.body.appendChild(this.hoverEl);
     const c = this.canvas;
+    c.style.cursor = G.side === 'tank' ? 'crosshair' : 'default';
     c.addEventListener('contextmenu', (e) => e.preventDefault());
     c.addEventListener('pointerdown', (e) => this.down(e));
     window.addEventListener('pointermove', (e) => this.move(e));
@@ -435,6 +445,27 @@ export class Input {
     if (k.has('PageDown')) cam.rotate(0, -dt);
     if (k.has('Equal') || k.has('NumpadAdd')) cam.zoom(Math.exp(-dt * 1.5));
     if (k.has('Minus') || k.has('NumpadSubtract')) cam.zoom(Math.exp(dt * 1.5));
+    // hover affordance: which side would we attack?
+    let show = false;
+    if (G.side === 'swarm' && this.mouse.over && !this.drag && G.swarm.selected.size && !G.tank.dead) {
+      const hit = this.pickTank(this.mouse.x, this.mouse.y);
+      if (hit) {
+        const t = G.tank, b = Math.atan2(hit.lx, hit.lz);
+        const ext = t.extent(b) + 1.2;
+        const ang = t.heading + b;
+        this.arrow.position.set(t.x + Math.sin(ang) * ext, t.y + 0.4, t.z + Math.cos(ang) * ext);
+        this.arrow.rotation.set(0, ang + Math.PI, 0);
+        const pulse = 1 + Math.sin(performance.now() / 120) * 0.12;
+        this.arrow.scale.setScalar(pulse * Math.max(1, G.cam.dist / 70));
+        const q = ['FRONT', 'RIGHT SIDE', 'REAR', 'LEFT SIDE'][t.quadrant(t.x + Math.sin(ang) * 20, t.z + Math.cos(ang) * 20)];
+        this.hoverEl.textContent = `Attack ${q}`;
+        this.hoverEl.style.transform = `translate(${this.mouse.x + 16}px, ${this.mouse.y + 12}px)`;
+        show = true;
+      }
+    }
+    this.arrow.visible = show;
+    this.hoverEl.style.display = show ? 'block' : 'none';
+    this.canvas.style.cursor = show ? 'crosshair' : (G.side === 'tank' ? 'crosshair' : 'default');
     // held Space = shield toward the cursor (tank)
     if (G.side === 'tank' && k.has('Space') && G.tank && !G.tank.dead) {
       const g = this.ground(this.mouse.x, this.mouse.y);

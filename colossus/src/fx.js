@@ -226,7 +226,7 @@ export class FX {
       this.debris.spawn(x + Math.cos(a) * r, y, z + Math.sin(a) * r, Math.cos(a) * rand(0.5, 2.5) * s, up, Math.sin(a) * rand(0.5, 2.5) * s,
         rand(0.8, 1.5), 0.25 * s, 0.35 * s, 0.1, 0.5, 0.75 * w, 0.92 * w, 1, 0.55, 0.8, 0.95, 18, 0.5, FLAG_WATER);
     }
-    this.ring(x, y + 0.05, z, 3.5 * s, 0.8, 0xe8fbff, 0.8);
+    this.ring(x, y + 0.05, z, 3.5 * s, 0.8, 0xe8fbff, 0.45);
     if (this.G.water) this.G.water.ripple(x, z, Math.min(1.5, s));
   }
   muzzle(x, y, z, dx, dy, dz, s = 1) {

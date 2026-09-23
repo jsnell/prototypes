@@ -128,7 +128,11 @@ function endIn(sec) {
   setTimeout(() => {
     if (G.over) return;
     G.over = true;
-    if (G.side === 'none') { setTimeout(() => { if (!document.getElementById('title').classList.contains('hidden')) G.restart(null); }, 6000); return; }
+    if (G.side === 'none') {
+      G.ui.log(G.winner === 'tank' ? '🏆 The Colossus wins this one.' : '🏆 The Swarm wins this one.', 'info', true);
+      setTimeout(() => G.restart(null), 7000);
+      return;
+    }
     const win = G.winner === G.side;
     if (G.side === 'tank') G.ui.showEnd(win, win ? 'Command Post flattened!' : 'The Colossus has fallen', win ? 'Nothing could stop you. The swarm scatters.' : 'Death by a thousand tiny cuts.');
     else G.ui.showEnd(win, win ? 'The Colossus has fallen!' : 'Your Command Post is rubble', win ? 'A thousand tiny cuts did the job.' : 'It just… kept… coming.');

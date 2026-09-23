@@ -219,6 +219,8 @@ kbd {
 .floater.sys { color: #ffd166; font-size: 14px; }
 .lock { position: absolute; left: 0; top: 0; width: 34px; height: 34px; border: 3px solid #ff5a4a; border-radius: 50%; box-shadow: 0 0 0 2px rgba(255, 255, 255, 0.7); animation: spin 2s linear infinite; }
 .lock.oor { border-style: dashed; opacity: 0.6; }
+.lock.auto { width: 24px; height: 24px; border-width: 2px; border-color: #ffb3a8; box-shadow: none; opacity: 0.8; }
+.hovertag { position: fixed; left: 0; top: 0; display: none; pointer-events: none; background: #ff5a4a; color: #fff; font-weight: 600; font-size: 12px; padding: 2px 8px; border-radius: 999px; box-shadow: 0 2px 8px rgba(0,0,0,.25); z-index: 30; white-space: nowrap; }
 @keyframes spin { to { rotate: 360deg; } }
 
 /* ---------------- help / title / end */

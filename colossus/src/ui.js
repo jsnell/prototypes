@@ -177,6 +177,9 @@ export class UI {
     this.pathLine = new THREE.Line(new THREE.BufferGeometry(), new THREE.LineDashedMaterial({ color: 0xffffff, dashSize: 1, gapSize: 0.8, transparent: true, opacity: 0.8, depthTest: false }));
     this.pathLine.renderOrder = 10; this.pathLine.frustumCulled = false;
     G.scene.add(this.pathLine);
+    this.rangeRing = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshBasicMaterial({ color: 0xff6b5a, transparent: true, opacity: 0.35, depthWrite: false, depthTest: false, side: THREE.DoubleSide, toneMapped: false }));
+    this.rangeRing.renderOrder = 9; this.rangeRing.frustumCulled = false;
+    G.scene.add(this.rangeRing);
   }
 
   updateTank() {
@@ -440,10 +443,11 @@ export class UI {
       this.tankLabel.bar.style.width = (t.hull / t.hullMax * 100) + '%';
       this.tankLabel.el.classList.toggle('far', far);
     }
-    // cannon lock marker (tank side)
-    const tg = G.side === 'tank' && !t.dead ? (t.cannon.target || t.cannon.point) : null;
+    // cannon lock marker (tank side); a lighter one for auto-fire picks
+    const manual = t.cannon.target || t.cannon.point;
+    const tg = G.side === 'tank' && !t.dead ? (manual || (t.cannon.auto ? t.cannon.aim : null)) : null;
     if (tg && tg.alive !== false) {
-      this.lockEl.className = 'lock' + (t.cannon.inRange ? '' : ' oor');
+      this.lockEl.className = 'lock' + (manual ? '' : ' auto') + (t.cannon.inRange ? '' : ' oor');
       this.place(this.lockEl, tg.x, (tg.y || 0) + (tg.height ? tg.height / 2 : 0.6), tg.z);
       this.lockEl.style.transform += ' translate(0, 50%)';
     } else this.lockEl.style.display = 'none';
@@ -452,6 +456,24 @@ export class UI {
   updatePath() {
     if (!this.pathLine) return;
     const G = this.G, t = G.tank;
+    // main gun range ring hugging the terrain
+    // dashed ribbon, width scales with zoom so it stays readable
+    const rp = [];
+    if (!t.dead) {
+      const [px, pz] = t.turretPivot();
+      const R = TANK.cannonRange, w = Math.max(0.3, G.cam.dist * 0.004);
+      const n = 144;
+      const pt = (a, r) => { const x = px + Math.sin(a) * r, z = pz + Math.cos(a) * r; return [x, G.terrain.surfaceAt(Math.max(0, Math.min(127.9, x)), Math.max(0, Math.min(175.9, z))) + 0.35, z]; };
+      for (let k = 0; k < n; k += 2) {
+        const a0 = k / n * Math.PI * 2, a1 = (k + 1) / n * Math.PI * 2;
+        const ex = px + Math.sin(a0) * R, ez = pz + Math.cos(a0) * R;
+        if (ex < 0 || ez < 0 || ex > 128 || ez > 176) continue;
+        const p0 = pt(a0, R - w), p1 = pt(a0, R + w), p2 = pt(a1, R + w), p3 = pt(a1, R - w);
+        rp.push(...p0, ...p1, ...p2, ...p0, ...p2, ...p3);
+      }
+    }
+    this.rangeRing.geometry.setAttribute('position', new THREE.Float32BufferAttribute(rp, 3));
+    this.rangeRing.visible = rp.length > 0;
     const pts = [];
     if (!t.dead && (t.path.length || t.ram)) {
       pts.push(t.x, t.y + 0.6, t.z);
@@ -522,6 +544,39 @@ export class UI {
     requestAnimationFrame(() => el.classList.add('show'));
   }
 
+  // ------------------------------------------------------------ contextual alerts
+  alerts() {
+    const G = this.G, t = G.tank;
+    if (!t || t.dead || G.over || G.side === 'none') return;
+    const now = G.time;
+    const A = this.alertT || (this.alertT = {});
+    const once = (key, gap, fn) => { if (A[key] === undefined || now - A[key] > gap) { A[key] = now; fn(); } };
+    const QN = ['FRONT', 'RIGHT', 'REAR', 'LEFT'];
+    for (let q = 0; q < 4; q++) {
+      if (t.shieldQ[q] < 3 && t.sys.shield.online && t.dmgRecent[q] > 5) {
+        if (G.side === 'tank') once('sh' + q, 12, () => this.log(`🛡️ ${QN[q]} shield is down!`, 'bad'));
+        else once('sh' + q, 12, () => this.log(`🎯 Its ${QN[q]} shield is down — hit it there!`, 'good'));
+      }
+    }
+    if (G.side === 'tank') {
+      let n = 0, sx = 0, sz = 0;
+      G.swarm.hash.query(t.x, t.z, 30, (u) => { if (u.type === 'sapper') { n++; sx += u.x; sz += u.z; } });
+      if (n >= 2) once('sap', 10, () => this.log(`💣 ${n} Boomers closing in from the ${QN[t.quadrant(sx / n, sz / n)]}! (flak eats them)`, 'warn'));
+      if (t.mortarDmg > 20) {
+        let m = null, md = 1e9;
+        for (const u of G.swarm.units) if (u.alive && u.type === 'mortar') { const d = Math.hypot(u.x - t.x, u.z - t.z); if (d < md) { md = d; m = u; } }
+        if (m && md > TANK.cannonRange) once('mortar', 15, () => { this.log(`🎯 Mortars shelling you from the ${QN[t.quadrant(m.x, m.z)]} — out of gun range. Keep moving or go get them.`, 'warn'); G.minimap.ping(m.x, m.z, '#ff5a4a'); });
+      }
+      if (t.overdrive && t.heat > 82) once('heat', 6, () => this.log('🔥 Reactor overheating — drop overdrive (G)!', 'bad'));
+    } else {
+      for (const st of G.swarm.structures) {
+        if (!st.alive) continue;
+        if (st.lastHp !== undefined && st.hp < st.lastHp - 1) once('st' + st.id, 14, () => { this.log(`🏭 ${st.kind === 'cp' ? 'Command Post' : 'A factory'} is under fire!`, 'warn'); G.minimap.ping(st.x, st.z, '#ffd166'); });
+        st.lastHp = st.hp;
+      }
+    }
+  }
+
   // ------------------------------------------------------------ frame
   update(dt) {
     const G = this.G;
@@ -532,6 +587,8 @@ export class UI {
     this.t = 0;
     if (this.clockEl) this.clockEl.textContent = fmtTime(G.time);
     if (this.speedEl) this.speedEl.textContent = G.paused ? 'PAUSED' : G.speed !== 1 ? `×${G.speed}` : '';
+    this.alertAcc = (this.alertAcc || 0) + 1;
+    if (this.alertAcc % 5 === 0) this.alerts();
     if (G.side === 'tank') { this.updateTank(); this.updatePath(); }
     if (G.side === 'swarm') this.updateSwarm();
   }

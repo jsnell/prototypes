@@ -27,7 +27,7 @@ void main() {
   gl_Position = projectionMatrix * viewMatrix * wp;
 }`;
 const bubbleFrag = /* glsl */`
-uniform vec4 uQ; uniform float uTime; uniform vec4 uHits[8]; uniform float uFlicker;
+uniform vec4 uQ; uniform float uTime; uniform vec4 uHits[8]; uniform float uFlicker; uniform float uFar;
 varying vec3 vL; varying vec3 vN; varying vec3 vV;
 void main() {
   float a = atan(vL.x, vL.z);
@@ -46,7 +46,7 @@ void main() {
     float d = distance(dir, h.xyz);
     hit += step(abs(d - h.w * 2.2), 0.09) * (1.0 - h.w / 0.7) + smoothstep(0.45, 0.0, d) * max(0.0, 1.0 - h.w * 5.0) * 1.5;
   }
-  float alpha = s * (0.015 + fres * 0.26 + chk * 0.015 + scan * 0.05) * uFlicker + hit * 0.7;
+  float alpha = (s * (0.015 + fres * 0.26 + chk * 0.015 + scan * 0.05) * uFlicker + hit * 0.7) * (1.0 - 0.65 * uFar);
   vec3 col = mix(vec3(0.35, 0.85, 1.0), vec3(0.8, 1.0, 1.0), chk * 0.4 + hit);
   gl_FragColor = vec4(col * (1.0 + hit), clamp(alpha, 0.0, 1.0));
 }`;
@@ -249,13 +249,13 @@ export class Tank {
       label = `${SYSTEM_INFO[s].name} −${Math.round(before - S.hp)}`;
       if (S.hp <= 0 && S.online) {
         S.online = false;
-        G.ui && G.ui.log(`${SYSTEM_INFO[s].icon} ${SYSTEM_INFO[s].name} knocked OUT!`, 'bad', true);
+        G.ui && G.ui.log(`${SYSTEM_INFO[s].icon} ${G.side === 'swarm' ? 'Its ' : ''}${SYSTEM_INFO[s].name} knocked OUT!`, G.side === 'swarm' ? 'good' : 'bad', true);
         G.audio.play('alarm', { vol: G.side === 'tank' ? 1 : 0.3 });
         const w = this.worldPart(s);
         G.fx.explosion(w.x, w.y, w.z, 0.7);
         this.allocate();
       } else if (before >= 50 && S.hp < 50) {
-        G.ui && G.ui.log(`${SYSTEM_INFO[s].icon} ${SYSTEM_INFO[s].name} damaged (${Math.round(S.hp)}%)`, 'warn');
+        G.ui && G.ui.log(`${SYSTEM_INFO[s].icon} ${G.side === 'swarm' ? 'Its ' : ''}${SYSTEM_INFO[s].name} damaged (${Math.round(S.hp)}%)`, G.side === 'swarm' ? 'good' : 'warn');
       }
     } else this.sys.reactor.fxT += 0; // hull only
     this.hullFlash = 1;
@@ -699,7 +699,7 @@ export class Tank {
     this.hits = []; this.hitIdx = 0;
     for (let n = 0; n < 8; n++) this.hits.push(new THREE.Vector4(0, 0, 0, -1));
     this.bubbleMat = new THREE.ShaderMaterial({
-      uniforms: { uQ: { value: new THREE.Vector4() }, uTime: { value: 0 }, uHits: { value: this.hits }, uFlicker: { value: 1 } },
+      uniforms: { uQ: { value: new THREE.Vector4() }, uTime: { value: 0 }, uHits: { value: this.hits }, uFlicker: { value: 1 }, uFar: { value: 0 } },
       vertexShader: bubbleVert, fragmentShader: bubbleFrag,
       transparent: true, depthWrite: false, blending: THREE.AdditiveBlending,
     });
@@ -822,6 +822,7 @@ export class Tank {
     // shield bubble
     const u = this.bubbleMat.uniforms;
     u.uTime.value = vt;
+    u.uFar.value = clamp((G.cam.dist - 50) / 120, 0, 1);
     const sm = TANK.shieldMax;
     u.uQ.value.set(this.shieldQ[0] / sm, this.shieldQ[1] / sm, this.shieldQ[2] / sm, this.shieldQ[3] / sm);
     u.uFlicker.value = this.sys.shield.online ? (this.sys.shield.hp < 35 ? (Math.random() < 0.2 ? 0.2 : 1) : 1) : 0.3;
