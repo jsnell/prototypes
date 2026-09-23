@@ -46,9 +46,10 @@ void main() {
     float d = distance(dir, h.xyz);
     hit += step(abs(d - h.w * 2.2), 0.09) * (1.0 - h.w / 0.7) + smoothstep(0.45, 0.0, d) * max(0.0, 1.0 - h.w * 5.0) * 1.5;
   }
-  float alpha = (s * (0.015 + fres * 0.26 + chk * 0.015 + scan * 0.05) * uFlicker + hit * 0.7) * (1.0 - 0.65 * uFar);
-  vec3 col = mix(vec3(0.35, 0.85, 1.0), vec3(0.8, 1.0, 1.0), chk * 0.4 + hit);
-  gl_FragColor = vec4(col * (1.0 + hit), clamp(alpha, 0.0, 1.0));
+  hit = min(hit, 1.0);
+  float alpha = (s * (0.015 + fres * 0.26 + chk * 0.015 + scan * 0.05) * uFlicker + hit * 0.45) * (1.0 - 0.65 * uFar);
+  vec3 col = mix(vec3(0.35, 0.85, 1.0), vec3(0.6, 0.95, 1.0), chk * 0.4 + hit * 0.5);
+  gl_FragColor = vec4(col * (1.0 + hit * 0.5), clamp(alpha, 0.0, 1.0));
 }`;
 
 const _v = new THREE.Vector3();

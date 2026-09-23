@@ -80,7 +80,7 @@ export class SwarmAI {
     // is a structure under threat?
     let threatened = false;
     for (const st of S.structures) if (st.alive && Math.hypot(st.x - t.x, st.z - t.z) < 42) threatened = true;
-    const launch = Math.min(22, 6 + Math.floor(this.t / 25)) * (this.diff.smart === 2 ? 1.1 : 1);
+    const launch = Math.min(26, 7 + Math.floor(this.t / 20)) * (this.diff.smart === 2 ? 1.15 : 1);
     if (this.reserve.size && (threatened || this.reserve.size >= launch)) {
       const units = [...this.reserve];
       this.reserve.clear();

@@ -37,7 +37,7 @@ export const UNITS = {
   sapper: {
     name: 'Boomer', role: 'Sapper', key: 'KeyB', label: 'B',
     desc: 'Kamikaze cart. Slips under shields, rams the Colossus and blows up. Shreds treads.',
-    hp: 30, speed: 5.8, range: 1.2, pref: 0, dmg: 170, cost: 45, build: 2.4,
+    hp: 34, speed: 6.4, range: 1.2, pref: 0, dmg: 170, cost: 45, build: 2.4,
     weapon: 'bomb',
   },
   jammer: {
@@ -99,7 +99,7 @@ export const STRUCTS = {
   cp: { hp: 2400, half: 3.6, height: 5, name: 'Command Post' },
 };
 
-export const SWARM = { startSupply: 300, baseIncome: 10, perFactory: 4, cap: 160 };
+export const SWARM = { startSupply: 350, baseIncome: 11, perFactory: 4.5, cap: 160 };
 
 // forward screen the swarm starts the game with
 export const START_ARMY = { buggy: 5, scout: 3, rocket: 2, mortar: 1, jammer: 1 };

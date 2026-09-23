@@ -88,9 +88,10 @@ kbd {
 .tankhud .card { width: 150px; flex: 0 1 auto; }
 .tankhud .sys { cursor: pointer; transition: transform 0.1s, box-shadow 0.2s, background 0.2s; }
 .tankhud .sys:hover { transform: translateY(-2px); }
-.tankhud .sys.offline { background: rgba(255, 225, 225, 0.94); }
+.tankhud .sys.offline, .reactor.offline { background: #ffd9d6; box-shadow: 0 0 0 2px var(--bad), var(--shadow); }
+.tankhud .sys.offline .pips b.on { filter: grayscale(1); opacity: 0.5; }
 .tankhud .sys.offline .ttl .st, .reactor.offline .ttl .st { background: var(--bad); color: #fff; }
-.tankhud .sys.jammed { background: rgba(236, 226, 255, 0.95); }
+.tankhud .sys.jammed { background: #e9ddff; box-shadow: 0 0 0 2px #9b6bd3, var(--shadow); }
 .tankhud .sys.jammed .ttl .st { background: #9b6bd3; color: #fff; }
 .tankhud .ttl .st:not(:empty) { background: var(--warn); color: #fff; }
 .tankhud .sys.flash, .reactor.flash { box-shadow: 0 0 0 3px var(--bad), var(--shadow); }
