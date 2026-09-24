@@ -81,7 +81,8 @@ export function roundAxial(fq: number, fr: number): Axial {
   const ds = Math.abs(s - fs);
   if (dq > dr && dq > ds) q = -r - s;
   else if (dr > ds) r = -q - s;
-  return { q, r };
+  // "+ 0" turns -0 into 0.
+  return { q: q + 0, r: r + 0 };
 }
 
 /**

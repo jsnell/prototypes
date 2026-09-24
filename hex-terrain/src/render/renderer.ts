@@ -203,7 +203,7 @@ export class TerrainRenderer {
     if (this.inFlight || !this.needsUpdate) return false;
     const pool = this.pool;
     const bigEdit = this.dirty.size > this.map.size * 0.4;
-    if (!pool || (this.fullLevel < LVL_TERRAIN && !bigEdit)) return this.update();
+    if (!pool || pool.failed || (this.fullLevel < LVL_TERRAIN && !bigEdit)) return this.update();
     this.inFlight = true;
     try {
       const job = this.begin();
@@ -225,7 +225,16 @@ export class TerrainRenderer {
           }),
         );
       }
-      const results = await Promise.all(jobs);
+      let results: TerrainJobResult[];
+      try {
+        results = await Promise.all(jobs);
+      } catch {
+        // Workers failed: compute on the main thread instead.
+        const full = this.fullRect();
+        computeTerrain(this.field, this.shader, this.B, full.x0, full.x1, full.y0, full.y1, this.worldH);
+        this.finish(job);
+        return true;
+      }
       const B = this.B;
       for (const r of results) {
         const off = r.y0 * W;
@@ -288,17 +297,26 @@ export class TerrainRenderer {
     } else {
       if (this.dirty.size) {
         const touched = this.field.rebuild(this.dirty);
+        // Pixels change only near edited hexes, plus lakes whose level follows their shores.
+        const changed = [...this.dirty];
+        for (const i of touched) if (!this.dirty.has(i) && this.map.isWater(i)) changed.push(i);
         this.dirty.clear();
-        const hr = this.hexesRect(touched, this.field.influence);
-        const cr = this.expand(hr, this.shadowReach() + this.blurRadius() + 2);
+        const hr = this.hexesRect(changed, this.field.influence);
+        const cr = this.lightRect(hr);
+        mark();
         this.terrainPass(hr);
+        mark();
         this.blurPass(cr);
         this.lightPass(cr);
+        mark();
         this.rebuildSprites(this.hexesIn(this.expand(hr, this.layout.size * 0.2)));
+        mark();
         if (level < LVL_PROJECT) {
           const pad = Math.ceil(this.layout.size * 0.6);
           this.project(cr.x0 - pad, cr.x1 + pad, Math.max(0, cr.y0 - this.maxSprite), cr.y1 + this.top + this.skirt + 2);
         }
+        mark();
+        this.passTimes = T.slice(1).map((t, k) => Math.round(t - T[k]));
         pixels = (cr.x1 - cr.x0) * (cr.y1 - cr.y0);
       }
       if (level >= LVL_LIGHT) {
@@ -385,6 +403,22 @@ export class TerrainRenderer {
       y1 = Math.max(y1, cy + this.layout.apothem);
     }
     return this.clampRect({ x0: Math.floor(x0 - margin), y0: Math.floor(y0 - margin), x1: Math.ceil(x1 + margin), y1: Math.ceil(y1 + margin) });
+  }
+
+  /** Region whose lighting can change when heights in `r` change: shadows fall away from the sun. */
+  private lightRect(r: Rect): Rect {
+    const reach = this.shadowReach();
+    const m = this.blurRadius() + 2;
+    const [sx, sy] = this.lighting.sun;
+    const len = Math.hypot(sx, sy) || 1;
+    const dx = (-sx / len) * reach;
+    const dy = (-sy / len) * reach;
+    return this.clampRect({
+      x0: r.x0 - m + Math.min(0, dx),
+      y0: r.y0 - m + Math.min(0, dy),
+      x1: r.x1 + m + Math.max(0, dx),
+      y1: r.y1 + m + Math.max(0, dy),
+    });
   }
 
   private expand(r: Rect, m: number): Rect {

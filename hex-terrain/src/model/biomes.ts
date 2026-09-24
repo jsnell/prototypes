@@ -60,7 +60,8 @@ export interface Biome {
   /** Relief character. */
   relief: 'rolling' | 'dunes' | 'mesa' | 'glacial' | 'volcanic' | 'marsh' | 'water';
   flora: FloraSpec[];
-  /** Density of the trees in the flora list is multiplied by this above the tree line. */
+  /** Trees that gather in clumps (copses) in otherwise open country, with the chance per scatter cell inside a clump. */
+  copse?: { kind: FloraKind; chance: number; scale?: [number, number] };
   style: BuildingStyle;
   /** Whether farm fields can grow here. */
   arable: boolean;
@@ -79,9 +80,10 @@ export const BIOMES: Record<BiomeId, Biome> = {
     rock: hex('#827b6c'),
     shore: hex('#d8c793'),
     relief: 'rolling',
+    copse: { kind: 'broadleaf', chance: 0.6, scale: [0.8, 1.2] },
     flora: [
-      { kind: 'broadleaf', density: 0.018, scale: [0.8, 1.15] },
-      { kind: 'shrub', density: 0.04 },
+      { kind: 'broadleaf', density: 0.006, scale: [0.8, 1.15] },
+      { kind: 'shrub', density: 0.012, scale: [0.6, 0.85] },
       { kind: 'grass', density: 0.12 },
       { kind: 'rock', density: 0.008 },
     ],
@@ -171,8 +173,9 @@ export const BIOMES: Record<BiomeId, Biome> = {
     rock: hex('#9c8468'),
     shore: hex('#e0cc98'),
     relief: 'rolling',
+    copse: { kind: 'acacia', chance: 0.18, scale: [0.9, 1.3] },
     flora: [
-      { kind: 'acacia', density: 0.05, scale: [0.9, 1.3] },
+      { kind: 'acacia', density: 0.025, scale: [0.9, 1.3] },
       { kind: 'shrub', density: 0.06 },
       { kind: 'grass', density: 0.25 },
       { kind: 'rock', density: 0.01 },
@@ -226,6 +229,7 @@ export const BIOMES: Record<BiomeId, Biome> = {
     rock: hex('#75746e'),
     shore: hex('#9c998c'),
     relief: 'rolling',
+    copse: { kind: 'pine', chance: 0.22, scale: [0.6, 0.9] },
     flora: [
       { kind: 'shrub', density: 0.06, scale: [0.5, 0.8] },
       { kind: 'rock', density: 0.05 },

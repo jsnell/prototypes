@@ -37,6 +37,8 @@ export class TerrainWorkerPool {
   private readonly idle: Worker[] = [];
   private readonly queue: { job: TerrainJob; resolve: (r: TerrainJobResult) => void; reject: (e: unknown) => void }[] = [];
   private readonly pending = new Map<Worker, { resolve: (r: TerrainJobResult) => void; reject: (e: unknown) => void }>();
+  /** Set once a worker fails to load or respond; callers should fall back to the main thread. */
+  failed = false;
 
   constructor(factory: () => Worker, count = 4) {
     for (let i = 0; i < Math.max(1, count); i++) {
@@ -52,9 +54,26 @@ export class TerrainWorkerPool {
     return this.workers.length;
   }
 
-  run(job: TerrainJob): Promise<TerrainJobResult> {
+  run(job: TerrainJob, timeoutMs = 20000): Promise<TerrainJobResult> {
+    if (this.failed) return Promise.reject(new Error('Terrain workers unavailable'));
     return new Promise((resolve, reject) => {
-      this.queue.push({ job, resolve, reject });
+      // A worker blocked by the host (for example by a content policy) may never answer.
+      const timer = setTimeout(() => {
+        this.failed = true;
+        reject(new Error('Terrain worker timed out'));
+      }, timeoutMs);
+      this.queue.push({
+        job,
+        resolve: (r) => {
+          clearTimeout(timer);
+          resolve(r);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          this.failed = true;
+          reject(e);
+        },
+      });
       this.pump();
     });
   }

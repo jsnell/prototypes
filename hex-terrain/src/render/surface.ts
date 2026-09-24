@@ -256,7 +256,7 @@ export class SurfaceShader {
         }
       }
       if (feat === 'village' || feat === 'town' || feat === 'farm' || feat === 'castle') {
-        const rad = feat === 'town' ? 0.66 : feat === 'village' ? 0.5 : feat === 'castle' ? 0.34 : 0.24;
+        const rad = feat === 'town' ? 0.8 : feat === 'village' ? 0.5 : feat === 'castle' ? 0.34 : 0.24;
         const tr = (1 - smoothstep(rad * 0.7, rad, d + ctx.nM * 0.12)) * (feat === 'town' || feat === 'castle' ? 0.75 : 0.45);
         const cobble = feat === 'town' || feat === 'castle';
         const base = cobble ? PAL.plaza : PAL.dirt;

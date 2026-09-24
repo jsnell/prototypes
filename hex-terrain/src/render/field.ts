@@ -155,7 +155,7 @@ export class TerrainField {
     let flattenRadius = 0.6;
     if (feature === 'village' || feature === 'town') {
       flatten = 0.8;
-      flattenRadius = feature === 'town' ? 0.85 : 0.65;
+      flattenRadius = feature === 'town' ? 0.95 : 0.65;
     } else if (feature === 'farm') {
       flatten = 0.6;
       flattenRadius = 0.95;

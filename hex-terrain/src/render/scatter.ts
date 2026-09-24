@@ -1,7 +1,7 @@
 import { hex, type RGB } from '../core/color';
 import { DIR_VECTORS } from '../core/hex';
 import { Rng, hashFloat } from '../core/rng';
-import { type Biome, type BuildingStyle, type FloraKind } from '../model/biomes';
+import { type Biome, type BuildingStyle, type FloraKind, type FloraSpec } from '../model/biomes';
 import type { FeatureId } from '../model/features';
 import type { Lighting, Season } from './environment';
 import type { FieldHex, TerrainField } from './field';
@@ -43,7 +43,7 @@ const TREE_KINDS = new Set<FloraKind>(['broadleaf', 'pine', 'palm', 'jungleTree'
 /** How far (in apothems) a feature clears trees from the hex centre. */
 const CLEARING: Record<FeatureId, number> = {
   village: 0.66,
-  town: 0.86,
+  town: 0.95,
   castle: 0.58,
   tower: 0.22,
   farm: 1.05,
@@ -152,6 +152,7 @@ export class Scatter {
     const j1 = Math.floor((h.cy + s * 1.1) / cell);
     const feature = field.map.featureAt(index);
     const clearR = feature ? CLEARING[feature] * field.a : 0;
+    const copseK = 16 / (s * 0.45);
 
     for (let j = j0; j <= j1; j++) {
       for (let i = i0; i <= i1; i++) {
@@ -167,12 +168,17 @@ export class Scatter {
         for (const f of biome.flora) total += f.density;
         const norm = total > 1 ? 1 / total : 1;
         let roll = hashFloat(i, j, 4, seed);
-        let spec = null;
-        for (const f of biome.flora) {
-          roll -= f.density * norm;
-          if (roll < 0) {
-            spec = f;
-            break;
+        let spec: FloraSpec | null = null;
+        // Open country grows its trees in clumps.
+        if (biome.copse && field.t2.sample(x * copseK + 31, y * copseK + 7) > 0.32 && roll < biome.copse.chance) {
+          spec = { kind: biome.copse.kind, density: 0, scale: biome.copse.scale };
+        } else {
+          for (const f of biome.flora) {
+            roll -= f.density * norm;
+            if (roll < 0) {
+              spec = f;
+              break;
+            }
           }
         }
         if (!spec) continue;
@@ -359,8 +365,8 @@ export class Scatter {
     const s = field.s;
     const a = field.a;
     const town = feature === 'town';
-    const radius = (town ? 0.6 : 0.5) * a;
-    const houseR = s * 0.15;
+    const radius = (town ? 0.68 : 0.52) * a;
+    const houseR = s * (town ? 0.12 : 0.15);
     const taken: [number, number, number][] = [];
     const snowy = this.isSnowy(h.biome, g.ground(h.cx, h.cy));
     const stone = STONE[h.biome.id] ?? (style === 'log' ? hex('#7d6a55') : undefined);
@@ -382,7 +388,7 @@ export class Scatter {
     }
 
     // Houses line up along roads when there are any.
-    const target = town ? 10 + rng.int(0, 5) : 4 + rng.int(0, 4);
+    const target = town ? 14 + rng.int(0, 6) : 5 + rng.int(0, 4);
     if (h.roads) {
       const slots: { x: number; y: number; rot: number }[] = [];
       for (const line of h.roads.lines) {
@@ -452,8 +458,8 @@ export class Scatter {
   private townWalls(h: FieldHex, style: BuildingStyle, g: GroundQuery, out: SpriteInstance[], snowy: boolean, stone: RGB | undefined): void {
     const field = this.field;
     const u = this.bu;
-    const R = field.a * 0.74;
-    const segs = 20;
+    const R = field.a * 0.84;
+    const segs = 22;
     // Find where roads cross the wall ring: gates go there.
     const gates: { ang: number; rot: number }[] = [];
     if (h.roads) {

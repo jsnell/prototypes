@@ -39,7 +39,7 @@ export function computeLighting(env: Environment): Lighting {
   // Day fraction: 0 at 6:00, 1 at 18:00.
   const t = (h - 6) / 12;
   const day = t >= -0.08 && t <= 1.08;
-  const elevDeg = day ? Math.max(6, Math.sin(Math.PI * clamp01(t)) * 58) : 40;
+  const elevDeg = day ? Math.max(9, Math.sin(Math.PI * clamp01(t)) * 58) : 40;
   const az = day ? Math.PI * clamp01(t) : Math.PI * 0.72;
   const el = (elevDeg * Math.PI) / 180;
   // Sun sweeps east -> south (towards viewer) -> west, but stays a little north
@@ -58,10 +58,10 @@ export function computeLighting(env: Environment): Lighting {
   const nightK = clamp01(night);
 
   const daySun: RGB = [1.0, 0.97, 0.9];
-  const goldSun: RGB = [1.12, 0.78, 0.5];
+  const goldSun: RGB = [1.2, 0.8, 0.48];
   const moon: RGB = [0.3, 0.38, 0.58];
   const dayAmb: RGB = [0.5, 0.56, 0.66];
-  const goldAmb: RGB = [0.46, 0.42, 0.52];
+  const goldAmb: RGB = [0.6, 0.47, 0.44];
   const nightAmb: RGB = [0.1, 0.13, 0.24];
 
   const mix3 = (a: RGB, b: RGB, k: number): RGB => [

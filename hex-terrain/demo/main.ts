@@ -344,11 +344,14 @@ function brushHexes(center: number): number[] {
 // ---- status line ------------------------------------------------------------------
 
 const hoverInfo = $<HTMLElement>('hover-info');
+const coarse = window.matchMedia?.('(pointer: coarse)').matches ?? false;
 const hoverCoords = $<HTMLElement>('hover-coords');
 
 function updateStatus(): void {
   if (hover < 0) {
-    hoverInfo.textContent = 'Drag to paint. Right-drag to move, scroll to zoom.';
+    hoverInfo.textContent = coarse
+      ? 'Drag to paint. Use two fingers to move and zoom.'
+      : 'Drag to paint. Right-drag to move, scroll to zoom.';
     hoverCoords.textContent = '';
     return;
   }
@@ -778,6 +781,7 @@ boot();
   get renderer() {
     return R;
   },
+  view,
   state,
   AXIAL_DIRS,
 };
