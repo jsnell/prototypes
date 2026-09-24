@@ -1,0 +1,106 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<title>Hexfold Atlas</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Alegreya+SC:wght@500;700&family=Alegreya+Sans:wght@400;500;700&family=IBM+Plex+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="./style.css">
+</head>
+<body>
+<div class="app" id="app">
+  <aside class="panel" id="panel" aria-label="Map tools">
+    <header class="brand">
+      <div>
+        <h1>Hexfold Atlas</h1>
+        <p class="tagline">Paint a world, hex by hex.</p>
+      </div>
+      <button class="drawer-toggle" id="drawer-toggle" type="button" aria-expanded="true" aria-controls="panel-body">Tools</button>
+    </header>
+
+    <div class="panel-body" id="panel-body">
+      <section class="group" aria-labelledby="tools-h">
+        <h2 id="tools-h">Tool</h2>
+        <div class="tools" id="tools" role="radiogroup" aria-label="Tool"></div>
+        <p class="hint" id="tool-hint"></p>
+      </section>
+
+      <section class="group" id="biome-group" aria-labelledby="biome-h">
+        <h2 id="biome-h">Terrain</h2>
+        <div class="swatches" id="biomes" role="radiogroup" aria-label="Terrain type"></div>
+      </section>
+
+      <section class="group" id="feature-group" aria-labelledby="feature-h" hidden>
+        <h2 id="feature-h">Structure</h2>
+        <div class="features" id="features" role="radiogroup" aria-label="Structure"></div>
+      </section>
+
+      <section class="group" id="brush-group" aria-labelledby="brush-h">
+        <h2 id="brush-h">Brush</h2>
+        <div class="segmented" id="brush" role="radiogroup" aria-label="Brush size">
+          <button type="button" role="radio" data-size="1" aria-checked="true">1 hex</button>
+          <button type="button" role="radio" data-size="2" aria-checked="false">7 hexes</button>
+          <button type="button" role="radio" data-size="3" aria-checked="false">19 hexes</button>
+        </div>
+      </section>
+
+      <section class="group" aria-labelledby="light-h">
+        <h2 id="light-h">Season &amp; light</h2>
+        <div class="segmented" id="seasons" role="radiogroup" aria-label="Season"></div>
+        <div class="slider-row">
+          <label for="hour">Time of day</label>
+          <output id="hour-out" for="hour">14:30</output>
+        </div>
+        <input type="range" id="hour" min="4" max="22" step="0.25" value="14.5">
+        <label class="check"><input type="checkbox" id="grid"> Show hex grid</label>
+      </section>
+
+      <section class="group" aria-labelledby="world-h">
+        <h2 id="world-h">World</h2>
+        <div class="field-row">
+          <label for="seed">Seed</label>
+          <input type="text" id="seed" spellcheck="false" autocomplete="off" value="Aldermere">
+        </div>
+        <div class="segmented" id="map-size" role="radiogroup" aria-label="Map size">
+          <button type="button" role="radio" data-size="s" aria-checked="false">Small</button>
+          <button type="button" role="radio" data-size="m" aria-checked="true">Medium</button>
+          <button type="button" role="radio" data-size="l" aria-checked="false">Large</button>
+        </div>
+        <div class="actions">
+          <button type="button" class="primary" id="generate">Generate world</button>
+          <button type="button" id="random-seed" title="New random seed">Reroll</button>
+        </div>
+        <div class="actions">
+          <button type="button" id="clear">Blank map</button>
+          <button type="button" id="undo" title="Undo (Ctrl+Z)">Undo</button>
+        </div>
+        <div class="confirm" id="clear-confirm" hidden>
+          <p>Replace the whole map with open grassland?</p>
+          <div class="actions">
+            <button type="button" class="danger" id="clear-yes">Clear it</button>
+            <button type="button" id="clear-no">Keep map</button>
+          </div>
+        </div>
+      </section>
+    </div>
+  </aside>
+
+  <main class="stage" id="stage">
+    <canvas id="view" aria-label="Terrain map. Drag to paint with the selected tool."></canvas>
+    <div class="status" id="status" aria-live="polite">
+      <span id="hover-info">Hover a hex</span>
+      <span class="coords" id="hover-coords"></span>
+    </div>
+    <div class="zoom">
+      <button type="button" id="zoom-in" aria-label="Zoom in">+</button>
+      <button type="button" id="zoom-fit" aria-label="Fit map to view">Fit</button>
+      <button type="button" id="zoom-out" aria-label="Zoom out">−</button>
+    </div>
+    <div class="busy" id="busy" hidden><span>Surveying the land…</span></div>
+  </main>
+</div>
+<script type="module" src="./main.ts"></script>
+</body>
+</html>

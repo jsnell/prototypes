@@ -1,0 +1,19 @@
+{
+  "name": "hex-terrain",
+  "version": "0.1.0",
+  "description": "Procedural hex terrain tiles in a top-down oblique view: biomes, elevation, rivers, roads and settlements.",
+  "type": "module",
+  "main": "src/index.ts",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build && node scripts/make-artifact.mjs",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run"
+  },
+  "license": "MIT",
+  "devDependencies": {
+    "typescript": "^7.0.2",
+    "vite": "^8.3.0",
+    "vitest": "^5.0.1"
+  }
+}
